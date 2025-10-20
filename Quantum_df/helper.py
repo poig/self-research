@@ -225,39 +225,6 @@ def generate_differentiation_matrix(n):
     
     return matrix
 
-def generate_integration_matrix(n):
-    """
-    Generates an integration matrix corresponding to the integration operator on polynomial
-    coefficients. For a given exponent n, let m = 2**n. The resulting matrix has shape (m, m)
-    and is defined as follows:
-    
-      - The first row is all zeros (i.e. the constant of integration is taken as zero).
-      - For each row i (with i >= 1), the entry in column (i-1) is 1/i, with all other entries zero.
-    
-    In other words, if the input coefficient vector is [a_0, a_1, ..., a_{m-1}],
-    the matrix maps this to an "integrated" coefficient vector [0, a_0, a_1/2, a_2/3, ..., a_{m-2}/(m-1)].
-    
-    For example, if n = 2 (so m = 4), the resulting matrix is:
-        [[0,   0,   0,   0],
-         [1,   0,   0,   0],
-         [0, 1/2,   0,   0],
-         [0,   0, 1/3,   0]]
-    
-    Returns:
-        A NumPy array of shape (2**n, 2**n) representing the integration operator.
-    """
-    m = 2 ** n
-    matrix = np.zeros((m, m), dtype=float)
-    # Using vectorized assignment to fill the subdiagonal with 1/i.
-    # For rows i = 1 to m-1, assign 1/i at column i-1.
-    indices = np.arange(1, m)
-    matrix[indices, indices - 1] = 1.0 / indices
-
-    #I = np.zeros((poly_degree + 2, poly_degree + 1))
-    #for i in range(poly_degree + 1):
-    #    I[i+1, i] = 1/(i+1)
-    return matrix
-
 def integration_matrix_rect(poly_degree):
     """
     Build the rectangular integration matrix mapping coefficients for degree poly_degree.
