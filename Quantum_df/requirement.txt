@@ -1,0 +1,18 @@
+
+# Minimal requirements for running the notebooks in this folder
+# pinned versions are conservative suggestions — adjust as needed.
+numpy>=1.23
+scipy>=1.9
+scikit-learn>=1.2
+qiskit>=0.43
+jupyter>=1.0
+matplotlib>=3.5
+plotly>=5.15
+pandas>=1.5
+qiskit-aer
+qiskit-algorithms
+
+# Optional (only if using features that require them)
+# scikit-image>=0.19
+# sympy>=1.10
+# pytest>=7.0
