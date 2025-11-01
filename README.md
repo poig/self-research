@@ -6,6 +6,7 @@ This repository will contain multiple research projects (one per subdirectory). 
 Current projects:
 
 - `Quantum_df/` — Calculating Pi on Quantum Computing (see `Quantum_df/README.md`)
+- `Quantum_sat/` — Compute SAT on Quantum Computer (see `Quantum_sat/README.md`)
 
 Permissions & license
 ---------------------
