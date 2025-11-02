@@ -32,7 +32,7 @@ from src.core.integrated_pipeline import integrated_dispatcher_pipeline
 
 # Import all quantum solvers
 try:
-    from experiments.qlto_sat_formal import solve_sat_qlto, SATProblem, SATClause
+    from Quantum_sat.experiments.qaoa_sat_formal import solve_sat_qlto, SATProblem, SATClause
     QAOA_FORMAL_AVAILABLE = True
 except Exception as e:
     print(f"⚠️  QAOA formal solver: {e}")
@@ -41,14 +41,14 @@ except Exception as e:
     SATClause = None
 
 try:
-    from experiments.qlto_sat_morphing import solve_sat_adiabatic_morphing
+    from Quantum_sat.experiments.qaoa_sat_morphing import solve_sat_adiabatic_morphing
     QAOA_MORPHING_AVAILABLE = True
 except Exception as e:
     print(f"⚠️  QAOA morphing solver: {e}")
     QAOA_MORPHING_AVAILABLE = False
 
 try:
-    from experiments.qlto_sat_scaffolding import solve_sat_adiabatic_scaffolding
+    from Quantum_sat.experiments.qaoa_sat_scaffolding import solve_sat_adiabatic_scaffolding
     QAOA_SCAFFOLDING_AVAILABLE = True
 except Exception as e:
     print(f"⚠️  QAOA scaffolding solver: {e}")

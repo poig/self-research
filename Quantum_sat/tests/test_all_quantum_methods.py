@@ -93,7 +93,7 @@ def test_qaoa_formal():
     )
     
     try:
-        from experiments.qlto_sat_formal import solve_sat_qlto, SATProblem, SATClause
+        from Quantum_sat.experiments.qaoa_sat_formal import solve_sat_qlto, SATProblem, SATClause
         result.imports = True
         
         clauses, n_vars, k = SATTestCase.small_sat()
@@ -142,7 +142,7 @@ def test_qaoa_morphing():
     )
     
     try:
-        from experiments.qlto_sat_morphing import solve_sat_adiabatic_morphing, SATProblem, SATClause
+        from Quantum_sat.experiments.qaoa_sat_morphing import solve_sat_adiabatic_morphing, SATProblem, SATClause
         result.imports = True
         
         # Actually test it
@@ -193,7 +193,7 @@ def test_qaoa_scaffolding():
     )
     
     try:
-        from experiments.qlto_sat_scaffolding import solve_sat_adiabatic_scaffolding, SATProblem, SATClause
+        from Quantum_sat.experiments.qaoa_sat_scaffolding import solve_sat_adiabatic_scaffolding, SATProblem, SATClause
         result.imports = True
         
         # Actually test it
@@ -330,7 +330,7 @@ def test_hierarchical_scaffolding():
     )
     
     try:
-        from experiments.qlto_sat_hierarchical_scaffolding import solve_sat_hierarchical_scaffolding, SATProblem, SATClause
+        from Quantum_sat.experiments.qaoa_sat_hierarchical_scaffolding import solve_sat_hierarchical_scaffolding, SATProblem, SATClause
         result.imports = True
         
         # Actually test it
@@ -379,7 +379,7 @@ def test_gap_healing():
     )
     
     try:
-        from experiments.qlto_sat_gap_healing import (
+        from Quantum_sat.experiments.qaoa_sat_gap_healing import (
             compute_counterdiabatic_term_approximate,
             compute_approximate_ground_state_projector
         )

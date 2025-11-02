@@ -12,7 +12,7 @@ C) A mathematical coincidence
 
 import numpy as np
 import random
-from qlto_sat_scaffolding import SATProblem, SATClause, generate_random_3sat
+from Quantum_sat.experiments.qaoa_sat_scaffolding import SATProblem, SATClause, generate_random_3sat
 from test_scaffolding_gap import sat_to_matrix, compute_subspace_gap, compute_scaffolding_gap
 
 
