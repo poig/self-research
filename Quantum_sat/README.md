@@ -238,16 +238,7 @@ Method: qaoa_formal
 
 ### Safe Dispatcher
 
-Routes to optimal solver based on backdoor size `k`:
-
-| Backdoor Size | Solver | Expected Speedup |
-|---------------|--------|------------------|
-| k ≤ log₂(N)+1 | **Quantum** | Exponential |
-| k ≤ N/3 | Hybrid QAOA | Quadratic |
-| k ≤ 2N/3 | Scaffolding | Linear |
-| k > 2N/3 | Robust CDCL | 1× (baseline) |
-
-**Safety**: Confidence ≥75% required, verification probe, robust fallback
+Routes to optimal solver based on backdoor size `k` (see detailed table above in System Architecture section)
 
 ---
 
@@ -278,15 +269,19 @@ python benchmarks/demo_production_system.py
 
 ### Method Complexity Summary
 
-| Method | Complexity | Best For | Status |
-|--------|-----------|----------|--------|
-| **QAOA Formal** | O(N²log²N) | k ≤ log₂(N)+1 | ✅ Quantum advantage |
-| **QAOA Morphing** | O(N²M) | 2-SAT reducible | ✅ Hybrid approach |
-| **QAOA Scaffolding** | O(N³) | k ≤ 2N/3 | ✅ Heuristic |
-| **Quantum Walk** | O(√(2^M)) | Graph structure | ✅ Amplitude amplification |
-| **QSVT** | O(poly(N)) | Special cases | ✅ Polynomial breakthrough |
-| **Hierarchical** | O(N²log(N)) | Tree structure | ✅ Decomposition |
-| **Classical DPLL** | O(2^k×N) | k > 2N/3 | ✅ Fallback |
+| Method | Quantum Complexity | Classical Baseline | Quantum Advantage? | Best For |
+|--------|-------------------|-------------------|-------------------|----------|
+| **QAOA Formal** | O(N²log²N) | O(2^k×N) | ✅ When k ≤ log₂(N)+1 | Small backdoors |
+| **QAOA Morphing** | O(N²M) | O(2^k×N) | 🟡 When M << 2^k | 2-SAT reducible |
+| **QAOA Scaffolding** | O(N³) | O(2^k×N) | ⚠️ Heuristic only | k ≤ 2N/3 (no guarantee) |
+| **Quantum Walk** | O(√(2^M)) | O(2^M) | ✅ Quadratic speedup | Graph structure |
+| **QSVT** | O(poly(N)) | O(2^k×N) | ✅ When applicable | Special cases |
+| **Hierarchical** | O(N²log(N)) | O(2^k×N) | 🟡 When k ≤ log₂(N)+2 | Tree structure |
+| **Classical DPLL** | — | O(2^k×N) | — | k > log₂(N)+1 |
+
+**Key Takeaway**: Quantum advantage exists **ONLY when k is small** (k ≤ log₂(N) + constant).
+- For larger k, classical exponential O(2^k) becomes smaller than quantum polynomial O(N³)!
+- Example: N=10, k=5 → Quantum O(1000) > Classical O(320) → Classical wins!
 
 ### Performance Benchmarks
 
