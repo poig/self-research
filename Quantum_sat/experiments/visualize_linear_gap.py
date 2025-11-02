@@ -12,7 +12,7 @@ This shows:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from qlto_sat_scaffolding import generate_random_3sat, SATProblem
+from Quantum_sat.experiments.qaoa_sat_scaffolding import generate_random_3sat, SATProblem
 from test_scaffolding_gap import compute_scaffolding_gap
 
 

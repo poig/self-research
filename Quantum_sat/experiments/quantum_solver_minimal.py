@@ -16,7 +16,7 @@ from src.core.integrated_pipeline import integrated_dispatcher_pipeline
 
 # Import QLTO solver
 try:
-    from experiments.qlto_sat_formal import solve_sat_qlto, SATProblem, SATClause
+    from Quantum_sat.experiments.qaoa_sat_formal import solve_sat_qlto, SATProblem, SATClause
     print("✓ QLTO Quantum Solver loaded")
     QLTO_AVAILABLE = True
 except Exception as e:

@@ -56,7 +56,7 @@ print(f"Backdoor size: k ≈ {result.k_estimate:.1f}")
 print(f"Total time: {result.total_time:.3f}s")
 
 # Output example:
-# QLTO SAT:   0%|                                                                                 | 0/11 [00:00<?, ?it/s]
+# QAOA SAT:   0%|                                                                                 | 0/11 [00:00<?, ?it/s]
 # Satisfiable: True
 # Solution: {5: False, 4: True, 3: True, 2: True, 1: True}
 # Method used: QAOA Formal
@@ -80,13 +80,13 @@ Quantum_sat/
 │   └── safe_dispatcher.py                # Safe routing with verification
 │
 ├── 📂 experiments/                       # 🔬 RESEARCH PROTOTYPES (30+ files)
-│   ├── qlto_sat_formal.py                # ✅ QAOA Formal - O(N²log²N)
-│   ├── qlto_sat_morphing.py              # ✅ QAOA Morphing - O(N²M)
-│   ├── qlto_sat_scaffolding.py           # ✅ QAOA Scaffolding - O(N³)
+│   ├── qaoa_sat_formal.py                # ✅ QAOA Formal - O(N²log²N)
+│   ├── qaoa_sat_morphing.py              # ✅ QAOA Morphing - O(N²M)
+│   ├── qaoa_sat_scaffolding.py           # ✅ QAOA Scaffolding - O(N³)
 │   ├── quantum_walk_sat.py               # ✅ Quantum Walk - O(√(2^M))
 │   ├── qsvt_sat_polynomial_breakthrough.py  # ✅ QSVT - O(poly(N))
-│   ├── qlto_sat_hierarchical_scaffolding.py # ✅ Hierarchical - O(N²log(N))
-│   ├── qlto_sat_gap_healing.py           # ⚠️ Gap Healing - Research only (exponential)
+│   ├── qaoa_sat_hierarchical_scaffolding.py # ✅ Hierarchical - O(N²log(N))
+│   ├── qaoa_sat_gap_healing.py           # ⚠️ Gap Healing - Research only (exponential)
 │   └── ... (30+ other research algorithms)
 │
 ├── 📂 tests/                             # 🧪 TEST SUITE (15+ files)

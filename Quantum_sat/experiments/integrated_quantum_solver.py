@@ -18,7 +18,7 @@ from src.core.integrated_pipeline import integrated_dispatcher_pipeline
 
 # Import quantum solvers from experiments
 try:
-    from experiments.qlto_sat_formal import solve_sat_qlto, SATProblem as QLTOProblem
+    from Quantum_sat.experiments.qaoa_sat_formal import solve_sat_qlto, SATProblem as QLTOProblem
     QLTO_AVAILABLE = True
 except (ImportError, Exception) as e:
     QLTO_AVAILABLE = False
@@ -32,7 +32,7 @@ except (ImportError, Exception) as e:
     print(f"⚠️  Quantum Walk solver not available: {e}")
 
 try:
-    from experiments.qlto_sat_scaffolding import solve_sat_adiabatic_scaffolding
+    from Quantum_sat.experiments.qaoa_sat_scaffolding import solve_sat_adiabatic_scaffolding
     SCAFFOLDING_AVAILABLE = True
 except (ImportError, Exception) as e:
     SCAFFOLDING_AVAILABLE = False

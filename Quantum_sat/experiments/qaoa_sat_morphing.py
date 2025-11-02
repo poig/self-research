@@ -112,7 +112,7 @@ except ImportError:
     print("Warning: Qiskit required for morphing solver")
 
 try:
-    from qlto_sat_formal import SATClause, SATProblem
+    from Quantum_sat.experiments.qaoa_sat_formal import SATClause, SATProblem
     BASE_AVAILABLE = True
 except ImportError:
     BASE_AVAILABLE = False
