@@ -110,16 +110,18 @@ class ComprehensiveQuantumSATSolver:
     - Classical DPLL (fallback for large backdoors)
     """
     
-    def __init__(self, verbose: bool = True, prefer_quantum: bool = True):
+    def __init__(self, verbose: bool = True, prefer_quantum: bool = True, use_true_k: bool = False):
         """
         Initialize solver.
         
         Args:
             verbose: Print detailed progress
             prefer_quantum: Use quantum methods when available
+            use_true_k: If True, use true_k when provided instead of estimating
         """
         self.verbose = verbose
         self.prefer_quantum = prefer_quantum
+        self.use_true_k = use_true_k
         
         if verbose:
             self._print_available_methods()
@@ -179,15 +181,33 @@ class ComprehensiveQuantumSATSolver:
             print("[Phase 1/3] Analyzing problem structure...")
         
         analysis_start = time.time()
-        routing = integrated_dispatcher_pipeline(
-            clauses,
-            n_vars,
-            verbose=False,
-            true_k=true_k
-        )
-        analysis_time = time.time() - analysis_start
         
-        k_est = routing['k_estimate']
+        # Use true_k if provided and use_true_k=True, otherwise estimate
+        if self.use_true_k and true_k is not None:
+            k_est = float(true_k)
+            # Still need routing for confidence and reasoning
+            routing = integrated_dispatcher_pipeline(
+                clauses,
+                n_vars,
+                verbose=False,
+                true_k=true_k
+            )
+            confidence = routing['confidence']
+            recommended_solver = routing['recommended_solver']
+            reasoning = routing['reasoning']
+        else:
+            routing = integrated_dispatcher_pipeline(
+                clauses,
+                n_vars,
+                verbose=False,
+                true_k=None  # Force estimation even if true_k provided
+            )
+            k_est = routing['k_estimate']
+            confidence = routing['confidence']
+            recommended_solver = routing['recommended_solver']
+            reasoning = routing['reasoning']
+        
+        analysis_time = time.time() - analysis_start
         confidence = routing['confidence']
         recommended_solver = routing['recommended_solver']
         reasoning = routing['reasoning']
@@ -216,7 +236,8 @@ class ComprehensiveQuantumSATSolver:
             if self.verbose:
                 print(f"  Selected method: {selected_method.value}")
         
-        print()
+        if self.verbose:
+            print()
         
         # Phase 3: Execute Solver
         if self.verbose:
@@ -366,7 +387,7 @@ class ComprehensiveQuantumSATSolver:
             max_iterations=min(50, int(n_vars * np.log2(max(2, n_vars)))),
             shots_per_iteration=1024,
             p_layers=int(np.log2(max(2, n_vars))) + 1,
-            verbose=False
+            verbose=self.verbose
         )
         
         return {

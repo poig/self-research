@@ -545,7 +545,7 @@ def solve_sat_qlto(
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
-    Solve SAT using QLTO quantum tunneling.
+    Solve SAT using QAOA (Quantum Approximate Optimization Algorithm).
     
     FORMAL COMPLEXITY ANALYSIS:
     ===========================
@@ -581,7 +581,7 @@ def solve_sat_qlto(
     
     if verbose:
         print(f"\n{'='*80}")
-        print(f"QLTO FORMAL SAT SOLVER")
+        print(f"QAOA FORMAL SAT SOLVER")
         print(f"{'='*80}")
         print(f"Problem: N={n_vars} variables, M={n_clauses} clauses")
         print(f"Structure analysis:")
@@ -599,7 +599,7 @@ def solve_sat_qlto(
     best_satisfied = 0
     iteration_stats = []
     
-    for iteration in (tqdm(range(max_iterations), desc="QLTO SAT") if TQDM_AVAILABLE else range(max_iterations)):
+    for iteration in (tqdm(range(max_iterations), desc="QAOA SAT") if TQDM_AVAILABLE else range(max_iterations)):
         
         # Anneal parameters
         progress = iteration / max(1, max_iterations - 1)
