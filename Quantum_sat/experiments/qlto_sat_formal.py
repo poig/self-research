@@ -673,8 +673,10 @@ def solve_sat_qlto(
     is_valid = problem.is_satisfied(best_assignment) if best_assignment else False
     
     return {
-        'solved': is_valid,
-        'best_assignment': best_assignment,
+        'satisfiable': is_valid,  # Standard key for SAT solvers
+        'solved': is_valid,  # Keep for backwards compatibility
+        'assignment': best_assignment,  # Standard key
+        'best_assignment': best_assignment,  # Keep for backwards compatibility
         'satisfied_clauses': best_satisfied,
         'total_clauses': n_clauses,
         'iterations': len(iteration_stats),

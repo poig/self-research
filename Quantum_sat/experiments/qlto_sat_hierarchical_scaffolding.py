@@ -446,3 +446,50 @@ Test 3 (Small N=3): {result3['verdict']}
         print("    The hierarchical approach doesn't extend the result.")
         print("    Single-layer scaffolding remains the best conditional algorithm.")
 
+
+# ==============================================================================
+# SOLVER FUNCTION FOR INTEGRATION
+# ==============================================================================
+
+def solve_sat_hierarchical_scaffolding(
+    clauses: List[List[int]],
+    n_vars: int,
+    strategy: str = 'sequential',
+    verbose: bool = False
+) -> Dict:
+    """
+    Solve SAT using hierarchical adiabatic scaffolding.
+    
+    WARNING: This is a research prototype. 
+    Gap analysis shows that some layers may have exponential gaps.
+    Use for structured instances only.
+    
+    Returns dict with keys: satisfiable, assignment, method
+    """
+    # Convert to SATProblem format
+    sat_clauses = [SATClause(tuple(c)) for c in clauses]
+    problem = SATProblem(n_vars, sat_clauses)
+    
+    # Build layers
+    layers = build_hierarchical_layers(problem, strategy=strategy)
+    
+    if verbose:
+        print(f"Hierarchical Scaffolding: {len(layers)} layers")
+    
+    # Analyze gap scaling (this is the key research question)
+    # For now, simple placeholder analysis
+    gap_analysis = {
+        'num_layers': len(layers),
+        'estimated_gap': 1.0 / len(layers) if layers else 1.0,
+        'warning': 'Simplified gap analysis - full theory TBD'
+    }
+    
+    # For now, return UNSAT (this is a gap analysis tool, not a full solver)
+    return {
+        'satisfiable': False,
+        'assignment': None,
+        'method': 'Hierarchical Scaffolding (Gap Analysis)',
+        'gap_analysis': gap_analysis,
+        'warning': 'Research prototype - gap analysis only'
+    }
+

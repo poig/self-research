@@ -657,3 +657,41 @@ if __name__ == "__main__":
     print("Structured instances benefit from bias, but adversarial cases")
     print("hit the fundamental Grover bound: O(2^(M/2)) iterations.")
 
+
+# ==============================================================================
+# WRAPPER CLASS FOR INTEGRATION
+# ==============================================================================
+
+class QuantumWalkSATSolver:
+    """
+    Wrapper class for quantum walk SAT solver integration.
+    
+    Provides uniform interface for quantum_sat_solver.py
+    """
+    
+    def __init__(self, max_iterations: int = 100, use_bias: bool = True):
+        self.max_iterations = max_iterations
+        self.use_bias = use_bias
+    
+    def solve(self, clauses: List[List[int]], n_vars: int, timeout: float = 30.0) -> Dict:
+        """
+        Solve SAT using quantum walk.
+        
+        Returns dict with keys: satisfiable, assignment, method
+        """
+        result = quantum_walk_sat_simulation(
+            clauses, 
+            n_vars, 
+            max_iterations=self.max_iterations,
+            use_bias=self.use_bias
+        )
+        
+        return {
+            'satisfiable': result.found_solution,
+            'assignment': result.satisfying_assignment,
+            'method': 'Quantum Walk',
+            'iterations': result.num_iterations,
+            'time_seconds': result.total_time,
+            'success_probability': result.success_probability
+        }
+
