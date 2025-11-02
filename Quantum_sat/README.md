@@ -10,6 +10,8 @@ A comprehensive quantum SAT solver with **6 integrated quantum methods**, intell
 
 ### 1. Try the Showcase Notebook (Recommended!)
 ```bash
+pip install -r requirement.txt
+
 jupyter notebook notebooks/Quantum_SAT_Solver_Showcase.ipynb
 ```
 
@@ -20,6 +22,8 @@ python tools/QUANTUM_METHODS_STATUS.py
 
 ### 3. Run Tests
 ```bash
+python test.py
+
 python tests/test_integrated_solver.py  # 5/5 tests pass ✅
 python tests/test_routing_with_true_k.py  # 8/8 tests pass ✅
 ```
@@ -28,16 +32,37 @@ python tests/test_routing_with_true_k.py  # 8/8 tests pass ✅
 ```python
 from src.core.quantum_sat_solver import ComprehensiveQuantumSATSolver
 
-# Initialize solver
-solver = ComprehensiveQuantumSATSolver(verbose=True)
+# Initialize comprehensive quantum solver (quiet mode)
+solver = ComprehensiveQuantumSATSolver(verbose=False, use_true_k=True)
 
-# Solve SAT instance
-clauses = [(1, 2, 3), (-1, 4), (-2, -3, 4)]
-result = solver.solve(clauses, n_vars=4)
+# Define a 3-SAT problem (small backdoor for quantum advantage)
+clauses = [
+    (1, 2, 3),      # x1 OR x2 OR x3
+    (-1, 4, 5),     # NOT x1 OR x4 OR x5
+    (-2, -3, 4),    # NOT x2 OR NOT x3 OR x4
+    (1, -4, -5),    # x1 OR NOT x4 OR NOT x5
+    (2, 3, -4)      # x2 OR x3 OR NOT x4
+]
 
-print(f"SAT: {result.satisfiable}")
-print(f"Method: {result.method_used}")
+# Solve automatically - analyzes structure and routes to best method
+result = solver.solve(clauses, n_vars=5)
+
+# Results with full metadata
+print(f"Satisfiable: {result.satisfiable}")
+print(f"Solution: {result.assignment}")
+print(f"Method used: {result.method_used}")
 print(f"Quantum advantage: {result.quantum_advantage_applied}")
+print(f"Backdoor size: k ≈ {result.k_estimate:.1f}")
+print(f"Total time: {result.total_time:.3f}s")
+
+# Output example:
+# QLTO SAT:   0%|                                                                                 | 0/11 [00:00<?, ?it/s]
+# Satisfiable: True
+# Solution: {5: False, 4: True, 3: True, 2: True, 1: True}
+# Method used: QAOA Formal
+# Quantum advantage: True
+# Backdoor size: k ≈ 0.9
+# Total time: 1.494s
 ```
 
 ---
