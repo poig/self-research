@@ -233,9 +233,18 @@ class IntegratedPipeline:
 def integrated_dispatcher_pipeline(clauses: List[Tuple[int, ...]], 
                                    n_vars: int,
                                    ml_classifier: Optional[BackdoorSizeClassifier] = None,
-                                   verbose: bool = True) -> Dict:
+                                   verbose: bool = True,
+                                   true_k: Optional[int] = None) -> Dict:
     """
     Full production pipeline: integrated analysis + safe dispatcher.
+    
+    Args:
+        clauses: SAT instance clauses
+        n_vars: Number of variables
+        ml_classifier: Optional pre-trained ML classifier
+        verbose: Print progress messages
+        true_k: If provided, use this known backdoor size instead of estimation
+                (for validation/testing with structured instances)
     
     Returns:
         {
@@ -248,19 +257,33 @@ def integrated_dispatcher_pipeline(clauses: List[Tuple[int, ...]],
             'reasoning': str,
         }
     """
-    # Run integrated analysis
-    pipeline = IntegratedPipeline(
-        ml_classifier=ml_classifier,
-        enable_cdcl_probe=True,
-        enable_ml_classifier=True,
-        enable_sequential_mc=True,
-        verbose=verbose
-    )
-    
-    result = pipeline.analyze(clauses, n_vars)
-    
-    # Route to solver based on k
-    k = result.k_estimate
+    # Use true_k if provided, otherwise run analysis
+    if true_k is not None:
+        # Skip analysis, use known k
+        k = float(true_k)
+        result = AnalysisResult(
+            k_estimate=k,
+            confidence=1.0,
+            method_used='true_k_provided',
+            analysis_time=0.0,
+            samples_used=0,
+            converged=True,
+            reasoning=f'Using provided true_k={true_k}'
+        )
+        if verbose:
+            print(f"[Using true_k={true_k}] Skipping analysis, routing with known backdoor size")
+    else:
+        # Run integrated analysis
+        pipeline = IntegratedPipeline(
+            ml_classifier=ml_classifier,
+            enable_cdcl_probe=True,
+            enable_ml_classifier=True,
+            enable_sequential_mc=True,
+            verbose=verbose
+        )
+        
+        result = pipeline.analyze(clauses, n_vars)
+        k = result.k_estimate
     
     if k <= np.log2(n_vars) + 1:
         solver = "quantum"
