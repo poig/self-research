@@ -26,7 +26,7 @@ Status: FINAL BREAKTHROUGH ATTEMPT
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import expm
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Dict, Any, Optional
 import time
 
 # ============================================================================
@@ -748,6 +748,23 @@ class QSVT_SAT_Solver:
         print("=" * 70)
         
         return verdict, total_time
+    
+    def solve_dict(self) -> Dict:
+        """
+        Solve and return dict format for integration.
+        
+        Returns dict with keys: satisfiable, assignment, method
+        """
+        verdict, time_taken = self.solve()
+        
+        return {
+            'satisfiable': verdict == "SAT",
+            'assignment': None,  # QSVT doesn't provide specific assignment
+            'method': 'QSVT',
+            'verdict': verdict,
+            'time_seconds': time_taken,
+            'polynomial_time': verdict in ["SAT", "UNSAT"]  # If we got verdict, it was polynomial
+        }
 
 
 # ============================================================================

@@ -106,6 +106,9 @@ try:
     QISKIT_AVAILABLE = True
 except ImportError:
     QISKIT_AVAILABLE = False
+    SparsePauliOp = None
+    Operator = None
+    Statevector = None
     print("Warning: Qiskit required for morphing solver")
 
 try:
