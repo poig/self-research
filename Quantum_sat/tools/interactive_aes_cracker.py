@@ -31,6 +31,9 @@ except ImportError:
     REAL_AES_AVAILABLE = False
     print("⚠️  Install PyCryptodome for real AES: pip install pycryptodome")
 
+import sys
+sys.path.append('..')
+
 try:
     # This file may not exist, optional
     from test_1round_aes import encode_1_round_aes
