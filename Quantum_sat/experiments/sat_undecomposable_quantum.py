@@ -16,6 +16,7 @@ Result: Quantum can prove many "WEAKLY decomposable" problems are actually
 """
 
 import sys
+import os
 import numpy as np
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -23,16 +24,66 @@ from typing import List, Dict, Tuple, Optional, Set
 import json
 from collections import defaultdict
 
+# --- PATCH 1: FIX PYTHON IMPORT PATH ---
+# Add the project root directory (one level up from 'experiments')
+# This allows imports like `from src.solvers...` to work
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+# --- END PATCH 1 ---
+from tests.qlto_fpt_solver_v7_hard_benchmark import UF100_01_CNF, parse_dimacs_cnf, PYSAT_AVAILABLE
+
 # Add local QLTO and QAADO to path
-sys.path.insert(0, 'C:/Users/junli/self-research/Quantum_AI/QLTO')
-sys.path.insert(0, 'C:/Users/junli/self-research/Quantum_AI/qaado')
+# Note: This might be obsolete if QLTO is part of the project
+# sys.path.insert(0, 'C:/Users/junli/self-research/Quantum_AI/QLTO')
+# sys.path.insert(0, 'C:/Users/junli/self-research/Quantum_AI/qaado')
 
 # Import classical certification (fallback)
-from sat_decompose import (
-    SATDecomposer,
-    DecompositionStrategy,
-    create_test_sat_instance
-)
+try:
+    from sat_decompose import (
+        SATDecomposer,
+        DecompositionStrategy,
+        create_test_sat_instance
+    )
+except ImportError:
+    # Fallback if sat_decompose is not in the same directory
+    try:
+        from src.core.sat_decompose import (
+            SATDecomposer,
+            DecompositionStrategy,
+            create_test_sat_instance
+        )
+    except ImportError as e:
+        print(f"CRITICAL: Could not import SATDecomposer. {e}")
+        # Define dummy classes to allow script to run
+        class SATDecomposer:
+            def __init__(self, *args, **kwargs): pass
+            def decompose(self, *args, **kwargs): return type('obj', (object,), {'success': False})
+        class DecompositionStrategy:
+            TREEWIDTH = "treewidth"
+            FISHER_INFO = "fisher_info"
+            COMMUNITY_DETECTION = "community_detection"
+            BRIDGE_BREAKING = "bridge_breaking"
+            RENORMALIZATION = "renormalization"
+        def create_test_sat_instance(n, k, s, **kwargs):
+            return [ (1, 2), (-1, -2) ], [1, 2], {1: True, 2: False}
+
+
+# Try import helpers from qlto_qaoa_sat for building QAOA ansatz in certification
+try:
+    try:
+        from src.solvers.qlto_qaoa_sat import create_qaoa_ansatz, SATProblem as QLTO_SATProblem, SATClause as QLTO_SATClause, sat_to_hamiltonian as qlto_sat_to_hamiltonian
+    except Exception:
+        # Fallback if qlto_qaoa_sat is in root
+        from qlto_qaoa_sat import create_qaoa_ansatz, SATProblem as QLTO_SATProblem, SATClause as QLTO_SATClause, sat_to_hamiltonian as qlto_sat_to_hamiltonian
+    print("✅ Imported create_qaoa_ansatz and SATProblem from qlto_qaoa_sat")
+except Exception as e:
+    # Leave names undefined; we'll fallback to existing get_vqe_ansatz if needed
+    create_qaoa_ansatz = None
+    QLTO_SATProblem = None
+    QLTO_SATClause = None
+    qlto_sat_to_hamiltonian = None
+    print(f"⚠️  Could not import qlto_qaoa_sat helpers: {e}")
 
 # Try importing quantum packages
 QUANTUM_AVAILABLE = False
@@ -40,10 +91,14 @@ QLTO_AVAILABLE = False
 QLTO_MULTI_BASIN_AVAILABLE = False
 QAADO_AVAILABLE = False
 TOQITO_AVAILABLE = False
+get_vqe_ansatz = None # Ensure this is undefined unless imported
 
 try:
     from qiskit import QuantumCircuit, QuantumRegister
-    from qiskit.quantum_info import SparsePauliOp, Statevector, DensityMatrix, partial_trace, entropy
+    from qiskit.quantum_info import SparsePauliOp, Statevector, DensityMatrix, partial_trace
+    # --- PATCH: Import Qiskit's entropy function ---
+    from qiskit.quantum_info import entropy as qiskit_entropy_fn
+    # --- END PATCH ---
     from qiskit_aer.primitives import Estimator as AerEstimator
     print("✅ Qiskit available")
     QUANTUM_AVAILABLE = True
@@ -141,7 +196,7 @@ except ImportError as e:
                     )
         except ImportError as e3:
             print(f"⚠️  VQE wrappers not available: {e3}")
-            print("   Check: simple_vqe_wrapper.py in current directory")
+            # print("   Check: simple_vqe_wrapper.py in current directory")
 
 # Try QAADO for even better optimization (MUCH lower qubit overhead!)
 try:
@@ -197,7 +252,17 @@ try:
         
 except ImportError as e:
     print(f"⚠️  QAADO not available: {e}")
-    print("   Check: C:/Users/junli/self-research/Quantum_AI/qaado/")
+    # print("   Check: C:/Users/junli/self-research/Quantum_AI/qaado/")
+
+# --- PATCH: If no VQE wrapper was loaded, get_vqe_ansatz won't be defined ---
+if get_vqe_ansatz is None:
+    # Define a dummy fallback
+    def get_vqe_ansatz(n_qubits, reps=2):
+        print("ERROR: No VQE ansatz builder was loaded (qlto_nisq, qlto_multi_index, or simple_vqe_wrapper).")
+        qc = QuantumCircuit(n_qubits)
+        return qc, 0
+# --- END PATCH ---
+
 
 try:
     import toqito
@@ -220,8 +285,8 @@ if not (QUANTUM_AVAILABLE and QLTO_AVAILABLE):
     if not QUANTUM_AVAILABLE:
         print("  ❌ Qiskit - Install: pip install qiskit qiskit-aer")
     if not QLTO_AVAILABLE:
-        print("  ❌ QLTO - Check: C:/Users/junli/self-research/Quantum_AI/QLTO/")
-        print("         simple_vqe_wrapper.py should work as fallback")
+        print("  ❌ QLTO - Check QLTO-related imports")
+        # print("         simple_vqe_wrapper.py should work as fallback")
     if not TOQITO_AVAILABLE:
         print("  ⚠️  toqito (optional) - Install: pip install toqito cvxpy")
         print("         (Still works without toqito, just can't verify separability)")
@@ -233,6 +298,13 @@ elif not TOQITO_AVAILABLE:
     print("Quantum certification will work, but separability testing disabled")
     print("Install: pip install toqito cvxpy")
     print("="*60 + "\n")
+
+
+# --- PATCH: Set a realistic limit for classical simulation ---
+# Statevector simulation becomes impossible around N=25-30.
+# Set a safe limit to gracefully fall back to classical methods.
+MAX_SIMULATABLE_QUBITS = 20
+# --- END PATCH ---
 
 
 class HardnessClass(Enum):
@@ -305,21 +377,21 @@ class HardnessCertificate:
             f"Certification Method:    {self.certification_method.upper()}",
         ]
         
-        if self.certification_method == "quantum":
+        if self.certification_method.startswith("quantum"):
             lines.extend([
                 f"",
                 f"--- Quantum Proof ---",
-                f"Ground State Energy:     {self.ground_state_energy:.6f}" if self.ground_state_energy else "Ground State Energy:     N/A",
-                f"Entanglement Entropy:    {self.entanglement_entropy:.6f}" if self.entanglement_entropy else "Entanglement Entropy:    N/A",
+                f"Ground State Energy:     {self.ground_state_energy:.6f}" if self.ground_state_energy is not None else "Ground State Energy:     N/A",
+                f"Entanglement Entropy:    {self.entanglement_entropy:.6f}" if self.entanglement_entropy is not None else "Entanglement Entropy:    N/A",
                 f"Is Separable:            {self.is_quantum_separable}" if self.is_quantum_separable is not None else "Is Separable:            N/A",
-                f"Quantum Coupling:        {self.quantum_coupling_strength:.4f}" if self.quantum_coupling_strength else "Quantum Coupling:        N/A",
+                f"Quantum Coupling:        {self.quantum_coupling_strength:.4f}" if self.quantum_coupling_strength is not None else "Quantum Coupling:        N/A",
             ])
         else:
             lines.extend([
                 f"",
                 f"--- Classical Proxies ---",
-                f"Coupling Strength:       {self.classical_coupling_strength:.4f}" if self.classical_coupling_strength else "Coupling Strength:       N/A",
-                f"Normalized Cut:          {self.normalized_cut:.4f}" if self.normalized_cut else "Normalized Cut:          N/A",
+                f"Coupling Strength:       {self.classical_coupling_strength:.4f}" if self.classical_coupling_strength is not None else "Coupling Strength:       N/A",
+                f"Normalized Cut:          {self.normalized_cut:.4f}" if self.normalized_cut is not None else "Normalized Cut:          N/A",
             ])
         
         if self.decomposition_strategy_used:
@@ -355,29 +427,27 @@ class QuantumSATHardnessCertifier:
         """
         Convert SAT clauses to quantum Hamiltonian
         
-        Each clause (x1 ∨ ¬x2 ∨ x3) becomes:
-        H_clause = I - |satisfied⟩⟨satisfied|
-        
-        Ground state (E=0) iff SAT is satisfied
-        
         Returns:
             SparsePauliOp: Hamiltonian with ground state encoding SAT solution
         """
         if not QUANTUM_AVAILABLE:
             raise RuntimeError("Qiskit not available for Hamiltonian construction")
         
-        # Build Hamiltonian as weighted sum of clause penalties
+        # --- PATCH: Use the robust Hamiltonian converter from qlto_qaoa_sat ---
+        if qlto_sat_to_hamiltonian is not None and QLTO_SATProblem is not None and QLTO_SATClause is not None:
+            try:
+                # Convert to QLTO_SATProblem format
+                qlto_clauses = [QLTO_SATClause(tuple(c)) for c in self.clauses]
+                problem = QLTO_SATProblem(n_vars=self.num_vars, clauses=qlto_clauses)
+                return qlto_sat_to_hamiltonian(problem)
+            except Exception as e:
+                print(f"   ⚠️  qlto_sat_to_hamiltonian failed ({e}), using fallback.")
+        # --- END PATCH ---
+
+        # Fallback Hamiltonian (less robust)
+        print("   ⚠️  Using simple fallback Hamiltonian builder.")
         pauli_terms = []
-        
         for clause in self.clauses:
-            # Each clause contributes a term that is 0 when satisfied
-            # For simplicity, use Z operators (measuring computational basis)
-            # Clause (x1 ∨ ¬x2 ∨ x3) satisfied when at least one literal is true
-            
-            # Penalty: H_clause = ∏(I - Z_i)/2 for negative literals
-            #                     ∏(I + Z_i)/2 for positive literals
-            # Ground state minimizes total penalty
-            
             clause_pauli = ""
             for var in range(self.num_vars):
                 var_idx = var + 1  # 1-indexed
@@ -388,14 +458,13 @@ class QuantumSATHardnessCertifier:
                 else:
                     clause_pauli += "I"  # Not in clause
             
-            # Add weighted term
             weight = 1.0 / len(self.clauses)  # Normalize
             pauli_terms.append((clause_pauli, weight))
         
-        # Add small identity term to avoid zero Hamiltonian
-        pauli_terms.append(("I" * self.num_vars, 0.1))
+        if not pauli_terms: # Handle empty problem
+             pauli_terms.append(("I" * self.num_vars, 0.0))
         
-        hamiltonian = SparsePauliOp.from_list(pauli_terms, num_qubits=self.num_vars)
+        hamiltonian = SparsePauliOp.from_list(pauli_terms)
         return hamiltonian
     
     def certify_hardness_quantum(
@@ -408,42 +477,16 @@ class QuantumSATHardnessCertifier:
     ) -> HardnessCertificate:
         """
         TRUE QUANTUM CERTIFICATION using QLTO-VQE + toqito + k_vqe
-        
-        Algorithm:
-        1. Convert SAT → Hamiltonian
-        2. Run QLTO-VQE MULTIPLE TIMES to find ground state (consistency check!)
-        3. Use ground state energy (k_vqe) to predict separator size
-        4. Analyze ground state structure:
-           - Measure entanglement between variable partitions
-           - Use toqito.is_separable() to test separability (SDP-based proof!)
-           - Compute von Neumann entropy
-        5. Cross-validate k_vqe and k_entanglement predictions
-        6. Identify minimal separator from quantum structure
-        7. Classify and issue certificate with 99.99%+ confidence
-        
-        Key Advantage:
-        - Multiple independent quantum measurements (energy + entanglement + separability)
-        - Cross-validation between k_vqe and k_separator
-        - toqito provides mathematical proof of independence
-        - Quantum ground state encodes OPTIMAL decomposition
-        - Entanglement = coupling strength (provably correct!)
-        - Classical heuristics often miss good separators
-        
-        Parameters:
-            backdoor_vars: Known backdoor variables (optional hint)
-            vqe_shots: Number of measurements per VQE iteration
-            vqe_max_iter: Maximum VQE iterations per run
-            vqe_runs: Number of independent VQE runs (for consistency check)
-            use_energy_validation: Enable k_vqe cross-validation
-        
-        NOTE: Some parameters may be unused depending on optimizer:
-            - QAADO: Ignores vqe_shots (uses classical gradient estimation)
-            - Simple VQE: Uses scipy, ignores QLTO-specific params
-            - Multi-basin QLTO: Uses all parameters
-        
-        Returns:
-            HardnessCertificate with quantum proof (99.99%+ confidence)
         """
+        
+        # --- PATCH: Add simulation guardrail ---
+        if self.num_vars > MAX_SIMULATABLE_QUBITS:
+            print(f"🔬 Running QUANTUM certification (N={self.num_vars})")
+            print(f"   ⚠️  FULL Quantum VQE skipped: N={self.num_vars} > {MAX_SIMULATABLE_QUBITS} (exceeds simulation limit).")
+            print("   Falling back to classical-only heuristics.")
+            return self.certify_hardness_classical(backdoor_vars)
+        # --- END PATCH ---
+        
         if not (QUANTUM_AVAILABLE and QLTO_AVAILABLE):
             print("⚠️  Quantum libraries not available, falling back to classical")
             return self.certify_hardness_classical(backdoor_vars)
@@ -462,21 +505,40 @@ class QuantumSATHardnessCertifier:
         # Step 2: Run QLTO-VQE (MULTIPLE RUNS for consistency)
         print(f"   Step 2: QLTO-VQE optimization ({vqe_runs} runs for consistency)...")
         try:
-            vqe_ansatz, n_params = get_vqe_ansatz(self.num_vars, reps=2)
+            # --- FINAL PATCH: Use QAOA ansatz to avoid large parameter registers ---
+            if create_qaoa_ansatz is not None:
+                print("      Using QAOA-p=2 ansatz (low parameter count)")
+                # Build a lightweight SATProblem wrapper for the helper
+                if QLTO_SATProblem is not None and QLTO_SATClause is not None:
+                    proto_clauses = [QLTO_SATClause(tuple(c)) for c in self.clauses]
+                    proto_problem = QLTO_SATProblem(n_vars=self.num_vars, clauses=proto_clauses)
+                    vqe_ansatz, n_params = create_qaoa_ansatz(proto_problem, p_layers=2)
+                else:
+                    # Fallback if SATProblem classes failed import
+                    vqe_ansatz, n_params = create_qaoa_ansatz(self.num_vars, 2)
+                print(f"      Ansatz: QAOA p=2 (n_params={n_params})")
+            else:
+                # Fallback to VQE ansatz provider previously available
+                print("      ⚠️  QAOA ansatz not found, using generic VQE ansatz (may use more qubits)")
+                vqe_ansatz, n_params = get_vqe_ansatz(self.num_vars, reps=2)
+                print(f"      Ansatz: Generic VQE (n_params={n_params})")
+            # --- END FINAL PATCH ---
+
+            # Keep parameter bounds simple
             param_bounds = np.array([[0.0, 2*np.pi]] * n_params)
-            
+
             vqe_results = []
             for run_idx in range(vqe_runs):
                 # Different random initialization each run
                 initial_theta = np.random.uniform(0, 2*np.pi, n_params)
-                
+
                 result = run_qlto_nisq_optimizer(
                     vqe_hamiltonian=hamiltonian,
                     vqe_ansatz_template=vqe_ansatz,
                     n_qubits_ansatz=self.num_vars,
                     initial_theta=initial_theta,
                     param_bounds=param_bounds,
-                    bits_per_param=2,  # Higher precision
+                    bits_per_param=2,  # Keep precision modest
                     shots=vqe_shots,
                     max_iterations=vqe_max_iter,
                     scans_per_epoch=3,
@@ -487,22 +549,33 @@ class QuantumSATHardnessCertifier:
                     tqdm_desc=f"VQE Run {run_idx+1}/{vqe_runs}"
                 )
                 
+                # Handle different return structures
+                energy = result.get('final_energy', float('nan'))
+                if not np.isfinite(energy):
+                    energy = result.get('energy', float('nan')) # Fallback key
+
                 vqe_results.append({
-                    'energy': result['final_energy'],
-                    'theta': result['final_theta'],
-                    'history': result['energy_history']
+                    'energy': energy,
+                    'theta': result.get('final_theta', result.get('theta')),
+                    'history': result.get('energy_history', [])
                 })
-                
-                print(f"      Run {run_idx+1}: E = {result['final_energy']:.6f}")
+
+                print(f"      Run {run_idx+1}: E = {energy:.6f}")
             
             # Analyze consistency across runs
-            energies = np.array([r['energy'] for r in vqe_results])
+            energies = np.array([r['energy'] for r in vqe_results if r['energy'] is not None and np.isfinite(r['energy'])])
+            if len(energies) == 0:
+                 raise RuntimeError("All VQE runs failed to produce a valid energy.")
+                 
             E_mean = np.mean(energies)
             E_std = np.std(energies)
             E_min_idx = np.argmin(energies)
             
             ground_energy = energies[E_min_idx]
             ground_params = vqe_results[E_min_idx]['theta']
+
+            if ground_params is None:
+                raise RuntimeError("VQE optimizer returned no final parameters (theta).")
             
             print(f"   ✅ Ground state: E = {E_mean:.6f} ± {E_std:.6f}")
             print(f"      Best run: E = {ground_energy:.6f}")
@@ -526,7 +599,9 @@ class QuantumSATHardnessCertifier:
         print("   Step 3: Quantum entanglement analysis...")
         try:
             # Get ground state wavefunction
-            bound_circuit = vqe_ansatz.assign_parameters(ground_params.tolist())
+            # --- PATCH: Use the robust binding function ---
+            bound_circuit = self._bind_params_safe(vqe_ansatz, ground_params)
+            # --- END PATCH ---
             statevector = Statevector.from_instruction(bound_circuit)
             
             # Test multiple bipartitions to find minimal separator
@@ -553,7 +628,7 @@ class QuantumSATHardnessCertifier:
                     rho_A = partial_trace(rho, partition_B)
                     
                     # Von Neumann entropy S(A) measures entanglement
-                    S_A = entropy(rho_A, base=2)  # Qiskit's entropy
+                    S_A = qiskit_entropy_fn(rho_A, base=2)  # Qiskit's entropy
                     
                     # Low entropy = weakly entangled = good separator
                     # Estimate separator size from entanglement
@@ -591,6 +666,8 @@ class QuantumSATHardnessCertifier:
         
         # Step 4: Try toqito separability test (if available and problem small enough)
         is_quantum_separable = None
+        base_confidence = 0.0 # Will be set in Step 6
+        
         if TOQITO_AVAILABLE and toqito_is_separable and self.num_vars <= 6:  # toqito is expensive for large systems
             print("   Step 4: toqito separability test...")
             print("      (This uses SDP to check if quantum state is product state)")
@@ -608,7 +685,7 @@ class QuantumSATHardnessCertifier:
                 # If separable, this confirms low coupling → smaller separator
                 if is_quantum_separable:
                     print(f"      → Quantum proof: variables are truly independent!")
-                    base_confidence = min(0.9999, base_confidence + 0.001)  # Boost confidence
+                    base_confidence = 0.9999 # Boost confidence
                 
             except Exception as e:
                 print(f"   ⚠️  toqito test skipped (problem too large or error): {e}")
@@ -629,7 +706,7 @@ class QuantumSATHardnessCertifier:
             alpha = 2.0  # Calibration parameter (tune on training data)
             
             # Normalize energy by problem size
-            E_normalized = E_mean / self.num_vars
+            E_normalized = E_mean / max(1, self.num_vars)
             
             if E_normalized < -0.15:  # Low energy → Easy SAT
                 k_vqe_prediction = HardnessClass.DECOMPOSABLE
@@ -648,11 +725,11 @@ class QuantumSATHardnessCertifier:
             print(f"      k_vqe estimate: k* ≈ {k_vqe_estimate}")
         
         # Step 6: Classify based on quantum measurements (entanglement-based)
-        separator_fraction = best_separator_size / self.num_vars
+        separator_fraction = best_separator_size / max(1, self.num_vars)
         
         if separator_fraction < 0.25:
             hardness_class = HardnessClass.DECOMPOSABLE
-            base_confidence = 0.999  # Quantum proof!
+            if base_confidence == 0.0: base_confidence = 0.999  # Quantum proof!
             proof_base = (
                 f"Quantum ground state analysis proves k* = {best_separator_size} "
                 f"(entanglement entropy S = {best_entropy:.4f}). "
@@ -661,7 +738,7 @@ class QuantumSATHardnessCertifier:
             )
         elif separator_fraction < 0.4:
             hardness_class = HardnessClass.WEAKLY_DECOMPOSABLE
-            base_confidence = 0.99
+            if base_confidence == 0.0: base_confidence = 0.99
             proof_base = (
                 f"Quantum analysis identifies k* = {best_separator_size} "
                 f"(entropy S = {best_entropy:.4f}). "
@@ -670,7 +747,7 @@ class QuantumSATHardnessCertifier:
             )
         else:
             hardness_class = HardnessClass.UNDECOMPOSABLE
-            base_confidence = 0.999  # Quantum proof of hardness!
+            if base_confidence == 0.0: base_confidence = 0.999  # Quantum proof of hardness!
             proof_base = (
                 f"Quantum entanglement analysis certifies k* ≥ {best_separator_size} "
                 f"(entropy S = {best_entropy:.4f}). "
@@ -727,7 +804,7 @@ class QuantumSATHardnessCertifier:
             confidence_level=confidence,
             ground_state_energy=ground_energy,
             entanglement_entropy=best_entropy,
-            is_quantum_separable=is_quantum_separable,  # FIX: Use result variable, not function!
+            is_quantum_separable=is_quantum_separable,
             quantum_coupling_strength=best_coupling,
             certification_method="quantum_enhanced",  # Note: enhanced with k_vqe
             proof_details=proof,
@@ -766,6 +843,7 @@ class QuantumSATHardnessCertifier:
         np.random.seed(42)
         for _ in range(5):
             size = np.random.randint(1, self.num_vars)
+            if size == 0: continue
             partition = sorted(np.random.choice(self.num_vars, size, replace=False).tolist())
             test_cuts.append(partition)
         
@@ -775,7 +853,7 @@ class QuantumSATHardnessCertifier:
     # Helper methods for hybrid certification
     # ============================================================================
     
-    def _classical_to_quantum_params(self, classical_cert):
+    def _classical_to_quantum_params(self, classical_cert, n_params: int):
         """
         Convert classical decomposition to quantum parameter guess.
         
@@ -785,11 +863,119 @@ class QuantumSATHardnessCertifier:
         - Close to |0...0⟩ or satisfying assignment
         
         Strategy: Use small random parameters (near product state)
+        
+        --- PATCH: Added n_params argument ---
         """
-        n_params = self.num_vars * 4  # Typical ansatz size (reps=2)
+        # n_params = self.num_vars * 4  # Typical ansatz size (reps=2)
+        # --- END PATCH ---
+        
         # Small angles → near |0...0⟩ → product state approximation
         return np.random.uniform(0, 0.5, n_params)
-    
+
+    # --- PATCH: Robust binding helper ---
+    def _bind_params_safe(self, circuit, param_values):
+        """
+        Bind parameter values into an ansatz that may be a QuantumCircuit,
+        an Instruction-like object (e.g. EfficientSU2), or a template.
+        """
+        if param_values is None:
+             raise RuntimeError("Binding failed: param_values is None.")
+             
+        param_values_list = list(param_values)
+
+        # 1) try assign_parameters (safe, returns a new circuit)
+        try:
+            if hasattr(circuit, 'assign_parameters'):
+                try:
+                    # Try binding as a list
+                    return circuit.assign_parameters(param_values_list)
+                except Exception:
+                    # Try binding as a dictionary
+                    params = list(getattr(circuit, 'parameters', []))
+                    mapping = {p: float(v) for p, v in zip(params, param_values_list)}
+                    return circuit.assign_parameters(mapping)
+        except Exception as e1:
+            # print(f"DEBUG: assign_parameters failed: {e1}")
+            pass
+
+        # 2) try bind_parameters with mapping {param: value}
+        try:
+            if hasattr(circuit, 'parameters') and len(list(getattr(circuit, 'parameters', []))) > 0:
+                params = list(circuit.parameters)
+                # Allow partial mapping if param_values shorter than params
+                mapping = {p: float(v) for p, v in zip(params, param_values_list)}
+                if hasattr(circuit, 'bind_parameters'):
+                    try:
+                        return circuit.bind_parameters(mapping)
+                    except Exception as e2:
+                        # print(f"DEBUG: bind_parameters(map) failed: {e2}")
+                        pass
+        except Exception as e3:
+            # print(f"DEBUG: param map creation failed: {e3}")
+            pass
+
+        # 3) try bind_parameters with sequence (some older APIs) only if counts match
+        try:
+            if hasattr(circuit, 'bind_parameters'):
+                params = list(getattr(circuit, 'parameters', []))
+                if len(params) == len(param_values_list):
+                    try:
+                        return circuit.bind_parameters(param_values_list)
+                    except Exception as e4:
+                        # print(f"DEBUG: bind_parameters(list) failed: {e4}")
+                        pass
+        except Exception as e5:
+            # print(f"DEBUG: bind_parameters(list) pre-check failed: {e5}")
+            pass
+
+        # 4) wrap Instruction-like ansatz into a QuantumCircuit and bind there
+        try:
+            # Attempt to infer number of qubits
+            nq = getattr(circuit, 'num_qubits', None)
+            if nq is None:
+                nq = getattr(self, 'num_vars', None)
+            if nq is None:
+                raise RuntimeError('Cannot determine ansatz qubit count for wrapping')
+
+            qc_wrap = QuantumCircuit(nq)
+            appended = False
+            # Try appending the object directly
+            try:
+                qc_wrap.append(circuit, list(range(nq)))
+                appended = True
+            except Exception:
+                appended = False
+
+            if not appended:
+                # Try converting to instruction first
+                try:
+                    instr = circuit.to_instruction()
+                    qc_wrap.append(instr, list(range(nq)))
+                    appended = True
+                except Exception as e:
+                    raise RuntimeError(f'Failed to append ansatz into QuantumCircuit: {e}')
+
+            # Now bind parameters on the wrapper circuit
+            params_wrap = list(qc_wrap.parameters)
+            if len(params_wrap) == 0:
+                # Nothing to bind, return wrapper as-is
+                return qc_wrap
+
+            mapping_wrap = {p: float(v) for p, v in zip(params_wrap, param_values_list)}
+            try:
+                return qc_wrap.bind_parameters(mapping_wrap)
+            except Exception as e_final:
+                 # Last-ditch: try assign on wrapper
+                try:
+                    return qc_wrap.assign_parameters(param_values_list)
+                except Exception:
+                    # Raise the most likely clear error
+                    raise RuntimeError(f"Failed to bind parameters on wrapper circuit: Mismatching number of values ({len(param_values_list)}) and parameters ({len(params_wrap)}).")
+
+        except Exception as e:
+            raise RuntimeError(f"Could not bind parameters to ansatz (all strategies failed): {e}")
+    # --- END PATCH ---
+
     def _entropy_to_separator_size(self, entropy, partition_size):
         """
         Estimate separator size from entanglement entropy.
@@ -801,6 +987,9 @@ class QuantumSATHardnessCertifier:
         Returns:
             Estimated minimal separator size
         """
+        if self.num_vars - partition_size <= 0 or partition_size <= 0:
+            return 0 # Not a valid partition
+            
         max_entropy = np.log2(min(2**partition_size, 2**(self.num_vars - partition_size)))
         normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
         
@@ -844,6 +1033,21 @@ class QuantumSATHardnessCertifier:
         k_classical = classical_cert.minimal_separator_size
         print(f"      Classical result: k* = {k_classical}")
         
+        # --- PATCH: Add simulation guardrail ---
+        if self.num_vars > MAX_SIMULATABLE_QUBITS:
+            print(f"   ⚠️  Step 2 (Quantum Validation) SKIPPED:")
+            print(f"      N={self.num_vars} > {MAX_SIMULATABLE_QUBITS} (exceeds simulation limit).")
+            
+            # Update proof to explain *why* it's classical-only
+            classical_cert.proof_details = (
+                f"Classical decomposition found k* = {k_classical} "
+                f"using {classical_cert.decomposition_strategy_used}. "
+                f"Quantum validation was skipped as N > {MAX_SIMULATABLE_QUBITS}."
+            )
+            classical_cert.certification_method = "classical" # Ensure it's marked as classical
+            return classical_cert
+        # --- END PATCH ---
+        
         if not QUANTUM_AVAILABLE:
             print("   ⚠️  Quantum libraries unavailable, returning classical result")
             return classical_cert
@@ -851,16 +1055,32 @@ class QuantumSATHardnessCertifier:
         # Step 2: Build quantum state from classical solution (0.1 sec)
         print("   Step 2: Building quantum state from classical solution...")
         try:
-            # Use small parameters → near-product state (good for decomposable problems)
-            theta_classical = self._classical_to_quantum_params(classical_cert)
-            
-            # Build state (no optimization!)
-            ansatz, n_params = get_vqe_ansatz(self.num_vars, reps=2)
-            state = Statevector.from_instruction(
-                ansatz.bind_parameters(theta_classical[:n_params])
-            )
+            # --- PATCH: Determine n_params FIRST ---
+            # Prefer QAOA ansatz with few params to avoid large parameter registers
+            if create_qaoa_ansatz is not None:
+                # Build a lightweight SATProblem wrapper for the helper
+                try:
+                    proto_clauses = [QLTO_SATClause(tuple(c)) for c in self.clauses] if QLTO_SATClause is not None else []
+                    proto_problem = QLTO_SATProblem(n_vars=self.num_vars, clauses=proto_clauses) if QLTO_SATProblem is not None else None
+                    if proto_problem is not None:
+                        ansatz, n_params = create_qaoa_ansatz(proto_problem, p_layers=2)
+                    else:
+                        ansatz, n_params = create_qaoa_ansatz(self.num_vars, 2)
+                except Exception:
+                    # Fallback signature: create_qaoa_ansatz may accept (n_vars, p_layers)
+                    ansatz, n_params = create_qaoa_ansatz(self.num_vars, 2)
+            else:
+                ansatz, n_params = get_vqe_ansatz(self.num_vars, reps=2)
+            # --- END PATCH ---
+
+            # --- PATCH: Pass n_params to helper ---
+            theta_classical = self._classical_to_quantum_params(classical_cert, n_params=n_params)
+            # --- END PATCH ---
+
+            bound_circ = self._bind_params_safe(ansatz, theta_classical)
+            state = Statevector.from_instruction(bound_circ)
             print(f"      ✅ Quantum state constructed")
-            
+
         except Exception as e:
             print(f"   ⚠️  Quantum state construction failed: {e}")
             print("      Returning classical result")
@@ -874,21 +1094,25 @@ class QuantumSATHardnessCertifier:
                 partition_A = sorted(list(backdoor_vars)[:self.num_vars // 2])
             else:
                 # Use first half or k_classical variables
-                partition_size = min(max(k_classical, 2), self.num_vars // 2)
+                partition_size = min(max(k_classical, 1), self.num_vars // 2) # Ensure at least 1
+                if partition_size == 0: partition_size = 1
                 partition_A = list(range(partition_size))
             
             partition_B = [i for i in range(self.num_vars) if i not in partition_A]
             
-            if len(partition_B) == 0:
-                partition_A = partition_A[:len(partition_A)//2]
+            if len(partition_B) == 0 or len(partition_A) == 0:
+                partition_A = list(range(max(1, self.num_vars // 2)))
                 partition_B = [i for i in range(self.num_vars) if i not in partition_A]
             
+            if not partition_A or not partition_B:
+                 raise RuntimeError("Failed to create a valid bipartition.")
+
             # Compute reduced density matrix
             rho_full = DensityMatrix(state)
             rho_A = partial_trace(rho_full, partition_B)
             
             # Measure entanglement
-            entropy = entropy_fn(rho_A)
+            entropy = qiskit_entropy_fn(rho_A, base=2)
             k_quantum = self._entropy_to_separator_size(entropy, len(partition_A))
             
             print(f"      Entropy S(A) = {entropy:.3f}")
@@ -915,7 +1139,7 @@ class QuantumSATHardnessCertifier:
         toqito_boost = 0.0
         is_quantum_separable = None
         
-        if TOQITO_AVAILABLE and self.num_vars <= 6:
+        if TOQITO_AVAILABLE and toqito_is_separable and self.num_vars <= 6:
             print("   Step 5: toqito separability test...")
             try:
                 # Test if state is product state
@@ -961,14 +1185,14 @@ class QuantumSATHardnessCertifier:
             num_clauses=len(self.clauses),
             hardness_class=classical_cert.hardness_class,
             minimal_separator_size=final_k_star,
-            separator_fraction=final_k_star / self.num_vars if self.num_vars > 0 else 0,
+            separator_fraction=final_k_star / max(1, self.num_vars),
             confidence_level=final_confidence,
             certification_method="hybrid",
-            quantum_ground_energy=None,  # Not computed (no VQE)
+            ground_state_energy=None,  # Not computed (no VQE)
             entanglement_entropy=entropy,
             is_quantum_separable=is_quantum_separable,
-            classical_strategy=classical_cert.classical_strategy,
-            proof=proof
+            decomposition_strategy_used=classical_cert.decomposition_strategy_used,
+            proof_details=proof
         )
         
         print(f"   ✅ HYBRID certification complete!")
@@ -999,7 +1223,17 @@ class QuantumSATHardnessCertifier:
         # Convert backdoor_vars to list if it's a set
         backdoor_list = list(backdoor_vars) if backdoor_vars is not None else None
         
-        for strategy in DecompositionStrategy:
+        # --- PATCH: Use all strategies from sat_decompose ---
+        all_strategies = [
+            DecompositionStrategy.TREEWIDTH,
+            DecompositionStrategy.FISHER_INFO,
+            DecompositionStrategy.COMMUNITY_DETECTION,
+            DecompositionStrategy.BRIDGE_BREAKING,
+            DecompositionStrategy.RENORMALIZATION
+        ]
+        # --- END PATCH ---
+
+        for strategy in all_strategies:
             # FIX: decompose signature is (backdoor_vars, strategies, optimize_for)
             result = self.decomposer.decompose(backdoor_list, strategies=[strategy], optimize_for='separator')
             if result.success:
@@ -1021,7 +1255,7 @@ class QuantumSATHardnessCertifier:
         # Find best decomposition
         best_result = min(all_results, key=lambda r: r.separator_size)
         k_star = best_result.separator_size
-        separator_fraction = k_star / self.num_vars
+        separator_fraction = k_star / max(1, self.num_vars)
         
         # Classify
         if separator_fraction < 0.25:
@@ -1087,12 +1321,19 @@ if __name__ == "__main__":
     if '--hard' in sys.argv:
         print("🔥 Testing HARD instances (expected k* > 0)")
         print()
-        from create_hard_sat_instances import (
-            create_densely_coupled_sat,
-            create_complete_graph_sat,
-            create_chain_sat,
-            create_clique_sat
-        )
+        # --- PATCH: Need to import these generators ---
+        try:
+            from create_hard_sat_instances import (
+                create_densely_coupled_sat,
+                create_complete_graph_sat,
+                create_chain_sat,
+                create_clique_sat
+            )
+        except ImportError:
+            print("Could not import hard SAT generators. Aborting.")
+            sys.exit(1)
+        # --- END PATCH ---
+            
         test_cases = [
             ("Dense Coupling", 12, 8, 'dense'),  # Expected k* ≈ 6
             ("Complete Graph", 10, 8, 'complete'),  # Expected k* ≈ 8
@@ -1140,20 +1381,23 @@ if __name__ == "__main__":
                     if v not in var_occurrences:
                         var_occurrences[v] = set()
                     var_occurrences[v].update([abs(l) for l in clause if abs(l) != v])
-            avg_coupling = sum(len(neighbors) for neighbors in var_occurrences.values()) / len(var_occurrences)
+            avg_coupling = sum(len(neighbors) for neighbors in var_occurrences.values()) / max(1, len(var_occurrences))
             print(f"📊 Average coupling: {avg_coupling:.1f} neighbors/var")
             print()
         else:
-            clauses, backdoor, _ = create_test_sat_instance(n, k, structure)
+            clauses, backdoor, _ = create_test_sat_instance(n, k, structure, ensure_sat=True)
         
         certifier = QuantumSATHardnessCertifier(clauses, n)
         
         # Choose certification method based on mode
         if QUANTUM_MODE == "full":
             print("\n--- FULL QUANTUM CERTIFICATION (VQE + entanglement + k_vqe) ---")
-            print("⚠️  This may take 10-30 minutes...")
+            if n > MAX_SIMULATABLE_QUBITS:
+                 print(f"⚠️  N={n} > {MAX_SIMULATABLE_QUBITS}, VQE simulation will fail. Running fallback.")
+            else:
+                print("⚠️  This may take 10-30 minutes...")
             cert = certifier.certify_hardness_quantum(
-                backdoor_vars=set(backdoor),
+                backdoor_vars=set(backdoor) if backdoor else None,
                 vqe_shots=2048,  # Reduced for speed
                 vqe_max_iter=10,  # Reduced for speed
                 vqe_runs=3,  # Multiple runs for consistency
@@ -1165,7 +1409,7 @@ if __name__ == "__main__":
         elif QUANTUM_MODE == "fast" and QUANTUM_AVAILABLE:
             print("\n--- QUANTUM FAST MODE (Entanglement analysis only, no VQE) ---")
             print("📊 Expected time: ~2-3 seconds")
-            cert = certifier.certify_hardness_hybrid(set(backdoor))
+            cert = certifier.certify_hardness_hybrid(set(backdoor) if backdoor else None)
             print(cert)
             cert.to_json(f"cert_quantum_fast_{structure}_{n}.json")
             
@@ -1175,7 +1419,7 @@ if __name__ == "__main__":
                 print(f"\n--- QUANTUM {QUANTUM_MODE.upper()}: NOT AVAILABLE ---")
                 print("⚠️  Quantum libraries missing, falling back to classical")
             print("\n--- CLASSICAL CERTIFICATION ---")
-            cert = certifier.certify_hardness_classical(set(backdoor))
+            cert = certifier.certify_hardness_classical(set(backdoor) if backdoor else None)
             print(cert)
             cert.to_json(f"cert_classical_{structure}_{n}.json")
         
@@ -1207,3 +1451,10 @@ if __name__ == "__main__":
         print("  This proves quantum computers have fundamental advantage")
         print("  for SAT decomposition analysis!")
         print("="*70)
+        
+    clauses, n_vars = parse_dimacs_cnf(UF100_01_CNF)
+    print(f"✅ Successfully parsed problem: N={n_vars}, M={len(clauses)} clauses.")
+    
+    certifier = QuantumSATHardnessCertifier(clauses, n_vars)
+    certificate = certifier.certify_hardness_hybrid(backdoor_vars=None)
+    print(certificate)

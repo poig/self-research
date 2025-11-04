@@ -20,6 +20,7 @@ from typing import List, Tuple, Dict, Optional
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.quantum_info import Statevector
+from qiskit_aer import AerSimulator
 import sys
 import time
 
@@ -180,11 +181,17 @@ def solve_sat_qaoa_qlto(
         # Bind parameters
         bound_circuit = qc.bind_parameters({params[i]: param_values[i] for i in range(len(params))})
         
-        # Simulate (get statevector)
+        # Simulate using AerSimulator
         try:
-            # Remove measurements for statevector simulation
+            # AerSimulator is more robust and feature-rich
+            simulator = AerSimulator(method='statevector')
+            
+            # We need a circuit without measurements for statevector simulation
             qc_sim = bound_circuit.remove_final_measurements(inplace=False)
-            sv = Statevector.from_instruction(qc_sim)
+            
+            # Run the simulation
+            result = simulator.run(qc_sim).result()
+            sv = result.get_statevector()
             
             # Get probabilities
             probs = sv.probabilities_dict()
@@ -246,8 +253,11 @@ def solve_sat_qaoa_qlto(
     if best_energy < 0.5:  # Essentially 0 (all clauses satisfied)
         # Get final measurement
         bound_circuit = qc.bind_parameters({params[i]: best_params[i] for i in range(len(params))})
+        
+        simulator = AerSimulator(method='statevector')
         qc_sim = bound_circuit.remove_final_measurements(inplace=False)
-        sv = Statevector.from_instruction(qc_sim)
+        result = simulator.run(qc_sim).result()
+        sv = result.get_statevector()
         probs = sv.probabilities_dict()
         
         # Get most likely bitstring

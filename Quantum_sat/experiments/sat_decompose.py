@@ -236,182 +236,98 @@ class SATDecomposer:
     
     def decompose(self, backdoor_vars: Optional[List[int]] = None,
                   strategies: Optional[List[DecompositionStrategy]] = None,
-                  optimize_for: str = 'separator',
+                  optimize_for: str = 'separator', # This will be ignored, but kept for compatibility
                   progress_callback: Optional[callable] = None) -> DecompositionResult:
         """
-        Try to decompose the problem using multiple strategies
+        Try to decompose the problem using an ordered list of strategies,
+        returning the first successful result.
         
         Args:
-            backdoor_vars: List of backdoor variable indices (if known)
-            strategies: List of strategies to try (in order)
-            optimize_for: 'separator' (minimize |C| for quantum), 'complexity' (total cost), or 'partitions' (max parallelism)
+            backdoor_vars: List of variables to focus on (the whole graph is still used).
+            strategies: Ordered list of strategies to try.
+            optimize_for: (Ignored) Kept for API compatibility.
+            progress_callback: Function to call with progress updates.
         
         Returns:
-            DecompositionResult with best decomposition found
+            The first successful DecompositionResult, or a failure result if none succeed.
         """
         if backdoor_vars is None:
             backdoor_vars = list(range(self.n_vars))
         
         if strategies is None:
+            # Default ordered list of strategies
             strategies = [
-                DecompositionStrategy.BRIDGE_BREAKING,  # Fast, excellent for modular
-                DecompositionStrategy.COMMUNITY_DETECTION,  # Good for hierarchical/complex
-                DecompositionStrategy.FISHER_INFO,  # Spectral clustering (now with KMeans)
-                DecompositionStrategy.TREEWIDTH,  # Good for tree-like structures
-                DecompositionStrategy.RENORMALIZATION  # Fallback for large problems
+                DecompositionStrategy.TREEWIDTH,
+                DecompositionStrategy.BRIDGE_BREAKING,
+                DecompositionStrategy.COMMUNITY_DETECTION,
+                DecompositionStrategy.FISHER_INFO,
+                DecompositionStrategy.RENORMALIZATION
             ]
         
         if self.verbose:
-            print(f"🔬 Attempting to decompose backdoor of size k={len(backdoor_vars)}")
-            print(f"   Target: Partitions with ≤{self.max_partition_size} variables each")
-            print(f"   Optimization goal: Minimize {optimize_for}")
+            print(f"🔬 Incrementally trying decomposition strategies...")
             print(f"   Strategies to try: {[s.value for s in strategies]}")
-            if self.n_jobs > 1 or self.n_jobs == -1:
-                n_cores = cpu_count() if self.n_jobs == -1 else self.n_jobs
-                print(f"   ⚡ Parallel mode: Using {n_cores} CPU cores\n")
-            else:
-                print()
+            print()
 
-        # If a progress callback was provided, signal start
         if progress_callback is not None:
             try:
                 progress_callback(stage='start', total=len(strategies), info={'k': len(backdoor_vars)})
             except Exception:
-                # Never fail due to callback errors
                 pass
         
-        best_result = None
-        
-        # --- UPDATED: Use parallel execution if n_jobs is set ---
-        if self.n_jobs != 1 and (self.n_jobs > 1 or self.n_jobs == -1):
-            n_cores = cpu_count() if self.n_jobs == -1 else min(self.n_jobs, len(strategies))
-            
-            # Create args for parallel execution
-            args_list = [(strategy, backdoor_vars) for strategy in strategies]
-            
+        # --- NEW SHORT-CIRCUITING LOGIC ---
+        for idx, strategy in enumerate(strategies):
+            if progress_callback is not None:
+                try:
+                    progress_callback(stage='strategy_start', index=idx, strategy=strategy.value)
+                except Exception:
+                    pass
+
             if self.verbose:
-                 print(f"   Launching parallel decomposition with {n_cores} workers...")
+                print(f"   Trying {idx+1}/{len(strategies)}: {strategy.value}...")
 
-            try:
-                with Pool(n_cores) as pool:
-                    results = pool.starmap(self._try_strategy, args_list)
+            result = self._try_strategy(strategy, backdoor_vars)
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(stage='strategy_end', index=idx, strategy=strategy.value, result=result)
+                except Exception:
+                    pass
+
+            if result and result.success:
+                if self.verbose:
+                    print(f"     ✅ Success! Using result from {strategy.value}.\n")
                 
-                if self.verbose:
-                    print(f"   ✅ Parallel decomposition complete.")
-
-                # Filter successful results
-                for result in results:
-                    if result and result.success:
-                        if self.verbose:
-                            print(f"  ✅ Success! {result}\n")
-                        
-                        if best_result is None:
-                            best_result = result
-                        else:
-                            if optimize_for == 'separator':
-                                if result.separator_size < best_result.separator_size:
-                                    best_result = result
-                            elif optimize_for == 'complexity':
-                                if result.complexity_estimate < best_result.complexity_estimate:
-                                    best_result = result
-                            elif optimize_for == 'partitions':
-                                if len(result.partitions) > len(best_result.partitions):
-                                    best_result = result
-            except Exception as e:
-                if self.verbose:
-                    print(f"   ❌ Parallel pool failed: {e}. Falling back to sequential execution.")
-                # Fallback to sequential execution if pool fails
-                pass
-        
-        # Sequential execution (or fallback from parallel)
-        if best_result is None:
-            iterator = strategies
-            if TQDM_AVAILABLE and progress_callback is None and self.verbose:
-                iterator = tqdm(strategies, desc="   Decomp. strategies", ncols=100, leave=False)
-
-            for idx, strategy in enumerate(iterator):
-                # Inform progress callback about strategy start
                 if progress_callback is not None:
                     try:
-                        progress_callback(stage='strategy_start', index=idx, strategy=strategy.value)
+                        progress_callback(stage='done', result=result)
                     except Exception:
                         pass
-
-                # Estimate time for this strategy
-                time_est = self._estimate_strategy_time(strategy, len(backdoor_vars))
-                
+                return result # Return on first success
+            else:
                 if self.verbose:
-                    print(f"   Trying {strategy.value}... (est. {time_est})")
+                    reason = result.metadata.get('reason', 'Unknown') if result else 'Execution failed'
+                    print(f"     ❌ Failed. {reason}\n")
 
-                try:
-                    result = self._try_strategy(strategy, backdoor_vars)
-
-                    # Inform progress callback about strategy end
-                    if progress_callback is not None:
-                        try:
-                            progress_callback(stage='strategy_end', index=idx, strategy=strategy.value, result=result)
-                        except Exception:
-                            pass
-
-                    if result and result.success:
-                        if self.verbose:
-                            print(f"     ✅ Success! {result}\n")
-
-                        # Select best based on optimization goal
-                        if best_result is None:
-                            best_result = result
-                        else:
-                            if optimize_for == 'separator':
-                                # Minimize separator size (KEY for quantum advantage)
-                                if result.separator_size < best_result.separator_size:
-                                    best_result = result
-                            elif optimize_for == 'complexity':
-                                # Minimize total complexity
-                                if result.complexity_estimate < best_result.complexity_estimate:
-                                    best_result = result
-                            elif optimize_for == 'partitions':
-                                # Maximize number of partitions (parallelism)
-                                if len(result.partitions) > len(best_result.partitions):
-                                    best_result = result
-                    else:
-                        reason = 'Unknown'
-                        try:
-                            reason = result.metadata.get('reason', 'Unknown') if result is not None else 'No result'
-                        except Exception:
-                            pass
-                        if self.verbose:
-                            print(f"     ❌ Failed. {reason}\n")
-
-                except Exception as e:
-                    if self.verbose:
-                        print(f"     ❌ Error: {e}\n")
-                    # Inform callback about error
-                    if progress_callback is not None:
-                        try:
-                            progress_callback(stage='error', index=idx, error=str(e))
-                        except Exception:
-                            pass
+        # If the loop completes, no strategy was successful
+        if self.verbose:
+            print("   No successful decomposition strategy found.")
         
-        if best_result is None:
-            # No decomposition found
-            best_result = DecompositionResult(
-                strategy=DecompositionStrategy.NONE,
-                success=False,
-                partitions=[backdoor_vars],
-                separator=[],
-                separator_size=0,
-                complexity_estimate=2**len(backdoor_vars),
-                metadata={'reason': 'No successful decomposition found'}
-            )
-        
-        # Final progress callback
+        failure_result = DecompositionResult(
+            strategy=DecompositionStrategy.NONE,
+            success=False,
+            partitions=[backdoor_vars],
+            separator=[],
+            separator_size=len(backdoor_vars), # The whole problem is the separator
+            complexity_estimate=2**len(backdoor_vars),
+            metadata={'reason': 'No successful decomposition strategy found'}
+        )
         if progress_callback is not None:
             try:
-                progress_callback(stage='done', result=best_result)
+                progress_callback(stage='done', result=failure_result)
             except Exception:
                 pass
-
-        return best_result
+        return failure_result
     
     # =========================================================================
     # Strategy 1: Treewidth Decomposition
@@ -427,8 +343,10 @@ class SATDecomposer:
         if self.verbose:
             print("    Building subgraph for treewidth decomposition...")
         
-        # Extract subgraph for backdoor variables
-        subgraph = self.constraint_graph.subgraph(backdoor_vars).copy()
+        # --- FIX: Use the full graph for treewidth decomposition ---
+        if self.verbose:
+            print("    INFO: Using the full constraint graph for treewidth decomposition.")
+        subgraph = self.constraint_graph
         
         if self.verbose:
             print(f"    Computing treewidth on {len(subgraph.nodes())} nodes...")
@@ -607,11 +525,21 @@ class SATDecomposer:
         k = len(backdoor_vars)
         FIM = np.zeros((k, k))
         
-        # --- NEW: Add tqdm progress bar ---
-        if self.verbose and TQDM_AVAILABLE:
-            clause_iter = tqdm(self.clauses, desc="      Computing Fisher Info", total=len(self.clauses), ncols=100, leave=False)
+        # --- OPTIMIZATION: Use a sample of clauses for speed ---
+        sample_fraction = 0.1 # Use 10% of clauses
+        num_samples = int(len(self.clauses) * sample_fraction)
+        if num_samples > 0:
+            sampled_indices = np.random.choice(len(self.clauses), num_samples, replace=False)
+            clause_iter = [self.clauses[i] for i in sampled_indices]
         else:
             clause_iter = self.clauses
+
+        if self.verbose:
+            print(f"    INFO: Using a sample of {len(clause_iter):,} clauses ({sample_fraction:.0%}) for Fisher Info matrix.")
+
+        # --- NEW: Add tqdm progress bar ---
+        if self.verbose and TQDM_AVAILABLE:
+            clause_iter = tqdm(clause_iter, desc="      Computing Fisher Info", total=len(clause_iter), ncols=100, leave=False)
         # --- END NEW ---
 
         # For each clause, update FIM based on variable co-occurrence
@@ -655,8 +583,34 @@ class SATDecomposer:
         D = np.diag(np.sum(FIM, axis=1))
         L = D - FIM
         
-        # Get eigenvectors (low eigenvalues = weak coupling directions)
-        eigenvalues, eigenvectors = eigh(L)
+        # --- OPTIMIZATION: Use randomized SVD for faster eigenvector approximation ---
+        if SKLEARN_AVAILABLE and L.shape[0] > 100:
+            if self.verbose:
+                print(f"    INFO: Using Randomized SVD to approximate eigenvectors for spectral clustering.")
+            # We want the vectors corresponding to the *smallest* singular values of L.
+            # SVD finds the largest. So we compute SVD on (max_eigenvalue * I - L).
+            try:
+                # Estimate max eigenvalue quickly using Gershgorin circle theorem
+                max_eig_est = np.max(np.sum(np.abs(L), axis=1))
+                L_shifted = max_eig_est * np.eye(L.shape[0]) - L
+                
+                # Need to define k_clusters before this
+                k_clusters = min(num_partitions, k)
+                if k_clusters <= 0: k_clusters = 1
+                
+                n_comp = min(k_clusters * 2, L.shape[0] - 1) # Get a few more components than needed
+                if n_comp <= 0: raise ValueError("Number of components for SVD must be positive.")
+                
+                # Import randomized_svd
+                from sklearn.utils.extmath import randomized_svd
+                _, _, Vt = randomized_svd(L_shifted, n_components=n_comp, n_iter=3, random_state=42)
+                eigenvectors = Vt.T
+            except Exception as e:
+                if self.verbose:
+                    print(f"    -> Randomized SVD for eigenvectors failed: {e}. Falling back to exact method.")
+                eigenvalues, eigenvectors = eigh(L)
+        else:
+            eigenvalues, eigenvectors = eigh(L)
         
         # Use first k eigenvectors for clustering
         k_clusters = min(num_partitions, k)
@@ -817,8 +771,28 @@ class SATDecomposer:
             components = list(nx.connected_components(test_graph))
             
             if len(components) > 1:
-                partitions = [list(comp) for comp in components]
+                # --- NEW: Implement 2-level decomposition for giant partitions ---
+                final_partitions = []
+                for comp in components:
+                    if len(comp) > 300: # Threshold for what is considered a "giant" partition
+                        if self.verbose:
+                            print(f"    Found giant partition with {len(comp)} vars. Re-decomposing with community detection...")
+                        # This is our pragmatic, 2-level recursion.
+                        # We take this giant component and try to break it down further.
+                        sub_result = self._decompose_by_community_detection(list(comp))
+                        if sub_result and sub_result.success:
+                            # Add the newly found smaller partitions to our list
+                            final_partitions.extend(sub_result.partitions)
+                        else:
+                            # If we can't break it down, add the giant partition back.
+                            final_partitions.append(list(comp))
+                    else:
+                        # Partition is small enough, keep it.
+                        final_partitions.append(list(comp))
                 
+                partitions = final_partitions
+                # --- END of 2-level decomposition ---
+
                 # --- FIX: Don't filter, return ALL partitions ---
                 good_partitions = partitions
                 
@@ -895,8 +869,11 @@ class SATDecomposer:
         if self.verbose:
             print("    Building subgraph for community detection...")
         
-        # Build subgraph from backdoor variables
-        subgraph = self.constraint_graph.subgraph(backdoor_vars).copy()
+        # --- FIX: Use the full graph for community detection, not just the backdoor subgraph ---
+        # The backdoor_vars hint is not useful when the graph is mostly outside the backdoor
+        if self.verbose:
+            print("    INFO: Using the full constraint graph for community detection.")
+        subgraph = self.constraint_graph
         
         if len(subgraph.nodes()) < 4:
             return DecompositionResult(
@@ -914,6 +891,7 @@ class SATDecomposer:
             print(f"    Running Louvain algorithm on {len(subgraph.nodes())} nodes, {len(subgraph.edges())} edges...")
             print(f"    (This may take a moment, it is a C-backend black box...)")
         
+        print("    [INFO] Calling Louvain algorithm C-backend (this is the slow part with no progress bar)...")
         try:
             partition_map = community_louvain.best_partition(subgraph, random_state=42)
             if self.verbose:
@@ -938,7 +916,40 @@ class SATDecomposer:
         
         # Convert to partition list
         partitions = list(communities.values())
+
+        # --- NEW: Implement "Constrained Louvain" by recursively decomposing large communities ---
+        final_partitions = []
+        for part in partitions:
+            if len(part) > 300: # Our threshold for a partition that is too large
+                if self.verbose:
+                    print(f"    -> Louvain found a large community of size {len(part)}. Recursively decomposing it...")
+                
+                try:
+                    # Create a subgraph for the large partition and run Louvain on it
+                    subgraph_part = self.constraint_graph.subgraph(part).copy()
+                    sub_partition_map = community_louvain.best_partition(subgraph_part, random_state=42)
+                    
+                    # Process the results of the recursive decomposition
+                    sub_communities = {}
+                    for var, comm_id in sub_partition_map.items():
+                        if comm_id not in sub_communities:
+                            sub_communities[comm_id] = []
+                        sub_communities[comm_id].append(var)
+                    
+                    # Add the new, smaller partitions to our final list
+                    final_partitions.extend(list(sub_communities.values()))
+                except Exception as e:
+                    # If the recursive decomposition fails, keep the original large partition
+                    if self.verbose:
+                        print(f"    -> Recursive Louvain failed: {e}. Keeping the large community.")
+                    final_partitions.append(part)
+            else:
+                # Partition is small enough, add it to the list
+                final_partitions.append(part)
         
+        partitions = final_partitions
+        # --- END "Constrained Louvain" ---
+
         if self.verbose:
             print(f"    Louvain found {len(partitions)} communities")
             print(f"    Community sizes: {[len(p) for p in partitions]}")
@@ -1053,8 +1064,9 @@ class SATDecomposer:
         num_groups = (k + group_size - 1) // group_size
         
         if num_groups > self.max_partition_size:
+            # --- FIX: Typo was RENORMALization (capital R) ---
             return DecompositionResult(
-                strategy=DecompositionStrategy.RENORMALization,
+                strategy=DecompositionStrategy.RENORMALIZATION,
                 success=False,
                 partitions=[],
                 separator=[],
@@ -2209,4 +2221,3 @@ if __name__ == "__main__":
         print("\nTo run full benchmark:")
         print("  python sat_decompose.py --benchmark")
         print("="*80)
-

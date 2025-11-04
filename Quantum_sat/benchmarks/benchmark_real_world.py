@@ -322,7 +322,7 @@ def generate_sudoku_sat(difficulty: str = "easy") -> Tuple[List[Tuple[int, ...]]
     
     grid = puzzles.get(difficulty, puzzles["easy"])
     
-    # Variable encoding: var(row, col, num) = row*81 + col*9 + num
+    # Variable encoding: var(row, col, num) = row*81 + col*9 + num + 1  (1-indexed)
     clauses = []
     n_vars = 9 * 9 * 9  # 729 variables
     
@@ -330,26 +330,26 @@ def generate_sudoku_sat(difficulty: str = "easy") -> Tuple[List[Tuple[int, ...]]
     for row in range(9):
         for col in range(9):
             # At least one number
-            clause = tuple(row*81 + col*9 + num for num in range(9))
+            clause = tuple(row*81 + col*9 + num + 1 for num in range(9))
             clauses.append(clause)
             
             # At most one number
             for n1 in range(9):
                 for n2 in range(n1 + 1, 9):
-                    var1 = -(row*81 + col*9 + n1)
-                    var2 = -(row*81 + col*9 + n2)
+                    var1 = -(row*81 + col*9 + n1 + 1)
+                    var2 = -(row*81 + col*9 + n2 + 1)
                     clauses.append((var1, var2))
     
     # Constraint 2: Each row has all numbers
     for row in range(9):
         for num in range(9):
-            clause = tuple(row*81 + col*9 + num for col in range(9))
+            clause = tuple(row*81 + col*9 + num + 1 for col in range(9))
             clauses.append(clause)
     
     # Constraint 3: Each column has all numbers
     for col in range(9):
         for num in range(9):
-            clause = tuple(row*81 + col*9 + num for row in range(9))
+            clause = tuple(row*81 + col*9 + num + 1 for row in range(9))
             clauses.append(clause)
     
     # Constraint 4: Each 3x3 box has all numbers
@@ -361,7 +361,7 @@ def generate_sudoku_sat(difficulty: str = "easy") -> Tuple[List[Tuple[int, ...]]
                     for c in range(3):
                         row = box_row * 3 + r
                         col = box_col * 3 + c
-                        clause.append(row*81 + col*9 + num)
+                        clause.append(row*81 + col*9 + num + 1)
                 clauses.append(tuple(clause))
     
     # Constraint 5: Fix given clues
@@ -369,7 +369,7 @@ def generate_sudoku_sat(difficulty: str = "easy") -> Tuple[List[Tuple[int, ...]]
         for col in range(9):
             if grid[row][col] != 0:
                 num = grid[row][col] - 1  # Convert to 0-indexed
-                clauses.append((row*81 + col*9 + num,))
+                clauses.append((row*81 + col*9 + num + 1,))
     
     print(f"  Variables: {n_vars}")
     print(f"  Clauses: {len(clauses)}")
