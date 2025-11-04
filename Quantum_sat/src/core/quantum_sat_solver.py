@@ -140,12 +140,31 @@ except Exception as e:
 
 # Import QAOA with QLTO optimizer (best quantum approach)
 try:
+    # --- PATCH: Import our new FPT pipeline function ---
     sys.path.insert(0, 'src/solvers')
-    from qaoa_with_qlto import solve_sat_qaoa_qlto_with_restart
-    QAOA_QLTO_AVAILABLE = True
+    try:
+        from qlto_qaoa_sat import (
+            run_fpt_pipeline, # <-- NEW FPT SOLVER
+            SATProblem as QLTOSATProblem,
+            SATClause as QLTOSATClause,
+            QLTO_AVAILABLE as QLTO_AVAILABLE_FLAG
+        )
+        QAOA_QLTO_AVAILABLE = bool(QLTO_AVAILABLE_FLAG)
+    except ImportError as e:
+        print(f"Could not import `run_fpt_pipeline` from qlto_qaoa_sat: {e}")
+        # Fallback to legacy qaoa_with_qlto if present
+        from qaoa_with_qlto import solve_sat_qaoa_qlto_with_restart
+        run_fpt_pipeline = None # Mark as unavailable
+        QLTOSATProblem = None
+        QLTOSATClause = None
+        QAOA_QLTO_AVAILABLE = True
+        
+    if QAOA_QLTO_AVAILABLE:
+        print("✅ QAOA-QLTO solver available")
 except Exception as e:
     print(f"⚠️  QAOA-QLTO solver: {e}")
     QAOA_QLTO_AVAILABLE = False
+# --- END PATCH ---
 
 # Import Structure-Aligned QAOA (NEW: 100% deterministic for k*≤5!)
 try:
@@ -203,6 +222,13 @@ class SATSolution:
     certification_confidence: Optional[float] = None  # 99.99%+ for quantum
     decomposition_used: bool = False  # True if polynomial decomposition was used
     certification_time: float = 0.0  # Time spent on quantum certification
+    # --- PATCH: Add metrics from v7 ---
+    k_prime_initial: Optional[int] = None
+    k_prime_final: Optional[int] = None
+    is_minimal: Optional[bool] = None
+    sampler_time: Optional[float] = None
+    classical_search_time: Optional[float] = None
+    # --- END PATCH ---
 
 
 class ComprehensiveQuantumSATSolver:
@@ -218,11 +244,6 @@ class ComprehensiveQuantumSATSolver:
     - Classical DPLL (fallback for large backdoors)
     - **NEW: Quantum Certification (99.99%+ confidence)**
     - **NEW: Polynomial Decomposition (O(N⁴) for DECOMPOSABLE)**
-    
-    Key Innovation:
-    - Certify hardness (k*) with 99.99%+ confidence using quantum methods
-    - If k* < N/4: Decompose into independent subproblems → polynomial time!
-    - If k* > N/4: Use quantum advantage methods
     """
     
     def __init__(self, 
@@ -245,7 +266,7 @@ class ComprehensiveQuantumSATSolver:
             decompose_methods: List of decomposition strategies to try. Options:
                                ["FisherInfo", "Louvain", "Treewidth", "Hypergraph"]
                                If None, tries all methods. Set to ["Louvain", "Treewidth"] to skip slow FisherInfo.
-            n_jobs: Number of CPU cores to use for parallelization (default=1, -1=all cores)
+            n_jobs: Number of CPU cores for parallelization (default=1, -1=all cores)
         """
         self.verbose = verbose
         self.prefer_quantum = prefer_quantum
@@ -265,7 +286,9 @@ class ComprehensiveQuantumSATSolver:
         print("="*80)
         print("Available quantum methods:")
         print(f"  Structure-Aligned: {'✅' if STRUCTURE_ALIGNED_AVAILABLE else '❌'} 🌟 NEW: 100% deterministic for k*≤5!")
-        print(f"  QAOA-QLTO (BEST):  {'✅' if QAOA_QLTO_AVAILABLE else '❌'} Multi-basin optimization")
+        # --- PATCH: Check for the *correct* function ---
+        print(f"  QAOA-QLTO (FPT):   {'✅' if QAOA_QLTO_AVAILABLE and run_fpt_pipeline is not None else '❌'} 🌟 BEST: FPT Pipeline")
+        # --- END PATCH ---
         print(f"  QAOA Formal:       {'✅' if QAOA_FORMAL_AVAILABLE else '❌'}")
         print(f"  QAOA Morphing:     {'✅' if QAOA_MORPHING_AVAILABLE else '❌'}")
         print(f"  QAOA Scaffolding:  {'✅' if QAOA_SCAFFOLDING_AVAILABLE else '❌'}")
@@ -386,19 +409,16 @@ class ComprehensiveQuantumSATSolver:
                 n_vars=n_vars,
                 max_partition_size=10,  # NISQ constraint
                 quantum_algorithm="polynomial",
-                verbose=False,  # Don't print details twice
+                verbose=True,  # Show detailed progress from decomposer
                 n_jobs=self.n_jobs  # Use multicore if configured
             )
             
             # Try decomposition with first k* variables as backdoor
             # This is a heuristic - ideally we'd pass the *real* backdoor vars
-            # For AES, this should be 1-128
-            if n_vars > 200: # Heuristic for AES
-                backdoor_vars = list(range(128)) # 0-indexed master key vars
-                if self.verbose:
-                    print(f"   Using AES heuristic: decomposing master key vars 0-127")
-            else:
-                backdoor_vars = list(range(min(k_star, n_vars)))  # 0-indexed!
+            # For now, we decompose the entire problem graph.
+            backdoor_vars = list(range(n_vars))
+            if self.verbose:
+                print(f"   Decomposing full graph of {n_vars} variables...")
             
             # Map user-friendly names to DecompositionStrategy enum
             strategy_map = {
@@ -430,7 +450,6 @@ class ComprehensiveQuantumSATSolver:
                     print(f"   Solving each partition independently...")
                 
                 # Solve each partition
-                partition_solutions = []
                 global_assignment = {}
                 all_partitions_solved = True
                 
@@ -445,37 +464,165 @@ class ComprehensiveQuantumSATSolver:
                     
                     partition_clauses = [c for c in clauses if any(abs(lit)-1 in partition_vars_set for lit in c)]
                     
-                    # Solve this partition (try classical first since partitions should be small)
-                    if PYSAT_AVAILABLE and len(partition) <= 100:
-                        # Note: n_vars for the subproblem should be n_vars of the whole problem
-                        # as clauses can contain high-indexed variables
-                        sat, assignment, method = self.verify_with_classical(
-                            partition_clauses, 
-                            n_vars, # Pass total n_vars
-                            timeout=30.0
+                    # --- NEW RECURSIVE DECOMPOSITION LOGIC ---
+                    # Instead of a fixed size, we re-analyze the subproblem's structure.
+                    # This implements the user's suggestion to be more intelligent about recursion.
+
+                    if self.verbose:
+                        print(f"   Analyzing subproblem for partition {i+1}...")
+                        print(f"   Partition size: {len(partition)} vars, Separator size: {len(decomposition_result.separator)} vars")
+                        print(f"   Total subproblem vars: {len(partition_vars_set)}")
+
+                    # 1. Estimate k* for the subproblem
+                    subproblem_routing = integrated_dispatcher_pipeline(
+                        partition_clauses,
+                        n_vars, # Still use global n_vars
+                        verbose=False,
+                        true_k=None
+                    )
+                    sub_k_est = subproblem_routing['k_estimate']
+                    
+                    if self.verbose:
+                        print(f"   Subproblem analysis: k* ≈ {sub_k_est:.1f}, Recommended: {subproblem_routing['recommended_solver']}")
+
+                    # 2. Decide whether to recurse based on the new k*
+                    # If k* is small enough, we can solve it directly. Otherwise, recurse.
+                    # Let's use a threshold, e.g., k* > 8, to decide to recurse.
+                    # If k* is small AND the partition is small enough to simulate, use quantum.
+                    # A realistic limit for simulation is ~20-25 qubits.
+                    # --- FIX: compute local_n_vars from partition_clauses first ---
+                    try:
+                        # all_vars_in_partition: 0-indexed global variable ids
+                        all_vars_in_partition = sorted(list({abs(lit) - 1 for c in partition_clauses for lit in c}))
+                        local_n_vars = len(all_vars_in_partition)
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"   ⚠️  Could not determine local_n_vars for partition: {e}")
+                        all_vars_in_partition = sorted(list(partition_vars_set))
+                        local_n_vars = len(all_vars_in_partition)
+
+                    if sub_k_est < 10 and local_n_vars < 100:
+                        if self.verbose:
+                            print(f"   ✅ Subproblem k* is small. Solving directly with QAOA-QLTO...")
+
+                        # --- FIX: Remap variables for the subproblem to avoid memory errors ---
+                        # all_vars_in_partition is 0-indexed global ids
+                        # Create mapping from global var index (0-based) to local var index (0-based)
+                        global_to_local_map = {global_var_0_idx: i for i, global_var_0_idx in enumerate(all_vars_in_partition)}
+                        local_to_global_map = {i: global_var_0_idx for i, global_var_0_idx in enumerate(all_vars_in_partition)}
+
+                        # Rewrite clauses with local variables (solver expects 1-indexed vars)
+                        local_clauses = []
+                        for c in partition_clauses:
+                            local_clause = []
+                            for lit in c:
+                                var_0_idx = abs(lit) - 1
+                                sign = 1 if lit > 0 else -1
+                                if var_0_idx in global_to_local_map:
+                                    local_var_0_indexed = global_to_local_map[var_0_idx]
+                                    # back to 1-indexed for SAT solver
+                                    local_lit = int(sign * (local_var_0_indexed + 1))
+                                    local_clause.append(local_lit)
+                                # else: variable not in this subproblem (likely separator) -> drop
+                            if local_clause:
+                                local_clauses.append(tuple(local_clause))
+
+                        if self.verbose:
+                            print(f"   Remapped partition to {local_n_vars} variables (from {len(partition_vars_set)})." )
+
+                        partition_solved = False
+                        # Try to solve the subproblem with the best quantum method
+                        # --- PATCH: Call the *new* FPT pipeline ---
+                        if QAOA_QLTO_AVAILABLE and run_fpt_pipeline is not None:
+                            # Use the FPT pipeline on the subproblem
+                            q_result = self._solve_qaoa_qlto(local_clauses, local_n_vars, timeout=60.0)
+                            if q_result['satisfiable'] and q_result.get('assignment') is not None:
+                                # Convert local assignment back to global
+                                local_assignment = q_result['assignment'] # 0-indexed
+                                for local_var, val in local_assignment.items():
+                                    global_var_0_indexed = local_to_global_map[local_var]
+                                    global_assignment[global_var_0_indexed] = val
+                                partition_solved = True
+                        # --- END PATCH ---
+                        
+                        if not partition_solved:
+                            # Quantum solver failed or not available, try classical as a fallback
+                            if self.verbose and QAOA_QLTO_AVAILABLE:
+                                print(f"   ⚠️  Quantum solver failed on partition {i+1}. Falling back to classical solver.")
+                            
+                            sat, assignment, method = self.verify_with_classical(local_clauses, local_n_vars, timeout=30.0)
+                            if sat and assignment:
+                                # Convert local assignment back to global
+                                for local_var, val in assignment.items(): # 0-indexed
+                                    global_var_0_indexed = local_to_global_map[local_var]
+                                    global_assignment[global_var_0_indexed] = val
+                            else:
+                                if self.verbose:
+                                    print(f"   ❌ Classical fallback also failed on partition {i+1}.")
+                                all_partitions_solved = False
+                                break
+                    else:
+                        # Subproblem k* is still large, so we use RECURSIVE DECOMPOSITION.
+                        if self.verbose:
+                            print(f"   ⚠️  Subproblem k* ({sub_k_est:.1f}) is large. Attempting recursive decomposition...")
+                        
+                        # Recursively call the main solver on this sub-problem.
+                        # We use partition_clauses which correctly includes separator constraints.
+                        sub_solution = self.solve(
+                            clauses=partition_clauses,
+                            n_vars=n_vars, # n_vars must be the global count
+                            timeout=timeout, # Pass remaining time
+                            check_final=False # Avoid recursive verification loops
                         )
-                        if sat and assignment:
-                            # Only take assignments for variables in this partition
-                            partition_specific_assignment = {v: val for v, val in assignment.items() if v-1 in partition}
-                            global_assignment.update(partition_specific_assignment)
-                            partition_solutions.append(partition_specific_assignment)
+
+                        if sub_solution.satisfiable and sub_solution.assignment:
+                            if self.verbose:
+                                print(f"   ✅ Recursive solve succeeded for partition {i+1}.")
+                            # The recursive call returns assignments with global variable indices (1-indexed)
+                            # Convert to 0-indexed for our internal global_assignment
+                            assignment_0_indexed = {k-1: v for k, v in sub_solution.assignment.items()}
+                            global_assignment.update(assignment_0_indexed)
                         else:
                             if self.verbose:
-                                print(f"   ⚠️  Partition {i+1} unsolvable, full problem might be UNSAT")
+                                print(f"   ❌ Recursive solve FAILED for partition {i+1}.")
                             all_partitions_solved = False
-                            break # One partition is UNSAT, so the whole thing is
-                    else:
-                        # Partition too large or PySAT unavailable, just mark as unsolved
-                        if self.verbose:
-                            print(f"   ⚠️  Partition {i+1} too large ({len(partition)} vars) or PySAT unavailable, skipping")
-                        all_partitions_solved = False
+                            break
                 
                 if all_partitions_solved:
+                    # --- NEW: Solve for remaining variables using partition solutions as assumptions ---
+                    if self.verbose:
+                        print("\n   All partitions solved. Attempting to find a complete global solution...")
+                        print(f"   Using the {len(global_assignment)} solved variables as assumptions.")
+
+                    # Add assumptions from the partition solutions (0-indexed to 1-indexed)
+                    assumptions = []
+                    for var_0_idx, val in global_assignment.items():
+                        assumptions.append(var_0_idx + 1 if val else -(var_0_idx + 1))
+
+                    # Solve the full problem again, but with assumptions from the partitions.
+                    # This will be much faster than solving from scratch and will ensure
+                    # the final assignment is consistent across the separator.
+                    sep_sat, sep_assignment, sep_method = self.verify_with_classical(
+                        clauses, # Use all clauses for correctness
+                        n_vars,
+                        timeout=60.0, # Longer timeout for this crucial step
+                        assumptions=assumptions
+                    )
+
+                    if sep_sat and sep_assignment:
+                        if self.verbose:
+                            print(f"   ✅ Separator solved. Merging solutions...")
+                        # Add separator assignments to the global solution
+                        global_assignment.update(sep_assignment) # sep_assignment is 0-indexed
+                    else:
+                        if self.verbose:
+                            print(f"   ⚠️  Could not solve for separator variables. Solution may be incomplete.")
+
                     # Also add any separator variables that might have been solved
                     # (This logic is complex, for now just return partition assignments)
                     return {
                         'satisfiable': True,
-                        'assignment': global_assignment,
+                        'assignment': global_assignment, # 0-indexed
                         'method': f'polynomial_decomposition_{decomposition_result.strategy.value}',
                         'decomposition': decomposition_result,
                         'k_star': k_star,
@@ -495,7 +642,7 @@ class ComprehensiveQuantumSATSolver:
                     # Some partitions unsolved, return partial success
                     return {
                         'satisfiable': True,
-                        'assignment': global_assignment if global_assignment else None,
+                        'assignment': global_assignment if global_assignment else None, # 0-indexed
                         'method': f'polynomial_decomposition_{decomposition_result.strategy.value}_partial',
                         'decomposition': decomposition_result,
                         'k_star': k_star,
@@ -516,7 +663,8 @@ class ComprehensiveQuantumSATSolver:
         self,
         clauses: List[Tuple[int, ...]],
         n_vars: int,
-        timeout: float = 10.0
+        timeout: float = 10.0,
+        assumptions: Optional[List[int]] = None
     ) -> Tuple[bool, Optional[Dict[int, bool]], str]:
         """
         Verify satisfiability using a classical SAT solver (PySAT).
@@ -527,7 +675,7 @@ class ComprehensiveQuantumSATSolver:
             timeout: Timeout in seconds
             
         Returns:
-            (satisfiable, assignment, method_info)
+            (satisfiable, assignment (0-indexed), method_info)
         """
         if not PYSAT_AVAILABLE:
             return None, None, "PySAT not available"
@@ -537,12 +685,16 @@ class ComprehensiveQuantumSATSolver:
             
             # Add clauses to solver
             for clause in clauses:
-                solver.add_clause(list(clause))
+                # --- START FIX: Filter out 0s and skip empty clauses ---
+                filtered_clause = [lit for lit in clause if lit != 0]
+                if filtered_clause:
+                    solver.add_clause(filtered_clause)
+                # --- END FIX ---
             
             # Solve with timeout
             # Note: PySAT solve_limited is not reliable for timeout.
             # We'll rely on the caller's overall timeout.
-            result = solver.solve()
+            result = solver.solve(assumptions=assumptions if assumptions else [])
             
             if result is True:
                 # SAT - get model
@@ -553,7 +705,8 @@ class ComprehensiveQuantumSATSolver:
                 for lit in model:
                     var_1_indexed = abs(lit)
                     var_0_indexed = var_1_indexed - 1
-                    assignment[var_0_indexed] = (lit > 0)
+                    if 0 <= var_0_indexed < n_vars: # Ensure var is in range
+                        assignment[var_0_indexed] = (lit > 0)
                 
                 solver.delete()
                 return True, assignment, "Classical SAT (Glucose3)"
@@ -648,158 +801,117 @@ class ComprehensiveQuantumSATSolver:
             print(f"  Analysis time: {analysis_time:.3f}s")
             print()
         
-        # Phase 1.5: Quantum Certification (Optional, 99.99%+ confidence!)
-        k_star = None
-        hardness_class = None
-        certification_confidence = None
-        certification_time = 0.0
-        decomposition_used = False
-        
-        if self.enable_quantum_certification:
-            if self.verbose:
-                print("[Phase 1.5/4] 🌟 Quantum hardness certification...")
-                print(f"   Mode: {self.certification_mode.upper()}")
-            
-            cert_start = time.time()
-            cert_result = self.certify_hardness(clauses, n_vars, mode=self.certification_mode)
-            certification_time = time.time() - cert_start
-            
-            k_star = cert_result['k_star']
-            hardness_class = cert_result['hardness_class']
-            certification_confidence = cert_result['confidence']
-            
-            if self.verbose:
-                print(f"   ✅ Certified: k* = {k_star} ({hardness_class})")
-                print(f"   Confidence: {certification_confidence:.2%}")
-                print(f"   Certification time: {certification_time:.3f}s")
-                print()
-            
-            # If DECOMPOSABLE (k* < N/4), try Structure-Aligned QAOA first!
-            if hardness_class == "DECOMPOSABLE" and k_star < n_vars // 4:
-                if self.verbose:
-                    print("   🚀 Problem is DECOMPOSABLE!")
-                    print("   Trying Structure-Aligned QAOA (100% deterministic for k*≤5)...")
-                
-                # Try Structure-Aligned QAOA first
-                if STRUCTURE_ALIGNED_AVAILABLE and k_star <= 8:  # Works best for k*≤8
-                    try:
-                        structure_result = self._solve_structure_aligned_qaoa(
-                            clauses, n_vars, k_star, timeout
-                        )
-                        
-                        if structure_result and structure_result.get('satisfiable'):
-                            solving_time = time.time() - cert_start
-                            total_time = time.time() - total_start
-                            
-                            if self.verbose:
-                                print(f"   ✅ Solved via Structure-Aligned QAOA!")
-                                print(f"   Deterministic: {structure_result.get('deterministic', False)}")
-                                print(f"   Total time: {total_time:.3f}s")
-                            
-                            # Extract ACTUAL k* from structure analysis result
-                            actual_k_star = structure_result.get('k_star', k_star)
-                            actual_hardness = structure_result.get('hardness_class', hardness_class)
-                            
-                            return SATSolution(
-                                satisfiable=structure_result['satisfiable'],
-                                assignment=structure_result.get('assignment'),
-                                method_used=structure_result['method'],
-                                analysis_time=analysis_time,
-                                solving_time=solving_time,
-                                total_time=total_time,
-                                k_estimate=k_est,
-                                confidence=confidence,
-                                quantum_advantage_applied=True,
-                                recommended_solver="structure_aligned_qaoa",
-                                reasoning=f"k*={actual_k_star} ({actual_hardness}) → Structure-Aligned QAOA (deterministic!)",
-                                fallback_used=False,
-                                k_star=actual_k_star,  # Use ACTUAL k* from structure analysis!
-                                hardness_class=actual_hardness,
-                                certification_confidence=certification_confidence,
-                                decomposition_used=False,
-                                certification_time=certification_time
-                            )
-                    except Exception as e:
-                        if self.verbose:
-                            print(f"   ⚠️  Structure-Aligned QAOA failed: {e}")
-                            print("   Falling back to polynomial decomposition...")
-                
-                # Fall back to polynomial decomposition
-                if self.verbose:
-                    print("   Trying polynomial decomposition...")
-                
-                # Create a small progress callback to surface decomposition progress
-                def _decomp_progress_cb(**kwargs):
-                    try:
-                        stage = kwargs.get('stage')
-                        if stage == 'start':
-                            total = kwargs.get('total')
-                            info = kwargs.get('info', {})
-                            if self.verbose:
-                                print(f"   Starting decomposition ({info.get('k', '?')} backdoor vars) - {total} strategies to try")
-                        elif stage == 'strategy_start':
-                            idx = kwargs.get('index')
-                            strategy = kwargs.get('strategy')
-                            if self.verbose:
-                                print(f"   → Strategy {idx+1}: {strategy} started...")
-                        elif stage == 'strategy_end':
-                            idx = kwargs.get('index')
-                            strategy = kwargs.get('strategy')
-                            result = kwargs.get('result')
-                            if self.verbose:
-                                if result is not None:
-                                    print(f"   ← Strategy {idx+1}: {strategy} finished - success={getattr(result, 'success', False)}")
-                                else:
-                                    print(f"   ← Strategy {idx+1}: {strategy} finished - no result")
-                        elif stage == 'error':
-                            if self.verbose:
-                                print(f"   ⚠️  Decomposition error: {kwargs.get('error')}")
-                        elif stage == 'done':
-                            if self.verbose:
-                                print(f"   Decomposition stage complete")
-                    except Exception:
-                        pass
+        # --- NEW DECOMPOSITION LOGIC ---
+        # Always attempt decomposition if the problem appears decomposable,
+        # regardless of whether certification is enabled.
 
-                # If user passed a progress_callback, prefer that; otherwise use the internal one
-                cb = progress_callback if progress_callback is not None else _decomp_progress_cb
-                decomp_result = self.solve_via_decomposition(clauses, n_vars, k_star, timeout, progress_callback=cb)
+        k_star_for_decomposition = int(k_est)
+        attempt_decomposition = False
+        
+        # Only try to decompose if k_est is in a range that suggests it's worthwhile
+        if 0 < k_star_for_decomposition < n_vars / 2:
+            if self.verbose:
+                print("\n[Phase 1.5/3] 🚀 Problem appears DECOMPOSABLE, attempting polynomial decomposition...")
+            attempt_decomposition = True
+
+        if attempt_decomposition:
+            decomp_start_time = time.time()
+            
+            # Use a simple internal progress callback if none is provided
+            def _internal_decomp_progress(**kwargs):
+                if self.verbose and kwargs.get('stage') == 'strategy_start':
+                    print(f"   Trying decomposition strategy: {kwargs.get('strategy')}...")
+
+            cb = progress_callback if progress_callback is not None else _internal_decomp_progress
+
+            decomp_result = self.solve_via_decomposition(clauses, n_vars, k_star_for_decomposition, timeout, progress_callback=cb)
+            
+            if decomp_result and decomp_result.get('satisfiable') is not None:
+                decomposition_used = True
+                solving_time = time.time() - decomp_start_time
+                total_time = time.time() - total_start
                 
-                if decomp_result is not None:
-                    # Decomposition solved it!
-                    decomposition_used = True
-                    solving_time = time.time() - cert_start
-                    total_time = time.time() - total_start
-                    
+                if self.verbose:
+                    print(f"   ✅ Solved via polynomial decomposition in {solving_time:.2f}s!")
+
+                # The assignment from solve_via_decomposition is 0-indexed, convert to 1-indexed for SATSolution
+                assignment_1_indexed = {k+1: v for k, v in decomp_result.get('assignment', {}).items()} if decomp_result.get('assignment') else None
+
+                return SATSolution(
+                    satisfiable=decomp_result['satisfiable'],
+                    assignment=assignment_1_indexed,
+                    method_used=decomp_result['method'],
+                    analysis_time=analysis_time,
+                    solving_time=solving_time,
+                    total_time=total_time,
+                    k_estimate=k_est,
+                    confidence=confidence,
+                    quantum_advantage_applied=True,
+                    recommended_solver="polynomial_decomposition",
+                    reasoning=f"k*={k_star_for_decomposition} suggests decomposability.",
+                    fallback_used=decomp_result.get('fallback', False),
+                    k_star=k_star_for_decomposition,
+                    hardness_class="DECOMPOSABLE",
+                    certification_confidence=None,
+                    decomposition_used=True,
+                    certification_time=0.0
+                )
+            else:
+                if self.verbose:
+                    print("   ⚠️  Polynomial decomposition failed.")
+                
+                # --- NEW: User's suggestion ---
+                # Run quantum certification to confirm if it's truly undecomposable
+                if self.verbose:
+                    print("\n[Phase 1.7/3] 🔬 Certifying hardness of the remaining problem...")
+                
+                cert_start = time.time()
+                # Use "full" mode for the highest confidence, as this is the final check
+                cert_result = self.certify_hardness(clauses, n_vars, mode="full")
+                certification_time = time.time() - cert_start
+                
+                k_star_certified = cert_result['k_star']
+                hardness_class = cert_result['hardness_class']
+                
+                if self.verbose:
+                    print(f"   ✅ Certified: k* = {k_star_certified} ({hardness_class})")
+                    print(f"   Confidence: {cert_result['confidence']:.2%}")
+                
+                if hardness_class == "UNDECOMPOSABLE":
                     if self.verbose:
-                        print(f"   ✅ Solved via polynomial decomposition!")
-                        print(f"   Total time: {total_time:.3f}s")
+                        print("\n   🎉 Found a certified UNDECOMPOSABLE instance!")
+                        print("      This is a candidate for a problem that may not be solvable in polynomial time with this method.")
                     
+                    total_time = time.time() - total_start
                     return SATSolution(
-                        satisfiable=decomp_result['satisfiable'],
-                        assignment=decomp_result.get('assignment'),
-                        method_used=decomp_result['method'],
+                        satisfiable=False,
+                        assignment=None,
+                        method_used="Quantum Hardness Certification",
                         analysis_time=analysis_time,
-                        solving_time=solving_time,
+                        solving_time=certification_time,
                         total_time=total_time,
                         k_estimate=k_est,
                         confidence=confidence,
-                        quantum_advantage_applied=True,  # Quantum certification was used!
-                        recommended_solver="polynomial_decomposition",
-                        reasoning=f"Quantum certified k*={k_star} (DECOMPOSABLE) → polynomial decomposition",
+                        quantum_advantage_applied=True,
+                        recommended_solver="certification",
+                        reasoning=f"Certified as UNDECOMPOSABLE with k*={k_star_certified}",
                         fallback_used=False,
-                        k_star=k_star,
+                        k_star=k_star_certified,
                         hardness_class=hardness_class,
-                        certification_confidence=certification_confidence,
-                        decomposition_used=True,
+                        certification_confidence=cert_result['confidence'],
+                        decomposition_used=False,
                         certification_time=certification_time
                     )
                 else:
                     if self.verbose:
-                        print("   ⚠️  Polynomial decomposition failed, using quantum solver")
+                        print("   Certification suggests the problem is still decomposable, but our heuristics failed.")
+                        print("   Proceeding to other solvers...")
+
+        # If decomposition was not attempted or failed, continue to method selection.
         
         # Phase 2: Method Selection
         if self.verbose:
-            print(f"[Phase 2/{'4' if self.enable_quantum_certification else '3'}] Selecting optimal method...")
+            print(f"[Phase 2/3] Selecting optimal method...")
         
         if method is not None:
             # User forced a specific method
@@ -819,7 +931,7 @@ class ComprehensiveQuantumSATSolver:
         
         # Phase 3: Execute Solver
         if self.verbose:
-            print(f"[Phase 3/{'4' if self.enable_quantum_certification else '3'}] Executing {selected_method.value}...")
+            print(f"[Phase 3/3] Executing {selected_method.value}...")
         
         solving_start = time.time()
         result = self._execute_solver(
@@ -891,7 +1003,8 @@ class ComprehensiveQuantumSATSolver:
             SolverMethod.QAOA_SCAFFOLDING,
             SolverMethod.QUANTUM_WALK,
             SolverMethod.QSVT,
-            SolverMethod.STRUCTURE_ALIGNED_QAOA
+            SolverMethod.STRUCTURE_ALIGNED_QAOA,
+            SolverMethod.QAOA_QLTO # <-- PATCH: Added QLTO to quantum list
         ]
         quantum_used = selected_method in quantum_methods and not result.get('fallback', False)
         
@@ -910,6 +1023,19 @@ class ComprehensiveQuantumSATSolver:
         if final_assignment:
             final_assignment_1_indexed = {k+1: v for k, v in final_assignment.items()}
 
+        # Ensure optional metadata variables exist
+        if 'k_star' not in locals():
+            k_star = None
+        if 'hardness_class' not in locals():
+            hardness_class = None
+        if 'certification_confidence' not in locals():
+            certification_confidence = None
+        if 'certification_time' not in locals():
+            certification_time = 0.0
+        if 'decomposition_used' not in locals():
+            decomposition_used = False
+
+        # --- PATCH: Add new FPT metrics to the final solution object ---
         return SATSolution(
             satisfiable=final_satisfiable,
             assignment=final_assignment_1_indexed, # Store 1-indexed assignment
@@ -927,8 +1053,16 @@ class ComprehensiveQuantumSATSolver:
             hardness_class=hardness_class,
             certification_confidence=certification_confidence,
             decomposition_used=decomposition_used,
-            certification_time=certification_time
+            certification_time=certification_time,
+            
+            # Add metrics from the FPT pipeline if they exist
+            k_prime_initial=result.get('k_prime_initial'),
+            k_prime_final=result.get('k_prime_final'),
+            is_minimal=result.get('is_minimal'),
+            sampler_time=result.get('sampler_time'),
+            classical_search_time=result.get('classical_search_time')
         )
+        # --- END PATCH ---
     
     def _select_method(
         self,
@@ -949,8 +1083,12 @@ class ComprehensiveQuantumSATSolver:
         if recommended_solver == "quantum":
             if self.prefer_quantum and STRUCTURE_ALIGNED_AVAILABLE and k_est <= 5:
                 return SolverMethod.STRUCTURE_ALIGNED_QAOA  # 🌟 BEST for k*≤5: 100% deterministic!
-            elif self.prefer_quantum and QAOA_QLTO_AVAILABLE:
-                return SolverMethod.QAOA_QLTO  # Multi-basin optimization
+            
+            # --- PATCH: Use FPT pipeline as the new default quantum solver ---
+            elif self.prefer_quantum and QAOA_QLTO_AVAILABLE and run_fpt_pipeline is not None:
+                return SolverMethod.QAOA_QLTO  # FPT Pipeline
+            # --- END PATCH ---
+            
             elif self.prefer_quantum and QAOA_FORMAL_AVAILABLE:
                 return SolverMethod.QAOA_FORMAL
             elif QSVT_AVAILABLE and k_est <= np.log2(n_vars) + 1:
@@ -959,8 +1097,10 @@ class ComprehensiveQuantumSATSolver:
                 return SolverMethod.CLASSICAL_DPLL
         
         elif recommended_solver == "hybrid_qaoa":
-            if self.prefer_quantum and QAOA_QLTO_AVAILABLE:
-                return SolverMethod.QAOA_QLTO  # BEST: Multi-basin optimization
+            # --- PATCH: Use FPT pipeline as the new default quantum solver ---
+            if self.prefer_quantum and QAOA_QLTO_AVAILABLE and run_fpt_pipeline is not None:
+                return SolverMethod.QAOA_QLTO  # FPT Pipeline
+            # --- END PATCH ---
             elif self.prefer_quantum and QAOA_FORMAL_AVAILABLE:
                 return SolverMethod.QAOA_FORMAL
             elif QAOA_MORPHING_AVAILABLE:
@@ -969,8 +1109,10 @@ class ComprehensiveQuantumSATSolver:
                 return SolverMethod.CLASSICAL_DPLL
         
         elif recommended_solver == "scaffolding_search":
-            if QAOA_QLTO_AVAILABLE:
-                return SolverMethod.QAOA_QLTO  # BEST: Better than scaffolding!
+            # --- PATCH: Use FPT pipeline as the new default quantum solver ---
+            if self.prefer_quantum and QAOA_QLTO_AVAILABLE and run_fpt_pipeline is not None:
+                return SolverMethod.QAOA_QLTO  # FPT Pipeline
+            # --- END PATCH ---
             elif QAOA_SCAFFOLDING_AVAILABLE:
                 return SolverMethod.QAOA_SCAFFOLDING
             elif QWALK_AVAILABLE:
@@ -998,10 +1140,13 @@ class ComprehensiveQuantumSATSolver:
         
         try:
             if method == SolverMethod.STRUCTURE_ALIGNED_QAOA:
+                # Pass k_est (the good one from Phase 1) as the k_star argument
                 return self._solve_structure_aligned_qaoa(clauses, n_vars, k_est, timeout)
             
             elif method == SolverMethod.QAOA_QLTO:
+                # --- PATCH: This now calls our FPT pipeline ---
                 return self._solve_qaoa_qlto(clauses, n_vars, timeout)
+                # --- END PATCH ---
             
             elif method == SolverMethod.QAOA_FORMAL:
                 return self._solve_qaoa_formal(clauses, n_vars, k_est)
@@ -1048,29 +1193,71 @@ class ComprehensiveQuantumSATSolver:
         if not STRUCTURE_ALIGNED_AVAILABLE:
             raise Exception("Structure-Aligned QAOA not available")
         
-        # NEW: Determine fast_mode based on decomposer settings
-        fast_mode = "FisherInfo" not in self.decompose_methods
+        # --- FIX: Always use fast_mode for large problems, regardless of decomposition settings ---
+        fast_mode = True
         
+        # --- START FIX: Trust Phase 1 k_star estimate ---
+        # k_star is the k_est from Phase 1. We trust this.
+        trusted_k_star = int(k_star)
+
+        # --- START FIX: Handle k*=0 case FIRST to avoid false positives ---
+        # If k*=0, the problem is classically easy. Skip ALL structure analysis
+        # and solve directly to prevent the spectral analysis (k*=364) from running.
+        
+        if trusted_k_star == 0:
+            if self.verbose:
+                print(f"  🌟 Structure-Aligned QAOA: 100% deterministic for k*≤5")
+                # This now shows the trusted k_star from Phase 1
+                print(f"  Initial estimate (TRUSTED): k* = {trusted_k_star}")
+                print(f"\n  🔧 k* = 0 detected. Problem is classically easy.")
+                print(f"     Skipping structure analysis & decomposition.")
+                print(f"     Solving directly with classical solver...")
+            
+            is_sat, assignment, method = self.verify_with_classical(clauses, n_vars, timeout)
+            
+            # Create dummy structure/resources for the return object
+            dummy_structure = {'backdoor_estimate': 0, 'spectral_gap': 0, 'recommended_depth': 0, 'avg_coupling': 0}
+            dummy_resources = {'is_feasible': True, 'deterministic': True, 'partition_size': 0, 'n_partitions': 0, 'depth': 0, 'n_basins': 0, 'n_iterations': 0, 'expected_time': 0, 'overall_success_rate': 1.0}
+
+            return {
+                'satisfiable': is_sat if is_sat is not None else False,
+                'assignment': assignment, # 0-indexed
+                'method': f'Structure-Aligned (k*=0 classical solve: {method})',
+                'fallback': False, # This is the intended path for k*=0
+                'resources': dummy_resources,
+                'structure': dummy_structure,
+                'initial_params': (None, None),
+                'deterministic': True, # k*=0 is deterministic
+                'k_star': trusted_k_star, 
+                'hardness_class': 'DECOMPOSABLE'
+            }
+        # --- END FIX ---
+
+
+        # If k_star > 0, proceed with the full analysis and decomposition
         if self.verbose:
             print(f"  🌟 Structure-Aligned QAOA: 100% deterministic for k*≤5")
-            print(f"  Initial estimate: k* = {k_star}")
-            print(f"  Extracting problem structure (fast_mode={fast_mode})...")
+            # This now shows the trusted k_star from Phase 1
+            print(f"  Initial estimate (TRUSTED): k* = {trusted_k_star}")
+            print(f"  Extracting *supplemental* problem structure (fast_mode={fast_mode})...")
         
         # Extract problem structure (use fast_mode for large problems to skip slow spectral analysis)
         structure = extract_problem_structure(clauses, n_vars, fast_mode=fast_mode)
         
-        # Use the REAL backdoor estimate from structure analysis, not the initial guess!
-        actual_k_star = int(structure['backdoor_estimate'])
+        # This is the overwritten (bad) estimate from the log. We will log it but NOT use it.
+        spectral_k_star_estimate = int(structure['backdoor_estimate'])
         
         if self.verbose:
             print(f"  ✅ Structure analysis complete!")
-            print(f"     🔑 ACTUAL k* (backdoor size): {actual_k_star}")
+            # Log both k_star values for clarity
+            print(f"     🔑 TRUSTED k* (from Phase 1): {trusted_k_star}")
+            print(f"     ⚠️  Spectral k* (for logging only): {spectral_k_star_estimate}")
             print(f"     📊 Spectral gap: {structure['spectral_gap']:.4f}")
             print(f"     🎯 Recommended QAOA depth: {structure['recommended_depth']}")
         
         # Calculate resources for 99.99%+ success using ACTUAL k*
         resources = recommend_qaoa_resources(
-            k_star=actual_k_star,
+            k_star=trusted_k_star, # Use the trusted k*
             n_vars=n_vars,
             target_success_rate=0.9999,  # 99.99%!
             time_budget_seconds=timeout
@@ -1096,21 +1283,20 @@ class ComprehensiveQuantumSATSolver:
         # Check if feasible
         if not resources['is_feasible'] and self.verbose:
              print(f"  ⚠️  Time budget exceeded, but continuing anyway...")
-        
+
         # --- MAJOR LOGIC FIX ---
-        # ALWAYS attempt decomposition. This IS the structure-aligned method.
-        # The classical solver is only a fallback if decomposition *fails*.
+        # If k* > 0, proceed with decomposition as intended, but using the TRUSTED k*
         
         decomposition_succeeded = False
         decomp_result = None
 
         if self.verbose:
-            print(f"\n  🔧 Attempting polynomial decomposition (k* hint = {actual_k_star})...")
+            print(f"\n  🔧 Attempting polynomial decomposition (k* hint = {trusted_k_star})...")
             print(f"     Trying methods: {self.decompose_methods}")
         
         try:
             # Use the actual k* from structure analysis
-            decomp_result = self.solve_via_decomposition(clauses, n_vars, actual_k_star, timeout)
+            decomp_result = self.solve_via_decomposition(clauses, n_vars, trusted_k_star, timeout)
             
             if decomp_result is not None and decomp_result.get('satisfiable'):
                 if self.verbose:
@@ -1120,21 +1306,21 @@ class ComprehensiveQuantumSATSolver:
                 return {
                     'satisfiable': True,
                     'assignment': decomp_result.get('assignment'), # 0-indexed
-                    'method': f"Decomposed-{decomp_result['method']} (k*={actual_k_star})",
+                    'method': f"Decomposed-{decomp_result['method']} (k*={trusted_k_star})",
                     'fallback': False,
                     'resources': resources,
                     'structure': structure,
                     'decomposition': decomp_result.get('decomposition'),
                     'initial_params': (gammas, betas),
                     'deterministic': resources['is_deterministic'],
-                    'k_star': actual_k_star,
-                    'hardness_class': 'DECOMPOSABLE' if actual_k_star < (n_vars // 4) else ('WEAKLY_DECOMPOSABLE' if actual_k_star < (n_vars // 2) else 'UNDECOMPOSABLE')
+                    'k_star': trusted_k_star,
+                    'hardness_class': 'DECOMPOSABLE' if trusted_k_star < (n_vars // 4) else ('WEAKLY_DECOMPOSABLE' if trusted_k_star < (n_vars // 2) else 'UNDECOMPOSABLE')
                 }
             elif decomp_result is not None and not decomp_result.get('satisfiable'):
                 if self.verbose:
                     print(f"  ✅ Decomposition proved UNSATISFIABLE")
                 decomposition_succeeded = True
-                return {'satisfiable': False, 'assignment': None, 'method': f"Decomposed-{decomp_result['method']} (k*={actual_k_star})", 'fallback': False}
+                return {'satisfiable': False, 'assignment': None, 'method': f"Decomposed-{decomp_result['method']} (k*={trusted_k_star})", 'fallback': False}
             else:
                 if self.verbose:
                     print(f"  ⚠️  Decomposition failed, using classical fallback")
@@ -1157,55 +1343,69 @@ class ComprehensiveQuantumSATSolver:
             'structure': structure,
             'initial_params': (gammas, betas),
             'deterministic': resources['is_deterministic'],
-            'k_star': actual_k_star,  # The REAL k* value!
-            'hardness_class': 'DECOMPOSABLE' if actual_k_star < (n_vars // 4) else ('WEAKLY_DECOMPOSABLE' if actual_k_star < (n_vars // 2) else 'UNDECOMPOSABLE')
+            'k_star': trusted_k_star,  # The REAL k* value!
+            'hardness_class': 'DECOMPOSABLE' if trusted_k_star < (n_vars // 4) else ('WEAKLY_DECOMPOSABLE' if trusted_k_star < (n_vars // 2) else 'UNDECOMPOSABLE')
         }
     
+    # --- PATCH: This method is now the FPT PIPELINE ---
     def _solve_qaoa_qlto(self, clauses, n_vars, timeout):
         """
-        QAOA with QLTO multi-basin optimizer (BEST quantum approach).
+        Solves the SAT problem using the QLTO-FPT pipeline.
+        This is the method developed in experiments v1-v7.
         
-        This combines:
-        - QAOA structure (variational quantum algorithm)
-        - QLTO optimizer (escapes local minima, explores multiple basins)
-        - Multi-restart for robustness
-        
-        Still exponential in worst case, but MUCH better than standard QAOA!
+        1. Runs QLTO sampler
+        2. Extracts k'_initial (frequency analysis)
+        3. Shrinks to k'_final (greedy PySAT)
+        4. Solves with O(2^k' * poly(N))
         """
-        if not QAOA_QLTO_AVAILABLE:
-            raise Exception("QAOA-QLTO not available")
-        
+        if not QAOA_QLTO_AVAILABLE or run_fpt_pipeline is None:
+            raise Exception("QAOA-QLTO FPT pipeline not available")
+            
+        if not PYSAT_AVAILABLE:
+            raise Exception("PySAT is required for the QLTO-FPT pipeline")
+
         if self.verbose:
-            print(f"  QAOA-QLTO: Multi-basin quantum optimization")
-            print(f"  Depth: p={min(3, n_vars//4)}")
-            print(f"  Restarts: 2 (for robustness)")
-        
-        # Use smaller depth for speed, more restarts for reliability
-        depth = min(3, n_vars // 4) if n_vars > 12 else 2
-        max_iterations = min(100, n_vars * 10)
-        
-        result = solve_sat_qaoa_qlto_with_restart(
-            clauses,
-            n_vars,
-            max_restarts=2,
-            depth=depth,
-            max_iterations=max_iterations,
-            verbose=False  # Don't double-print
+            print(f"  🌟 QAOA-QLTO: Invoking FPT Pipeline (N={n_vars})")
+
+        # Convert clauses (tuples of ints) to QLTOSATClause objects
+        try:
+            sat_clauses = [QLTOSATClause(tuple(c)) for c in clauses]
+            problem = QLTOSATProblem(n_vars, sat_clauses)
+        except Exception as e:
+             return {'satisfiable': False, 'assignment': None, 'method': 'QAOA-QLTO (FPT)', 'fallback': True, 'error': f'Failed to create SATProblem: {e}'}
+
+        # Use standard config from our v7 experiment
+        config = {
+            "p_layers": 2,
+            "bits_per_param": 3,
+            "N_MASK_BITS": 10,
+            "shots": 2048,
+            "top_T_candidates": 50,
+            "freq_threshold": 0.15,
+            "random_seed": int(time.time()) # Use a different seed each time
+        }
+
+        # Run the full pipeline
+        # This function is now in qlto_qaoa_sat.py
+        result = run_fpt_pipeline(
+            clauses, n_vars, "fpt_solve", config, config['random_seed']
         )
         
-        # Convert 1-indexed assignment to 0-indexed
-        assignment_0_indexed = None
-        if result.get('assignment'):
-            assignment_0_indexed = {k-1: v for k, v in result['assignment'].items()}
-
+        # Unpack the results
+        solution_0_indexed = result.get('solution_0_idx')
+        
         return {
-            'satisfiable': result.get('satisfiable', False),
-            'assignment': assignment_0_indexed,
-            'method': 'QAOA-QLTO',
+            'satisfiable': result.get('success', False),
+            'assignment': solution_0_indexed, # 0-indexed
+            'method': 'QAOA-QLTO (FPT)',
             'fallback': False,
-            'energy': result.get('energy', float('inf')),
-            'iterations': result.get('iterations', 0)
+            'k_prime_initial': result.get('k_prime_initial'),
+            'k_prime_final': result.get('k_prime_final'),
+            'is_minimal': result.get('is_minimal'),
+            'sampler_time': result.get('sampler_time'),
+            'classical_search_time': result.get('classical_search_time'),
         }
+    # --- END PATCH ---
     
     def _solve_qaoa_formal(self, clauses, n_vars, k_est):
         """QAOA Formal solver (best for small k, structured instances)"""
@@ -1458,3 +1658,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

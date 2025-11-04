@@ -23,24 +23,6 @@ import sys
 import time
 import binascii
 
-sys.path.insert(0, 'src/core')
-sys.path.insert(0, 'src/solvers')
-
-try:
-    from quantum_sat_solver import ComprehensiveQuantumSATSolver
-except ImportError:
-    print("CRITICAL ERROR: quantum_sat_solver.py not found.")
-    print("Please ensure it is in the same directory or src/solvers.")
-    sys.exit(1)
-    
-try:
-    from aes_full_encoder import encode_aes_128
-except ImportError:
-    print("CRITICAL ERROR: aes_full_encoder.py not found.")
-    print("Please ensure it is in the same directory or src/solvers.")
-    sys.exit(1)
-
-
 try:
     from Crypto.Cipher import AES
     from Crypto.Util.Padding import pad, unpad
@@ -55,6 +37,8 @@ try:
     ONE_ROUND_AVAILABLE = True
 except ImportError:
     ONE_ROUND_AVAILABLE = False
+
+
 
 
 def print_banner():
@@ -106,6 +90,26 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
         demo_ciphertext: Pre-set ciphertext for demo mode (bytes)
     """
     
+    # Moved imports to prevent re-importing in child processes
+    sys.path.insert(0, 'src/core')
+    sys.path.insert(0, 'src/solvers')
+
+    try:
+        from quantum_sat_solver import ComprehensiveQuantumSATSolver
+    except ImportError:
+        print("CRITICAL ERROR: quantum_sat_solver.py not found.")
+        print("Please ensure it is in the same directory or src/solvers.")
+        sys.exit(1)
+        
+    try:
+        from aes_full_encoder import encode_aes_128
+    except ImportError:
+        print("CRITICAL ERROR: aes_full_encoder.py not found.")
+        print("Please ensure it is in the same directory or src/solvers.")
+        sys.exit(1)
+
+
+
     print_banner()
     
     print("="*80)
@@ -138,22 +142,10 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     
     print(f"✅ Using {n_jobs if n_jobs > 0 else 'ALL'} cores")
     
-    # Get decomposition method
-    print()
-    print("Choose decomposition methods:")
-    print("  [fast]  Louvain + Treewidth (skip slow FisherInfo) ⚡")
-    print("  [full]  FisherInfo + Louvain + Treewidth + Hypergraph (SLOW)")
-    print()
-    
-    # NEW: Default to 'fast' to match the user's log and use the faster path
-    method_choice = input("Enter method [fast/full] (default: fast): ").strip() or "fast"
-    
-    if method_choice == "fast":
-        decompose_methods = ["Louvain", "Treewidth"]
-        print("✅ Using FAST methods (no FisherInfo)")
-    else:
-        decompose_methods = ["FisherInfo", "Louvain", "Treewidth", "Hypergraph"]
-        print("✅ Using ALL methods (includes slow FisherInfo)")
+    # --- NEW: Use a fixed, ordered list of strategies from fastest to most complex ---
+    # This implements the user's suggestion to try strategies incrementally.
+    decompose_methods = ["Louvain", "FisherInfo"]
+    print(f"✅ Using incremental strategies: {', '.join(decompose_methods)}")
     
     # Key size (only AES-128 supported for now)
     key_bits = 128
@@ -238,13 +230,12 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     
     if rounds == 1 and ONE_ROUND_AVAILABLE:
         print("   Using 1-round AES encoder...")
-        clauses, n_vars, key_vars = encode_1_round_aes(plaintext, ciphertext)
+        clauses, n_vars, _ = encode_1_round_aes(plaintext, ciphertext)
     elif rounds != 10:
-        print(f"   WARNING: Full encoder only supports 10 rounds. Using 10 rounds.")
-        clauses, n_vars, round_keys = encode_aes_128(plaintext, ciphertext, master_key_vars)
+        clauses, n_vars, _ = encode_aes_128(plaintext, ciphertext, master_key_vars)
     else:
         print(f"   Using full AES encoder ({rounds} rounds)...")
-        clauses, n_vars, round_keys = encode_aes_128(plaintext, ciphertext, master_key_vars)
+        clauses, n_vars, _ = encode_aes_128(plaintext, ciphertext, master_key_vars)
     
     encoding_time = time.time() - encoding_start
     
@@ -254,8 +245,22 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     print(f"   Key variables: 1-128")
     print()
     
+    # --- NEW: Compute k* before solving ---
+    print("[2/4] Computing k* (backdoor size)...")
+    try:
+        from structure_aligned_qaoa import extract_problem_structure
+        
+        structure = extract_problem_structure(clauses, n_vars, fast_mode=True)
+        k_star_computed = structure.get('backdoor_estimate')
+        print(f"✅ Computed k* = {k_star_computed}")
+        
+    except ImportError:
+        print("⚠️ Could not import `extract_problem_structure`. Using default k* = 50.")
+        k_star_computed = 50
+    print()
+
     # Solve with quantum SAT using BREAKTHROUGH method
-    print(f"[2/4] Creating quantum SAT solver...")
+    print(f"[3/4] Creating quantum SAT solver...")
     print(f"   Cores: {n_jobs if n_jobs > 0 else 'ALL'}")
     print(f"   Decompose methods: {decompose_methods}")
     print()
@@ -263,14 +268,14 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     solver = ComprehensiveQuantumSATSolver(
         verbose=True,
         prefer_quantum=True,
-        enable_quantum_certification=False,  # Disable slow certification
+        use_true_k=True,  # Enable using true_k
+        enable_quantum_certification=False,  # We are computing k* ourselves
         decompose_methods=decompose_methods,
         n_jobs=n_jobs
     )
     
-    print(f"[3/4] Solving with Quantum SAT + Recursive Decomposition...")
-    print(f"   This will determine k* (backdoor size)")
-    print(f"   If k* < 10: AES is CRACKABLE ❌")
+    print(f"[4/4] Solving with Quantum SAT + Recursive Decomposition...")
+    print(f"   Using computed k* = {k_star_computed}")
     print(f"   If decomposition succeeds: AES is CRACKABLE ❌")
     print()
     
@@ -283,51 +288,37 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     except Exception:
         use_tqdm = False
 
-    if use_tqdm:
-        strategy_bar = None
+    pbar = None
 
     def _progress_cb(**kwargs):
-        nonlocal strategy_bar # Ensure we can access/modify the bar
+        nonlocal pbar
         stage = kwargs.get('stage')
-        if stage == 'start':
-            total = kwargs.get('total', None)
-            if use_tqdm and total:
-                try:
-                    strategy_bar = tqdm(total=total, desc='Decomposition', ncols=100, leave=True)
-                except Exception:
-                    pass
         
-        # --- EDIT: ADDED THIS BLOCK TO SHOW STRATEGY PROGRESS ---
+        if stage == 'start':
+            total = kwargs.get('total', 0)
+            if use_tqdm and total > 0:
+                pbar = tqdm(total=total, desc="Decomposition", ncols=100, leave=False)
+        
         elif stage == 'strategy_start':
-            strategy = kwargs.get('strategy', 'Unknown Strategy')
-            if use_tqdm and strategy_bar is not None:
-                try:
-                    # Update the description of the bar to show the current strategy
-                    strategy_bar.set_description(f'Decomposing: {strategy}')
-                except Exception:
-                    pass # Ignore tqdm errors
+            strategy = kwargs.get('strategy', 'Unknown')
+            if pbar:
+                pbar.set_description(f"Decomposing: {strategy}")
             else:
-                # If tqdm isn't available or fails, print to console
-                # This directly solves the "black box" problem
                 print(f"   → Trying strategy: {strategy}...")
-        # --- END OF EDITED BLOCK ---
 
         elif stage == 'strategy_end':
-            if use_tqdm and strategy_bar is not None:
-                try:
-                    strategy_bar.update(1)
-                except Exception:
-                    pass
+            if pbar:
+                pbar.update(1)
+
         elif stage == 'done':
-            if use_tqdm and strategy_bar is not None:
-                try:
-                    strategy_bar.close()
-                except Exception:
-                    pass
+            if pbar:
+                pbar.close()
+                pbar = None
 
     solution = solver.solve(
         clauses,
         n_vars,
+        true_k=k_star_computed,
         timeout=1800.0,  # 30 minute timeout for the larger problem
         check_final=False,
         progress_callback=_progress_cb
@@ -361,6 +352,7 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
         
         # Check if decomposition succeeded
         decomposed = "Decomposed" in solution.method_used
+        is_partial = "partial" in solution.method_used
         
         if k_star is not None:
             print()
@@ -483,7 +475,7 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     print("="*80)
     print()
     
-    if key_found:
+    if key_found and not is_partial:
         print("🚨 AES KEY SUCCESSFULLY RECOVERED! 🚨")
         print()
         print(f"✅ {rounds}-round AES cracked in {total_time/60:.1f} minutes!")
@@ -492,6 +484,14 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
         print(f"✅ This proves the full AES SAT encoding is solvable!")
         print()
         print("💥 THIS IS A MAJOR BREAKTHROUGH IN CRYPTANALYSIS!")
+        print()
+    elif is_partial:
+        print("❌ KEY RECOVERY FAILED")
+        print()
+        print("The solver found a partial solution, but it is incomplete.")
+        print("This happened because the problem was decomposed into partitions,")
+        print("but one or more of the partitions was too large or complex to solve.")
+        print("While a key was extracted, it is likely incorrect.")
         print()
     elif not key_found:
         print("❌ KEY RECOVERY FAILED")

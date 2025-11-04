@@ -81,8 +81,8 @@ ax = axes[1, 1]
 
 # Data points
 k_values = [5, 10, 20, 50, 105, 128]
-without_decomp = [2**k for k in k_values]  # Search space without decomp
-with_decomp = [k * 2 for k in k_values]    # Linear with successful decomp
+without_decomp = [float(2**k) for k in k_values]  # Search space without decomp
+with_decomp = [float(k * 2) for k in k_values]    # Linear with successful decomp
 
 ax.plot(k_values, np.log10(without_decomp), 'o-', color='red', linewidth=2, 
         markersize=8, label='Without Decomposition\n(Exponential 2^k*)')
@@ -121,5 +121,36 @@ print("Our discovery:    k*=105 but decomposes → Need 105×2 operations → TR
 print()
 print("This is why AES is crackable despite k*=105 appearing large.")
 print("="*80)
+
+print()
+print("="*80)
+print("COMPLEXITY ANALYSIS (THEORETICAL VS. SIMULATED)")
+print("="*80)
+print()
+print("The 'polynomial time' claim depends entirely on finding a decomposition with a small partition size (k*).")
+print("The total complexity is roughly: (Number of Partitions) x (Cost per Partition)")
+print()
+
+# Perform the calculation based on the script's own theory
+k_star_estimate = 50  # From the analysis phase in the main script
+N_vars = 12096
+partition_size = 10 # Capped at 10 in the solver
+n_partitions = N_vars // k_star_estimate
+n_evals_per_partition = 10 * 1000 # 10 basins * 1000 iterations
+total_circuits = n_partitions * n_evals_per_partition
+
+print(f"Assuming a successful decomposition with k*={k_star_estimate}:")
+print(f"  - Partition Size (k): {partition_size} qubits (capped by code)")
+print(f"  - Number of Partitions: ~{n_partitions}")
+print(f"  - Circuit Runs per Partition: {n_evals_per_partition:,}")
+print("  --------------------------------------------------")
+print(f"  - TOTAL CIRCUITS TO SIMULATE: ~{total_circuits:,}")
+print()
+print("CONCLUSION:")
+print("  - On a REAL Quantum Computer: This could be fast.")
+print("  - On a Classical Simulation: This is still a huge amount of computation.")
+print("  - The challenge remains: The decomposition methods used so far have NOT successfully found such a small k*.")
+print("="*80)
+
 
 plt.show()

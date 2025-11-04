@@ -336,6 +336,41 @@ python tools/p_neq_np_as_physical_law.py
 - Historical context, theoretical analysis, experimental results
 - See [Research Index](docs/research_archive/README_RESEARCH_INDEX.md)
 
+
+## Quantum SAT solver
+
+   1. SAT Encoding: First, the 10-round AES-128 encryption is converted into a large SAT problem (over 1 million clauses).
+
+   2. Initial `k*` Estimation: The script performs a quick analysis (fast_mode) to get an initial estimate of the problem's backdoor size, k*.
+
+   3. Decomposition Strategy:
+       * If the estimated k* is small enough to suggest the problem is decomposable, the solver immediately enters the primary recursive
+         decomposition workflow (solve_via_decomposition).
+       * This is the main path for solving the problem.
+
+   4. Recursive Decomposition Loop:
+       * The core of the solver is a recursive loop that continuously breaks the problem down:
+          a.  It decomposes the current problem into smaller partitions.
+          b.  For each new partition, it estimates its own k*.
+          c.  If `k*` is small enough (`< 10`): The partition is considered "easy." It's solved directly using a quantum algorithm (QAOA) that
+   has a near-100% theoretical success rate on such problems.
+          d.  If `k*` is still large: The solver calls itself on that partition, repeating the decomposition process until the pieces are
+  small enough to solve.
+
+   5. Handling Failures:
+       * If Decomposition Fails: If at any point the decomposition heuristics are unable to break down a problem, the solver doesn't give up.
+       * Quantum Hardness Certification: It then triggers a high-confidence "full" certification process to determine if the problem is
+         fundamentally "UNDECOMPOSABLE".
+       * If Certified UNDECOMPOSABLE: The script reports that it has found a special hard case and terminates. This is a key research
+         outcome.
+       * If Not: If the certification shows the problem is still decomposable (meaning our heuristics just failed), it will fall back to
+         attempting a direct quantum solve on that piece.
+
+   6. Solution Assembly: Once all the small partitions have been solved, their individual solutions are combined to recover the full AES key.
+
+  This flow is designed to be fully automatic, prioritizing the recursive decomposition strategy to solve the problem with a high probability
+   of success.
+
 ---
 
 ## 🧪 Running Tests
