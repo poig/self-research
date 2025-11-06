@@ -1,0 +1,201 @@
+approach,part_file,n_vars,n_clauses,pauli_weight_hist,cnot_per_layer,total_cnot_logical,logical_qubits,physical_qubits_est
+QLTO_cnf_part_part_0_cnf_compact.pkl.gz,part_0_cnf_compact.pkl.gz,360,2091,"{1: 19, 9: 2048, 3: 24}",32864,65728,362,362000
+QLTO_cnf_part_part_100_cnf_compact.pkl.gz,part_100_cnf_compact.pkl.gz,13201,6203,"{3: 48, 1: 5, 9: 6144, 2: 6}",98508,197016,13203,13203000
+QLTO_cnf_part_part_101_cnf_compact.pkl.gz,part_101_cnf_compact.pkl.gz,13239,2218,"{1: 10, 3: 124, 9: 2048, 2: 36}",33336,66672,13241,13241000
+QLTO_cnf_part_part_102_cnf_compact.pkl.gz,part_102_cnf_compact.pkl.gz,13142,6189,"{1: 3, 3: 36, 9: 6144, 2: 6}",98460,196920,13144,13144000
+QLTO_cnf_part_part_103_cnf_compact.pkl.gz,part_103_cnf_compact.pkl.gz,10988,2123,"{9: 2048, 1: 3, 3: 52, 2: 20}",33016,66032,10990,10990000
+QLTO_cnf_part_part_104_cnf_compact.pkl.gz,part_104_cnf_compact.pkl.gz,11000,6170,"{3: 20, 9: 6144, 2: 6}",98396,196792,11002,11002000
+QLTO_cnf_part_part_105_cnf_compact.pkl.gz,part_105_cnf_compact.pkl.gz,11659,2128,"{9: 2048, 1: 4, 3: 56, 2: 20}",33032,66064,11661,11661000
+QLTO_cnf_part_part_106_cnf_compact.pkl.gz,part_106_cnf_compact.pkl.gz,13172,6195,"{1: 5, 3: 40, 9: 6144, 2: 6}",98476,196952,13174,13174000
+QLTO_cnf_part_part_107_cnf_compact.pkl.gz,part_107_cnf_compact.pkl.gz,13186,2100,"{1: 4, 3: 40, 9: 2048, 2: 8}",32944,65888,13188,13188000
+QLTO_cnf_part_part_108_cnf_compact.pkl.gz,part_108_cnf_compact.pkl.gz,13224,6196,"{1: 6, 3: 40, 9: 6144, 2: 6}",98476,196952,13226,13226000
+QLTO_cnf_part_part_109_cnf_compact.pkl.gz,part_109_cnf_compact.pkl.gz,11215,6167,"{1: 1, 9: 6144, 3: 16, 2: 6}",98380,196760,11217,11217000
+QLTO_cnf_part_part_10_cnf_compact.pkl.gz,part_10_cnf_compact.pkl.gz,3384,6170,"{1: 2, 3: 20, 9: 6144, 2: 4}",98392,196784,3386,3386000
+QLTO_cnf_part_part_110_cnf_compact.pkl.gz,part_110_cnf_compact.pkl.gz,13203,6194,"{3: 40, 1: 4, 9: 6144, 2: 6}",98476,196952,13205,13205000
+QLTO_cnf_part_part_111_cnf_compact.pkl.gz,part_111_cnf_compact.pkl.gz,13246,2160,"{9: 2048, 1: 8, 3: 80, 2: 24}",33136,66272,13248,13248000
+QLTO_cnf_part_part_112_cnf_compact.pkl.gz,part_112_cnf_compact.pkl.gz,13217,6186,"{3: 32, 9: 6144, 2: 6, 1: 4}",98444,196888,13219,13219000
+QLTO_cnf_part_part_113_cnf_compact.pkl.gz,part_113_cnf_compact.pkl.gz,13220,2113,"{3: 48, 1: 5, 2: 12, 9: 2048}",32984,65968,13222,13222000
+QLTO_cnf_part_part_114_cnf_compact.pkl.gz,part_114_cnf_compact.pkl.gz,13243,2107,"{3: 44, 1: 5, 2: 10, 9: 2048}",32964,65928,13245,13245000
+QLTO_cnf_part_part_115_cnf_compact.pkl.gz,part_115_cnf_compact.pkl.gz,11661,6170,"{3: 20, 2: 6, 9: 6144}",98396,196792,11663,11663000
+QLTO_cnf_part_part_116_cnf_compact.pkl.gz,part_116_cnf_compact.pkl.gz,11040,2106,"{9: 2048, 1: 2, 3: 40, 2: 16}",32960,65920,11042,11042000
+QLTO_cnf_part_part_117_cnf_compact.pkl.gz,part_117_cnf_compact.pkl.gz,13181,6182,"{1: 4, 3: 28, 9: 6144, 2: 6}",98428,196856,13183,13183000
+QLTO_cnf_part_part_118_cnf_compact.pkl.gz,part_118_cnf_compact.pkl.gz,13191,2092,"{1: 4, 3: 32, 2: 8, 9: 2048}",32912,65824,13193,13193000
+QLTO_cnf_part_part_119_cnf_compact.pkl.gz,part_119_cnf_compact.pkl.gz,13231,6183,"{1: 5, 3: 28, 9: 6144, 2: 6}",98428,196856,13233,13233000
+QLTO_cnf_part_part_11_cnf_compact.pkl.gz,part_11_cnf_compact.pkl.gz,7984,2291,"{1: 11, 3: 180, 9: 2048, 2: 52}",33592,67184,7986,7986000
+QLTO_cnf_part_part_120_cnf_compact.pkl.gz,part_120_cnf_compact.pkl.gz,13219,6180,"{3: 28, 9: 6144, 2: 4, 1: 4}",98424,196848,13221,13221000
+QLTO_cnf_part_part_121_cnf_compact.pkl.gz,part_121_cnf_compact.pkl.gz,13154,2083,"{3: 24, 2: 10, 9: 2048, 1: 1}",32884,65768,13156,13156000
+QLTO_cnf_part_part_122_cnf_compact.pkl.gz,part_122_cnf_compact.pkl.gz,13245,2083,"{3: 24, 2: 6, 9: 2048, 1: 5}",32876,65752,13247,13247000
+QLTO_cnf_part_part_123_cnf_compact.pkl.gz,part_123_cnf_compact.pkl.gz,13230,2087,"{9: 2048, 1: 5, 3: 28, 2: 6}",32892,65784,13232,13232000
+QLTO_cnf_part_part_124_cnf_compact.pkl.gz,part_124_cnf_compact.pkl.gz,13238,2095,"{9: 2048, 1: 7, 3: 32, 2: 8}",32912,65824,13240,13240000
+QLTO_cnf_part_part_125_cnf_compact.pkl.gz,part_125_cnf_compact.pkl.gz,13229,2086,"{1: 8, 3: 24, 2: 6, 9: 2048}",32876,65752,13231,13231000
+QLTO_cnf_part_part_126_cnf_compact.pkl.gz,part_126_cnf_compact.pkl.gz,13144,2097,"{1: 3, 3: 32, 2: 14, 9: 2048}",32924,65848,13146,13146000
+QLTO_cnf_part_part_127_cnf_compact.pkl.gz,part_127_cnf_compact.pkl.gz,13234,2073,"{3: 16, 2: 6, 9: 2048, 1: 3}",32844,65688,13236,13236000
+QLTO_cnf_part_part_128_cnf_compact.pkl.gz,part_128_cnf_compact.pkl.gz,13165,2096,"{3: 32, 2: 14, 9: 2048, 1: 2}",32924,65848,13167,13167000
+QLTO_cnf_part_part_129_cnf_compact.pkl.gz,part_129_cnf_compact.pkl.gz,13240,2080,"{3: 20, 2: 8, 9: 2048, 1: 4}",32864,65728,13242,13242000
+QLTO_cnf_part_part_12_cnf_compact.pkl.gz,part_12_cnf_compact.pkl.gz,9353,2296,"{1: 12, 3: 184, 9: 2048, 2: 52}",33608,67216,9355,9355000
+QLTO_cnf_part_part_130_cnf_compact.pkl.gz,part_130_cnf_compact.pkl.gz,13227,2101,"{3: 36, 2: 16, 9: 2048, 1: 1}",32944,65888,13229,13229000
+QLTO_cnf_part_part_131_cnf_compact.pkl.gz,part_131_cnf_compact.pkl.gz,13237,2089,"{3: 28, 2: 12, 9: 2048, 1: 1}",32904,65808,13239,13239000
+QLTO_cnf_part_part_132_cnf_compact.pkl.gz,part_132_cnf_compact.pkl.gz,3608,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,3610,3610000
+QLTO_cnf_part_part_133_cnf_compact.pkl.gz,part_133_cnf_compact.pkl.gz,2923,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,2925,2925000
+QLTO_cnf_part_part_134_cnf_compact.pkl.gz,part_134_cnf_compact.pkl.gz,4789,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,4791,4791000
+QLTO_cnf_part_part_135_cnf_compact.pkl.gz,part_135_cnf_compact.pkl.gz,4488,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,4490,4490000
+QLTO_cnf_part_part_136_cnf_compact.pkl.gz,part_136_cnf_compact.pkl.gz,4525,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,4527,4527000
+QLTO_cnf_part_part_137_cnf_compact.pkl.gz,part_137_cnf_compact.pkl.gz,4040,6186,"{9: 6144, 3: 32, 2: 10}",98452,196904,4042,4042000
+QLTO_cnf_part_part_138_cnf_compact.pkl.gz,part_138_cnf_compact.pkl.gz,4302,6160,"{9: 6144, 3: 12, 2: 4}",98360,196720,4304,4304000
+QLTO_cnf_part_part_139_cnf_compact.pkl.gz,part_139_cnf_compact.pkl.gz,4552,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,4554,4554000
+QLTO_cnf_part_part_13_cnf_compact.pkl.gz,part_13_cnf_compact.pkl.gz,383,2092,"{1: 20, 9: 2048, 3: 24}",32864,65728,385,385000
+QLTO_cnf_part_part_140_cnf_compact.pkl.gz,part_140_cnf_compact.pkl.gz,4776,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,4778,4778000
+QLTO_cnf_part_part_141_cnf_compact.pkl.gz,part_141_cnf_compact.pkl.gz,5640,6174,"{3: 20, 2: 10, 9: 6144}",98404,196808,5642,5642000
+QLTO_cnf_part_part_142_cnf_compact.pkl.gz,part_142_cnf_compact.pkl.gz,5688,6156,"{3: 8, 2: 4, 9: 6144}",98344,196688,5690,5690000
+QLTO_cnf_part_part_143_cnf_compact.pkl.gz,part_143_cnf_compact.pkl.gz,5912,6172,"{3: 20, 2: 8, 9: 6144}",98400,196800,5914,5914000
+QLTO_cnf_part_part_144_cnf_compact.pkl.gz,part_144_cnf_compact.pkl.gz,5416,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,5418,5418000
+QLTO_cnf_part_part_145_cnf_compact.pkl.gz,part_145_cnf_compact.pkl.gz,5178,6180,"{9: 6144, 3: 28, 2: 8}",98432,196864,5180,5180000
+QLTO_cnf_part_part_146_cnf_compact.pkl.gz,part_146_cnf_compact.pkl.gz,5901,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,5903,5903000
+QLTO_cnf_part_part_147_cnf_compact.pkl.gz,part_147_cnf_compact.pkl.gz,5480,6164,"{9: 6144, 3: 16, 2: 4}",98376,196752,5482,5482000
+QLTO_cnf_part_part_148_cnf_compact.pkl.gz,part_148_cnf_compact.pkl.gz,5704,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,5706,5706000
+QLTO_cnf_part_part_149_cnf_compact.pkl.gz,part_149_cnf_compact.pkl.gz,5256,6186,"{9: 6144, 3: 32, 2: 10}",98452,196904,5258,5258000
+QLTO_cnf_part_part_14_cnf_compact.pkl.gz,part_14_cnf_compact.pkl.gz,5904,6216,"{1: 6, 3: 60, 9: 6144, 2: 6}",98556,197112,5906,5906000
+QLTO_cnf_part_part_150_cnf_compact.pkl.gz,part_150_cnf_compact.pkl.gz,7056,6168,"{3: 16, 2: 8, 9: 6144}",98384,196768,7058,7058000
+QLTO_cnf_part_part_151_cnf_compact.pkl.gz,part_151_cnf_compact.pkl.gz,6792,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,6794,6794000
+QLTO_cnf_part_part_152_cnf_compact.pkl.gz,part_152_cnf_compact.pkl.gz,6606,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,6608,6608000
+QLTO_cnf_part_part_153_cnf_compact.pkl.gz,part_153_cnf_compact.pkl.gz,6840,6164,"{9: 6144, 3: 16, 2: 4}",98376,196752,6842,6842000
+QLTO_cnf_part_part_154_cnf_compact.pkl.gz,part_154_cnf_compact.pkl.gz,7064,6176,"{9: 6144, 3: 24, 2: 8}",98416,196832,7066,7066000
+QLTO_cnf_part_part_155_cnf_compact.pkl.gz,part_155_cnf_compact.pkl.gz,6554,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,6556,6556000
+QLTO_cnf_part_part_156_cnf_compact.pkl.gz,part_156_cnf_compact.pkl.gz,6632,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,6634,6634000
+QLTO_cnf_part_part_157_cnf_compact.pkl.gz,part_157_cnf_compact.pkl.gz,6408,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,6410,6410000
+QLTO_cnf_part_part_158_cnf_compact.pkl.gz,part_158_cnf_compact.pkl.gz,7544,6168,"{2: 8, 9: 6144, 3: 16}",98384,196768,7546,7546000
+QLTO_cnf_part_part_159_cnf_compact.pkl.gz,part_159_cnf_compact.pkl.gz,8208,6172,"{3: 20, 2: 8, 9: 6144}",98400,196800,8210,8210000
+QLTO_cnf_part_part_15_cnf_compact.pkl.gz,part_15_cnf_compact.pkl.gz,4073,2171,"{1: 7, 3: 88, 9: 2048, 2: 28}",33176,66352,4075,4075000
+QLTO_cnf_part_part_160_cnf_compact.pkl.gz,part_160_cnf_compact.pkl.gz,7992,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,7994,7994000
+QLTO_cnf_part_part_161_cnf_compact.pkl.gz,part_161_cnf_compact.pkl.gz,7486,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,7488,7488000
+QLTO_cnf_part_part_162_cnf_compact.pkl.gz,part_162_cnf_compact.pkl.gz,7982,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,7984,7984000
+QLTO_cnf_part_part_163_cnf_compact.pkl.gz,part_163_cnf_compact.pkl.gz,7760,6184,"{9: 6144, 3: 32, 2: 8}",98448,196896,7762,7762000
+QLTO_cnf_part_part_164_cnf_compact.pkl.gz,part_164_cnf_compact.pkl.gz,8008,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,8010,8010000
+QLTO_cnf_part_part_165_cnf_compact.pkl.gz,part_165_cnf_compact.pkl.gz,8232,6176,"{9: 6144, 3: 24, 2: 8}",98416,196832,8234,8234000
+QLTO_cnf_part_part_166_cnf_compact.pkl.gz,part_166_cnf_compact.pkl.gz,8696,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,8698,8698000
+QLTO_cnf_part_part_167_cnf_compact.pkl.gz,part_167_cnf_compact.pkl.gz,9096,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,9098,9098000
+QLTO_cnf_part_part_168_cnf_compact.pkl.gz,part_168_cnf_compact.pkl.gz,8920,6176,"{3: 24, 2: 8, 9: 6144}",98416,196832,8922,8922000
+QLTO_cnf_part_part_169_cnf_compact.pkl.gz,part_169_cnf_compact.pkl.gz,9358,6186,"{3: 32, 2: 10, 9: 6144}",98452,196904,9360,9360000
+QLTO_cnf_part_part_16_cnf_compact.pkl.gz,part_16_cnf_compact.pkl.gz,4027,6184,"{1: 4, 3: 32, 9: 6144, 2: 4}",98440,196880,4029,4029000
+QLTO_cnf_part_part_170_cnf_compact.pkl.gz,part_170_cnf_compact.pkl.gz,8906,6176,"{3: 24, 2: 8, 9: 6144}",98416,196832,8908,8908000
+QLTO_cnf_part_part_171_cnf_compact.pkl.gz,part_171_cnf_compact.pkl.gz,9368,6176,"{9: 6144, 3: 24, 2: 8}",98416,196832,9370,9370000
+QLTO_cnf_part_part_172_cnf_compact.pkl.gz,part_172_cnf_compact.pkl.gz,8912,6172,"{9: 6144, 3: 20, 2: 8}",98400,196800,8914,8914000
+QLTO_cnf_part_part_173_cnf_compact.pkl.gz,part_173_cnf_compact.pkl.gz,9160,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,9162,9162000
+QLTO_cnf_part_part_174_cnf_compact.pkl.gz,part_174_cnf_compact.pkl.gz,9837,6172,"{3: 20, 2: 8, 9: 6144}",98400,196800,9839,9839000
+QLTO_cnf_part_part_175_cnf_compact.pkl.gz,part_175_cnf_compact.pkl.gz,10508,6180,"{3: 28, 2: 8, 9: 6144}",98432,196864,10510,10510000
+QLTO_cnf_part_part_176_cnf_compact.pkl.gz,part_176_cnf_compact.pkl.gz,9839,6176,"{3: 24, 2: 8, 9: 6144}",98416,196832,9841,9841000
+QLTO_cnf_part_part_177_cnf_compact.pkl.gz,part_177_cnf_compact.pkl.gz,10464,6176,"{9: 6144, 3: 24, 2: 8}",98416,196832,10466,10466000
+QLTO_cnf_part_part_178_cnf_compact.pkl.gz,part_178_cnf_compact.pkl.gz,10248,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,10250,10250000
+QLTO_cnf_part_part_179_cnf_compact.pkl.gz,part_179_cnf_compact.pkl.gz,10088,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,10090,10090000
+QLTO_cnf_part_part_17_cnf_compact.pkl.gz,part_17_cnf_compact.pkl.gz,3596,6165,"{1: 1, 3: 16, 9: 6144, 2: 4}",98376,196752,3598,3598000
+QLTO_cnf_part_part_180_cnf_compact.pkl.gz,part_180_cnf_compact.pkl.gz,10312,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,10314,10314000
+QLTO_cnf_part_part_181_cnf_compact.pkl.gz,part_181_cnf_compact.pkl.gz,9864,6168,"{9: 6144, 3: 20, 2: 4}",98392,196784,9866,9866000
+QLTO_cnf_part_part_182_cnf_compact.pkl.gz,part_182_cnf_compact.pkl.gz,10944,6172,"{3: 20, 2: 8, 9: 6144}",98400,196800,10946,10946000
+QLTO_cnf_part_part_183_cnf_compact.pkl.gz,part_183_cnf_compact.pkl.gz,11672,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,11674,11674000
+QLTO_cnf_part_part_184_cnf_compact.pkl.gz,part_184_cnf_compact.pkl.gz,11176,6170,"{3: 20, 2: 6, 9: 6144}",98396,196792,11178,11178000
+QLTO_cnf_part_part_185_cnf_compact.pkl.gz,part_185_cnf_compact.pkl.gz,11448,6162,"{9: 6144, 3: 12, 2: 6}",98364,196728,11450,11450000
+QLTO_cnf_part_part_186_cnf_compact.pkl.gz,part_186_cnf_compact.pkl.gz,10992,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,10994,10994000
+QLTO_cnf_part_part_187_cnf_compact.pkl.gz,part_187_cnf_compact.pkl.gz,11240,6164,"{9: 6144, 3: 16, 2: 4}",98376,196752,11242,11242000
+QLTO_cnf_part_part_188_cnf_compact.pkl.gz,part_188_cnf_compact.pkl.gz,11688,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,11690,11690000
+QLTO_cnf_part_part_189_cnf_compact.pkl.gz,part_189_cnf_compact.pkl.gz,11016,6166,"{9: 6144, 3: 16, 2: 6}",98380,196760,11018,11018000
+QLTO_cnf_part_part_18_cnf_compact.pkl.gz,part_18_cnf_compact.pkl.gz,4088,6181,"{1: 3, 3: 28, 2: 6, 9: 6144}",98428,196856,4090,4090000
+QLTO_cnf_part_part_190_cnf_compact.pkl.gz,part_190_cnf_compact.pkl.gz,12376,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,12378,12378000
+QLTO_cnf_part_part_191_cnf_compact.pkl.gz,part_191_cnf_compact.pkl.gz,12776,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,12778,12778000
+QLTO_cnf_part_part_192_cnf_compact.pkl.gz,part_192_cnf_compact.pkl.gz,12600,6156,"{3: 8, 2: 4, 9: 6144}",98344,196688,12602,12602000
+QLTO_cnf_part_part_193_cnf_compact.pkl.gz,part_193_cnf_compact.pkl.gz,12504,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,12506,12506000
+QLTO_cnf_part_part_194_cnf_compact.pkl.gz,part_194_cnf_compact.pkl.gz,12392,6144,{9: 6144},98304,196608,12394,12394000
+QLTO_cnf_part_part_195_cnf_compact.pkl.gz,part_195_cnf_compact.pkl.gz,12616,6154,"{9: 6144, 3: 8, 2: 2}",98340,196680,12618,12618000
+QLTO_cnf_part_part_196_cnf_compact.pkl.gz,part_196_cnf_compact.pkl.gz,13183,2061,"{3: 8, 2: 4, 9: 2048, 1: 1}",32808,65616,13185,13185000
+QLTO_cnf_part_part_197_cnf_compact.pkl.gz,part_197_cnf_compact.pkl.gz,13008,2078,"{3: 20, 2: 10, 9: 2048}",32868,65736,13010,13010000
+QLTO_cnf_part_part_198_cnf_compact.pkl.gz,part_198_cnf_compact.pkl.gz,13247,2079,"{3: 20, 2: 10, 9: 2048, 1: 1}",32868,65736,13249,13249000
+QLTO_cnf_part_part_199_cnf_compact.pkl.gz,part_199_cnf_compact.pkl.gz,13223,2098,"{3: 32, 2: 16, 9: 2048, 1: 2}",32928,65856,13225,13225000
+QLTO_cnf_part_part_19_cnf_compact.pkl.gz,part_19_cnf_compact.pkl.gz,2952,6194,"{1: 4, 3: 40, 9: 6144, 2: 6}",98476,196952,2954,2954000
+QLTO_cnf_part_part_1_cnf_compact.pkl.gz,part_1_cnf_compact.pkl.gz,9722,6270,"{1: 10, 3: 104, 2: 12, 9: 6144}",98744,197488,9724,9724000
+QLTO_cnf_part_part_20_cnf_compact.pkl.gz,part_20_cnf_compact.pkl.gz,3968,6205,"{1: 5, 3: 48, 9: 6144, 2: 8}",98512,197024,3970,3970000
+QLTO_cnf_part_part_21_cnf_compact.pkl.gz,part_21_cnf_compact.pkl.gz,3146,6194,"{1: 2, 3: 40, 9: 6144, 2: 8}",98480,196960,3148,3148000
+QLTO_cnf_part_part_22_cnf_compact.pkl.gz,part_22_cnf_compact.pkl.gz,5464,6221,"{1: 3, 3: 56, 2: 18, 9: 6144}",98564,197128,5466,5466000
+QLTO_cnf_part_part_23_cnf_compact.pkl.gz,part_23_cnf_compact.pkl.gz,4188,6191,"{1: 3, 3: 36, 9: 6144, 2: 8}",98464,196928,4190,4190000
+QLTO_cnf_part_part_24_cnf_compact.pkl.gz,part_24_cnf_compact.pkl.gz,3150,6210,"{1: 4, 3: 56, 9: 6144, 2: 6}",98540,197080,3152,3152000
+QLTO_cnf_part_part_25_cnf_compact.pkl.gz,part_25_cnf_compact.pkl.gz,6713,6209,"{1: 5, 3: 52, 9: 6144, 2: 8}",98528,197056,6715,6715000
+QLTO_cnf_part_part_26_cnf_compact.pkl.gz,part_26_cnf_compact.pkl.gz,10186,6338,"{1: 8, 3: 148, 2: 38, 9: 6144}",98972,197944,10188,10188000
+QLTO_cnf_part_part_27_cnf_compact.pkl.gz,part_27_cnf_compact.pkl.gz,5677,6211,"{1: 5, 3: 56, 9: 6144, 2: 6}",98540,197080,5679,5679000
+QLTO_cnf_part_part_28_cnf_compact.pkl.gz,part_28_cnf_compact.pkl.gz,10191,2282,"{1: 10, 3: 172, 9: 2048, 2: 52}",33560,67120,10193,10193000
+QLTO_cnf_part_part_29_cnf_compact.pkl.gz,part_29_cnf_compact.pkl.gz,4760,6246,"{1: 6, 3: 80, 2: 16, 9: 6144}",98656,197312,4762,4762000
+QLTO_cnf_part_part_2_cnf_compact.pkl.gz,part_2_cnf_compact.pkl.gz,3980,6239,"{1: 9, 3: 72, 9: 6144, 2: 14}",98620,197240,3982,3982000
+QLTO_cnf_part_part_30_cnf_compact.pkl.gz,part_30_cnf_compact.pkl.gz,3325,6165,"{1: 1, 3: 16, 9: 6144, 2: 4}",98376,196752,3327,3327000
+QLTO_cnf_part_part_31_cnf_compact.pkl.gz,part_31_cnf_compact.pkl.gz,4748,6195,"{1: 3, 3: 40, 2: 8, 9: 6144}",98480,196960,4750,4750000
+QLTO_cnf_part_part_32_cnf_compact.pkl.gz,part_32_cnf_compact.pkl.gz,3598,6194,"{1: 4, 3: 40, 9: 6144, 2: 6}",98476,196952,3600,3600000
+QLTO_cnf_part_part_33_cnf_compact.pkl.gz,part_33_cnf_compact.pkl.gz,3624,6194,"{1: 4, 3: 40, 9: 6144, 2: 6}",98476,196952,3626,3626000
+QLTO_cnf_part_part_34_cnf_compact.pkl.gz,part_34_cnf_compact.pkl.gz,7664,6292,"{1: 6, 3: 112, 2: 30, 9: 6144}",98812,197624,7666,7666000
+QLTO_cnf_part_part_35_cnf_compact.pkl.gz,part_35_cnf_compact.pkl.gz,3400,6169,"{1: 1, 3: 20, 9: 6144, 2: 4}",98392,196784,3402,3402000
+QLTO_cnf_part_part_36_cnf_compact.pkl.gz,part_36_cnf_compact.pkl.gz,4749,2163,"{1: 3, 3: 80, 9: 2048, 2: 32}",33152,66304,4751,4751000
+QLTO_cnf_part_part_37_cnf_compact.pkl.gz,part_37_cnf_compact.pkl.gz,6392,6211,"{3: 56, 1: 3, 2: 8, 9: 6144}",98544,197088,6394,6394000
+QLTO_cnf_part_part_38_cnf_compact.pkl.gz,part_38_cnf_compact.pkl.gz,6602,6204,"{1: 2, 3: 48, 9: 6144, 2: 10}",98516,197032,6604,6604000
+QLTO_cnf_part_part_39_cnf_compact.pkl.gz,part_39_cnf_compact.pkl.gz,6830,6205,"{1: 3, 3: 48, 2: 10, 9: 6144}",98516,197032,6832,6832000
+QLTO_cnf_part_part_3_cnf_compact.pkl.gz,part_3_cnf_compact.pkl.gz,5385,6233,"{1: 7, 3: 72, 2: 10, 9: 6144}",98612,197224,5387,5387000
+QLTO_cnf_part_part_40_cnf_compact.pkl.gz,part_40_cnf_compact.pkl.gz,4104,6174,"{9: 6144, 3: 24, 2: 6}",98412,196824,4106,4106000
+QLTO_cnf_part_part_41_cnf_compact.pkl.gz,part_41_cnf_compact.pkl.gz,4312,6162,"{3: 12, 2: 6, 9: 6144}",98364,196728,4314,4314000
+QLTO_cnf_part_part_42_cnf_compact.pkl.gz,part_42_cnf_compact.pkl.gz,5455,2164,"{9: 2048, 1: 2, 3: 80, 2: 34}",33156,66312,5457,5457000
+QLTO_cnf_part_part_43_cnf_compact.pkl.gz,part_43_cnf_compact.pkl.gz,12043,2281,"{9: 2048, 1: 7, 3: 172, 2: 54}",33564,67128,12045,12045000
+QLTO_cnf_part_part_44_cnf_compact.pkl.gz,part_44_cnf_compact.pkl.gz,5240,6166,"{3: 16, 2: 6, 9: 6144}",98380,196760,5242,5242000
+QLTO_cnf_part_part_45_cnf_compact.pkl.gz,part_45_cnf_compact.pkl.gz,9743,6269,"{3: 104, 1: 3, 9: 6144, 2: 18}",98756,197512,9745,9745000
+QLTO_cnf_part_part_46_cnf_compact.pkl.gz,part_46_cnf_compact.pkl.gz,8159,2173,"{9: 2048, 3: 88, 1: 1, 2: 36}",33192,66384,8161,8161000
+QLTO_cnf_part_part_47_cnf_compact.pkl.gz,part_47_cnf_compact.pkl.gz,5404,6161,"{1: 1, 9: 6144, 3: 12, 2: 4}",98360,196720,5406,5406000
+QLTO_cnf_part_part_48_cnf_compact.pkl.gz,part_48_cnf_compact.pkl.gz,8158,6212,"{1: 2, 3: 52, 2: 14, 9: 6144}",98540,197080,8160,8160000
+QLTO_cnf_part_part_49_cnf_compact.pkl.gz,part_49_cnf_compact.pkl.gz,6377,2156,"{9: 2048, 1: 4, 3: 76, 2: 28}",33128,66256,6379,6379000
+QLTO_cnf_part_part_4_cnf_compact.pkl.gz,part_4_cnf_compact.pkl.gz,368,2084,"{1: 16, 9: 2048, 3: 20}",32848,65696,370,370000
+QLTO_cnf_part_part_50_cnf_compact.pkl.gz,part_50_cnf_compact.pkl.gz,6380,6189,"{3: 36, 1: 1, 9: 6144, 2: 8}",98464,196928,6382,6382000
+QLTO_cnf_part_part_51_cnf_compact.pkl.gz,part_51_cnf_compact.pkl.gz,13242,2318,"{1: 14, 3: 208, 9: 2048, 2: 48}",33696,67392,13244,13244000
+QLTO_cnf_part_part_52_cnf_compact.pkl.gz,part_52_cnf_compact.pkl.gz,5928,6188,"{1: 2, 3: 36, 9: 6144, 2: 6}",98460,196920,5930,5930000
+QLTO_cnf_part_part_53_cnf_compact.pkl.gz,part_53_cnf_compact.pkl.gz,10445,6218,"{3: 60, 1: 4, 2: 10, 9: 6144}",98564,197128,10447,10447000
+QLTO_cnf_part_part_54_cnf_compact.pkl.gz,part_54_cnf_compact.pkl.gz,9244,6208,"{3: 52, 1: 2, 2: 10, 9: 6144}",98532,197064,9246,9246000
+QLTO_cnf_part_part_55_cnf_compact.pkl.gz,part_55_cnf_compact.pkl.gz,7536,2124,"{9: 2048, 1: 2, 3: 52, 2: 22}",33020,66040,7538,7538000
+QLTO_cnf_part_part_56_cnf_compact.pkl.gz,part_56_cnf_compact.pkl.gz,6856,6178,"{3: 28, 2: 6, 9: 6144}",98428,196856,6858,6858000
+QLTO_cnf_part_part_57_cnf_compact.pkl.gz,part_57_cnf_compact.pkl.gz,5504,2116,"{9: 2048, 1: 4, 3: 48, 2: 16}",32992,65984,5506,5506000
+QLTO_cnf_part_part_58_cnf_compact.pkl.gz,part_58_cnf_compact.pkl.gz,8669,6192,"{1: 2, 3: 36, 2: 10, 9: 6144}",98468,196936,8671,8671000
+QLTO_cnf_part_part_59_cnf_compact.pkl.gz,part_59_cnf_compact.pkl.gz,6344,6170,"{9: 6144, 3: 20, 2: 6}",98396,196792,6346,6346000
+QLTO_cnf_part_part_5_cnf_compact.pkl.gz,part_5_cnf_compact.pkl.gz,3160,6212,"{1: 8, 3: 52, 9: 6144, 2: 8}",98528,197056,3162,3162000
+QLTO_cnf_part_part_60_cnf_compact.pkl.gz,part_60_cnf_compact.pkl.gz,13131,2293,"{1: 11, 3: 184, 9: 2048, 2: 50}",33604,67208,13133,13133000
+QLTO_cnf_part_part_61_cnf_compact.pkl.gz,part_61_cnf_compact.pkl.gz,7768,6182,"{1: 2, 3: 28, 2: 8, 9: 6144}",98432,196864,7770,7770000
+QLTO_cnf_part_part_62_cnf_compact.pkl.gz,part_62_cnf_compact.pkl.gz,9951,6212,"{1: 4, 3: 52, 2: 12, 9: 6144}",98536,197072,9953,9953000
+QLTO_cnf_part_part_63_cnf_compact.pkl.gz,part_63_cnf_compact.pkl.gz,7756,2113,"{9: 2048, 1: 1, 3: 44, 2: 20}",32984,65968,7758,7758000
+QLTO_cnf_part_part_64_cnf_compact.pkl.gz,part_64_cnf_compact.pkl.gz,9021,6185,"{3: 32, 1: 1, 9: 6144, 2: 8}",98448,196896,9023,9023000
+QLTO_cnf_part_part_65_cnf_compact.pkl.gz,part_65_cnf_compact.pkl.gz,8203,6174,"{3: 24, 2: 6, 9: 6144}",98412,196824,8205,8205000
+QLTO_cnf_part_part_66_cnf_compact.pkl.gz,part_66_cnf_compact.pkl.gz,7104,2106,"{9: 2048, 1: 2, 3: 40, 2: 16}",32960,65920,7106,7106000
+QLTO_cnf_part_part_67_cnf_compact.pkl.gz,part_67_cnf_compact.pkl.gz,7496,6161,"{1: 1, 9: 6144, 3: 12, 2: 4}",98360,196720,7498,7498000
+QLTO_cnf_part_part_68_cnf_compact.pkl.gz,part_68_cnf_compact.pkl.gz,9833,6204,"{1: 2, 3: 48, 9: 6144, 2: 10}",98516,197032,9835,9835000
+QLTO_cnf_part_part_69_cnf_compact.pkl.gz,part_69_cnf_compact.pkl.gz,13166,6210,"{1: 4, 3: 56, 9: 6144, 2: 6}",98540,197080,13168,13168000
+QLTO_cnf_part_part_6_cnf_compact.pkl.gz,part_6_cnf_compact.pkl.gz,8813,2261,"{1: 11, 3: 156, 9: 2048, 2: 46}",33484,66968,8815,8815000
+QLTO_cnf_part_part_70_cnf_compact.pkl.gz,part_70_cnf_compact.pkl.gz,9129,6208,"{1: 2, 3: 56, 9: 6144, 2: 6}",98540,197080,9131,9131000
+QLTO_cnf_part_part_71_cnf_compact.pkl.gz,part_71_cnf_compact.pkl.gz,10283,6192,"{1: 2, 3: 40, 9: 6144, 2: 6}",98476,196952,10285,10285000
+QLTO_cnf_part_part_72_cnf_compact.pkl.gz,part_72_cnf_compact.pkl.gz,13248,6240,"{1: 8, 3: 80, 2: 8, 9: 6144}",98640,197280,13250,13250000
+QLTO_cnf_part_part_73_cnf_compact.pkl.gz,part_73_cnf_compact.pkl.gz,10892,6241,"{1: 3, 3: 72, 2: 22, 9: 6144}",98636,197272,10894,10894000
+QLTO_cnf_part_part_74_cnf_compact.pkl.gz,part_74_cnf_compact.pkl.gz,10072,6211,"{3: 56, 1: 3, 2: 8, 9: 6144}",98544,197088,10074,10074000
+QLTO_cnf_part_part_75_cnf_compact.pkl.gz,part_75_cnf_compact.pkl.gz,13232,6232,"{3: 72, 1: 8, 9: 6144, 2: 8}",98608,197216,13234,13234000
+QLTO_cnf_part_part_76_cnf_compact.pkl.gz,part_76_cnf_compact.pkl.gz,9144,6175,"{3: 24, 1: 1, 9: 6144, 2: 6}",98412,196824,9146,9146000
+QLTO_cnf_part_part_77_cnf_compact.pkl.gz,part_77_cnf_compact.pkl.gz,13222,2200,"{3: 112, 9: 2048, 1: 6, 2: 34}",33284,66568,13224,13224000
+QLTO_cnf_part_part_78_cnf_compact.pkl.gz,part_78_cnf_compact.pkl.gz,8905,2128,"{9: 2048, 1: 2, 3: 56, 2: 22}",33036,66072,8907,8907000
+QLTO_cnf_part_part_79_cnf_compact.pkl.gz,part_79_cnf_compact.pkl.gz,9997,6176,"{3: 24, 2: 8, 9: 6144}",98416,196832,9999,9999000
+QLTO_cnf_part_part_7_cnf_compact.pkl.gz,part_7_cnf_compact.pkl.gz,375,2080,"{1: 16, 9: 2048, 3: 16}",32832,65664,377,377000
+QLTO_cnf_part_part_80_cnf_compact.pkl.gz,part_80_cnf_compact.pkl.gz,9130,2113,"{9: 2048, 1: 1, 3: 44, 2: 20}",32984,65968,9132,9132000
+QLTO_cnf_part_part_81_cnf_compact.pkl.gz,part_81_cnf_compact.pkl.gz,8256,2103,"{9: 2048, 1: 1, 3: 36, 2: 18}",32948,65896,8258,8258000
+QLTO_cnf_part_part_82_cnf_compact.pkl.gz,part_82_cnf_compact.pkl.gz,7584,2111,"{9: 2048, 1: 3, 3: 44, 2: 16}",32976,65952,7586,7586000
+QLTO_cnf_part_part_83_cnf_compact.pkl.gz,part_83_cnf_compact.pkl.gz,10296,6195,"{1: 3, 3: 40, 2: 8, 9: 6144}",98480,196960,10298,10298000
+QLTO_cnf_part_part_84_cnf_compact.pkl.gz,part_84_cnf_compact.pkl.gz,10520,6190,"{1: 2, 3: 36, 2: 8, 9: 6144}",98464,196928,10522,10522000
+QLTO_cnf_part_part_85_cnf_compact.pkl.gz,part_85_cnf_compact.pkl.gz,9824,6203,"{3: 48, 1: 1, 9: 6144, 2: 10}",98516,197032,9826,9826000
+QLTO_cnf_part_part_86_cnf_compact.pkl.gz,part_86_cnf_compact.pkl.gz,13228,2212,"{1: 8, 3: 120, 9: 2048, 2: 36}",33320,66640,13230,13230000
+QLTO_cnf_part_part_87_cnf_compact.pkl.gz,part_87_cnf_compact.pkl.gz,9355,6180,"{1: 2, 3: 28, 9: 6144, 2: 6}",98428,196856,9357,9357000
+QLTO_cnf_part_part_88_cnf_compact.pkl.gz,part_88_cnf_compact.pkl.gz,9384,6175,"{1: 1, 3: 24, 9: 6144, 2: 6}",98412,196824,9386,9386000
+QLTO_cnf_part_part_89_cnf_compact.pkl.gz,part_89_cnf_compact.pkl.gz,10063,6178,"{3: 28, 2: 6, 9: 6144}",98428,196856,10065,10065000
+QLTO_cnf_part_part_8_cnf_compact.pkl.gz,part_8_cnf_compact.pkl.gz,6731,2199,"{1: 9, 3: 108, 9: 2048, 2: 34}",33268,66536,6733,6733000
+QLTO_cnf_part_part_90_cnf_compact.pkl.gz,part_90_cnf_compact.pkl.gz,10287,2150,"{9: 2048, 1: 2, 3: 72, 2: 28}",33112,66224,10289,10289000
+QLTO_cnf_part_part_91_cnf_compact.pkl.gz,part_91_cnf_compact.pkl.gz,13180,6207,"{3: 52, 1: 5, 9: 6144, 2: 6}",98524,197048,13182,13182000
+QLTO_cnf_part_part_92_cnf_compact.pkl.gz,part_92_cnf_compact.pkl.gz,10511,2130,"{9: 2048, 3: 56, 2: 26}",33044,66088,10513,10513000
+QLTO_cnf_part_part_93_cnf_compact.pkl.gz,part_93_cnf_compact.pkl.gz,8960,2121,"{9: 2048, 1: 5, 3: 52, 2: 16}",33008,66016,8962,8962000
+QLTO_cnf_part_part_94_cnf_compact.pkl.gz,part_94_cnf_compact.pkl.gz,13205,2175,"{1: 7, 9: 2048, 3: 92, 2: 28}",33192,66384,13207,13207000
+QLTO_cnf_part_part_95_cnf_compact.pkl.gz,part_95_cnf_compact.pkl.gz,13241,6226,"{1: 8, 3: 64, 9: 6144, 2: 10}",98580,197160,13243,13243000
+QLTO_cnf_part_part_96_cnf_compact.pkl.gz,part_96_cnf_compact.pkl.gz,13221,6212,"{1: 6, 3: 56, 9: 6144, 2: 6}",98540,197080,13223,13223000
+QLTO_cnf_part_part_97_cnf_compact.pkl.gz,part_97_cnf_compact.pkl.gz,13225,6219,"{1: 7, 3: 60, 2: 8, 9: 6144}",98560,197120,13227,13227000
+QLTO_cnf_part_part_98_cnf_compact.pkl.gz,part_98_cnf_compact.pkl.gz,13133,6214,"{1: 4, 3: 52, 2: 14, 9: 6144}",98540,197080,13135,13135000
+QLTO_cnf_part_part_99_cnf_compact.pkl.gz,part_99_cnf_compact.pkl.gz,11660,6172,"{3: 20, 2: 8, 9: 6144}",98400,196800,11662,11662000
+QLTO_cnf_part_part_9_cnf_compact.pkl.gz,part_9_cnf_compact.pkl.gz,10188,2282,"{1: 10, 3: 172, 9: 2048, 2: 52}",33560,67120,10190,10190000

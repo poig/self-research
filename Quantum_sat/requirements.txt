@@ -37,3 +37,4 @@ typing-extensions>=4.5.0
 python-louvain
 toqito
 python-sat
+ortools

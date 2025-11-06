@@ -1,0 +1,2 @@
+name,keybits,n_vars,n_clauses,cnot_per_layer,total_cnot_logical,logical_qubits,physical_qubits_est,grover_iters,grover_total_oracle_cnot,grover_physical_qubits
+AES-128,128,13248,1032768,16117248,32234496,13250,13250000,14488038916154245120,289760778323084902400000,300000
