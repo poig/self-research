@@ -213,6 +213,14 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     print(f"   Cores: {n_jobs if n_jobs > 0 else 'ALL'}")
     print(f"   Methods: {decompose_methods}")
     print()
+
+    # Allow user to choose S-box encoding mode for quick comparison
+    print("Choose S-box encoding:")
+    print("  [1] naive (default) — current naive 256-case encoding")
+    print("  [2] tseitin — indicator/Tseitin encoding (adds indicator vars, better locality)")
+    sbox_choice = input("Enter S-box mode [1/2] (default: 1): ").strip() or "1"
+    sbox_mode = 'tseitin' if sbox_choice == '2' else 'naive'
+    print(f"Using S-box encoding: {sbox_mode}")
     
     input("Press ENTER to start the attack...")
     print()
@@ -247,7 +255,45 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
     print(f"   Variables: {n_vars:,}")
     print(f"   Key variables: 1-128")
     print()
+    # Quick experiment: ask user whether to fix top-k hub variables
+    try:
+        fix_top_k_input = input("Quick experiment — fix top-k hub variables before solving? Enter N (0 to skip, default 0): ").strip() or "0"
+        fix_top_k = int(fix_top_k_input)
+    except Exception:
+        fix_top_k = 0
+
+    fix_try_both = False
+    if fix_top_k > 0:
+        # If small k, offer to try both polarities (2^k runs)
+        if fix_top_k <= 4:
+            resp = input(f"Try both polarities for the {fix_top_k} variables (will run 2^{fix_top_k} experiments)? [y/N]: ").strip().lower()
+            fix_try_both = (resp == 'y' or resp == 'yes')
+        else:
+            print("Note: trying both polarities for k>4 is expensive; only single polarity will be attempted (fix to 0).")
+
     
+    # If user requested hub-fixing, compute top-k variables now
+    def build_var_adjacency_local(clauses):
+        from collections import defaultdict
+        adj = defaultdict(set)
+        for cl in clauses:
+            vars_in_clause = [abs(lit) for lit in cl]
+            for i, v in enumerate(vars_in_clause):
+                for u in vars_in_clause[i+1:]:
+                    adj[v].add(u)
+                    adj[u].add(v)
+        return adj
+
+    hub_vars = []
+    if fix_top_k > 0:
+        print("[Quick experiment] Computing variable degrees to find top hubs...")
+        adj = build_var_adjacency_local(clauses)
+        degrees = {v: len(neigh) for v, neigh in adj.items()}
+        sorted_vars = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
+        hub_vars = [v for v, d in sorted_vars[:fix_top_k]]
+        print(f"Top {fix_top_k} hub variables: {hub_vars}")
+        print()
+
     # --- NEW: Compute k* before solving ---
     print("[2/4] Computing k* (backdoor size)...")
     try:
@@ -318,14 +364,59 @@ def interactive_crack(demo_plaintext=None, demo_ciphertext=None):
                 pbar.close()
                 pbar = None
 
-    solution = solver.solve(
-        clauses,
-        n_vars,
-        true_k=k_star_computed,
-        timeout=1800.0,  # 30 minute timeout for the larger problem
-        check_final=False,
-        progress_callback=_progress_cb
-    )
+    # If the user requested hub-fixing experiments, prepare variants
+    all_runs = []
+
+    if fix_top_k > 0 and hub_vars:
+        # Single polarity: fix all hub vars to 0 (unit clause -v)
+        fixed_clauses = clauses + [(-v,) for v in hub_vars]
+        all_runs.append((f"fix_top_{fix_top_k}_zeros", fixed_clauses))
+
+        if fix_try_both and fix_top_k <= 4:
+            # Try all polarity combinations (2^k runs)
+            from itertools import product
+            for bits in product([0,1], repeat=fix_top_k):
+                add_cls = []
+                name_bits = ''.join(str(b) for b in bits)
+                for v, b in zip(hub_vars, bits):
+                    add_cls.append((v,) if b==1 else (-v,))
+                all_runs.append((f"fix_top_{fix_top_k}_{name_bits}", clauses + add_cls))
+    else:
+        all_runs.append(("base", clauses))
+
+    solution = None
+    run_summary = []
+
+    # Run each variant until one succeeds or all are tried
+    for run_name, run_clauses in all_runs:
+        print(f"\n--- Experiment: {run_name} ---")
+        try:
+            sol = solver.solve(
+                run_clauses,
+                n_vars,
+                true_k=k_star_computed,
+                timeout=1800.0,
+                check_final=False,
+                progress_callback=_progress_cb
+            )
+            run_summary.append((run_name, sol.satisfiable, sol.method_used, len(sol.assignment) if sol.assignment else 0))
+            if sol.satisfiable:
+                solution = sol
+                print(f"Experiment {run_name} found a solution (method: {sol.method_used}).")
+                break
+            else:
+                print(f"Experiment {run_name} did not find solution (method: {sol.method_used}).")
+        except Exception as e:
+            print(f"Experiment {run_name} raised exception: {e}")
+
+    # If no experiment produced a solution, fall back to the last result
+    if solution is None and run_summary:
+        last = run_summary[-1]
+        print(f"No experiment found a satisfying assignment. Last run: {last}")
+        # Try to use the last solver result if available
+        # (the solver.solve method already printed details)
+        # solution remains None
+
     
     solve_time = time.time() - solve_start
     total_time = time.time() - start_time

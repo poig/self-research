@@ -188,6 +188,140 @@ def encode_sbox_espresso(input_vars: List[int], output_vars: List[int]) -> List[
     return clauses
 
 
+def encode_sbox_tseitin(input_vars: List[int], output_vars: List[int], next_var_id: int):
+    """
+    Tseitin / indicator-style S-box encoding.
+
+    Creates 256 indicator variables I_j where I_j <=> (input == j).
+    Then constrains output bits as ORs over indicators whose SBOX entry has that output bit set.
+
+    Returns: (clauses, next_var_id_after_alloc)
+    """
+    clauses = []
+
+    if len(input_vars) != 8 or len(output_vars) != 8:
+        raise ValueError("S-box requires 8 input and 8 output variables")
+
+    # Allocate 256 indicator variables
+    indicators = list(range(next_var_id, next_var_id + 256))
+    next_var_id += 256
+
+    # For each indicator j:
+    # 1) I_j -> input == j  (i.e., I_j -> each input bit equals bit_j)
+    #    encoded as clauses: (-I_j ∨ lit) for each input literal lit matching j
+    # 2) input == j -> I_j
+    #    encoded as (mismatch1 ∨ mismatch2 ∨ ... ∨ I_j) where mismatch = input_i != bit
+    for j in range(256):
+        Ij = indicators[j]
+        # I_j -> input bits
+        for bit in range(8):
+            bit_val = (j >> bit) & 1
+            if bit_val == 1:
+                clauses.append((-Ij, input_vars[bit]))
+            else:
+                clauses.append((-Ij, -input_vars[bit]))
+
+        # input==j -> I_j : clause is (mismatch_0 ∨ mismatch_1 ∨ ... ∨ I_j)
+        mismatch_clause = []
+        for bit in range(8):
+            bit_val = (j >> bit) & 1
+            # mismatch literal: input_i != bit_val
+            if bit_val == 1:
+                mismatch_clause.append(-input_vars[bit])
+            else:
+                mismatch_clause.append(input_vars[bit])
+        mismatch_clause.append(Ij)
+        clauses.append(tuple(mismatch_clause))
+
+    # Exactly-one constraint for indicators: at least one + efficient at-most-one
+    # Add at-least-one
+    clauses.append(tuple(indicators))  # at least one
+
+    # Use Sinz sequential encoding for at-most-one (linear size)
+    # Introduce auxiliary vars s_1 .. s_{n-1}
+    n = len(indicators)
+    if n >= 2:
+        seq_aux = list(range(next_var_id, next_var_id + (n - 1)))
+        next_var_id += (n - 1)
+
+        # Clauses:
+        # (¬x1 ∨ s1)
+        clauses.append((-indicators[0], seq_aux[0]))
+
+        # For i = 2..n-1: (¬xi ∨ si) and (¬s_{i-1} ∨ s_i)
+        for i in range(1, n-1):
+            clauses.append((-indicators[i], seq_aux[i]))
+            clauses.append((-seq_aux[i-1], seq_aux[i]))
+
+        # For i = 2..n: (¬xi ∨ ¬s_{i-1})
+        for i in range(1, n):
+            clauses.append((-indicators[i], -seq_aux[i-1]))
+
+    # Link indicators to outputs:
+    # If I_j then output bits equal SBOX[j]
+    for j in range(256):
+        Ij = indicators[j]
+        sval = AES_SBOX[j]
+        for bit in range(8):
+            if ((sval >> bit) & 1) == 1:
+                # I_j -> output_bit
+                clauses.append((-Ij, output_vars[bit]))
+            else:
+                # I_j -> not output_bit
+                clauses.append((-Ij, -output_vars[bit]))
+
+    # Conversely, output_bit -> OR of indicators that make it 1
+    for bit in range(8):
+        ors = [indicators[j] for j in range(256) if ((AES_SBOX[j] >> bit) & 1) == 1]
+        # Instead of a single huge clause (-out ∨ I_a ∨ I_b ∨ ...), build a balanced OR-tree
+        # of auxiliary variables so no variable participates in a very large clause.
+        # Helper: build OR-tree that returns a root aux var representing OR(ors).
+        def build_or_tree(lits, next_id, group_size=8):
+            """Build a balanced OR-tree for literals `lits`.
+            Returns (root_var, generated_clauses, next_id_after).
+            Each group of up to group_size literals is represented by an auxiliary var a
+            with clauses (-lit ∨ a) for each lit in group and (lit1 ∨ lit2 ∨ ... ∨ -a).
+            Groups are then combined recursively.
+            """
+            gen_clauses = []
+            # If empty lits, return a constant false by allocating a var forced false (rare)
+            if not lits:
+                # allocate a dummy var set to false via unit clause (¬v)
+                dummy = next_id
+                next_id += 1
+                gen_clauses.append((-dummy,))
+                return dummy, gen_clauses, next_id
+
+            # If small enough, create a single aux representing OR(lits)
+            if len(lits) <= group_size:
+                aux = next_id
+                next_id += 1
+                # For each lit: lit -> aux  encoded as (-lit ∨ aux)
+                for l in lits:
+                    gen_clauses.append((-l, aux))
+                # aux -> OR(lits) encoded as (l1 ∨ l2 ∨ ... ∨ -aux)
+                gen_clauses.append(tuple(list(lits) + [-aux]))
+                return aux, gen_clauses, next_id
+
+            # Otherwise, split into groups and build aux for each group
+            group_aux = []
+            for i in range(0, len(lits), group_size):
+                chunk = lits[i:i+group_size]
+                aux, ccls, next_id = build_or_tree(chunk, next_id, group_size)
+                gen_clauses.extend(ccls)
+                group_aux.append(aux)
+
+            # Now recursively combine group_aux into a higher-level OR
+            return build_or_tree(group_aux, next_id, group_size)
+
+        root_aux, tree_clauses, next_var_id = build_or_tree(ors, next_var_id, group_size=16)
+        clauses.extend(tree_clauses)
+        # Link output_bit -> root_aux (if output true then one of the indicators is true)
+        clauses.append(tuple([-output_vars[bit], root_aux]))
+
+    return clauses, next_var_id
+
+
 def test_sbox_encoding():
     """Test that S-box encoding is correct."""
     

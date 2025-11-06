@@ -1,0 +1,11 @@
+N,M,status,success,energy,time,iterations,reason
+8,576,error,,,,,QLTO not available
+16,1152,error,,,,,QLTO not available
+32,2304,error,,,,,QLTO not available
+64,4608,error,,,,,QLTO not available
+96,6912,error,,,,,QLTO not available
+120,8640,error,,,,,QLTO not available
+160,11520,error,,,,,QLTO not available
+200,14400,error,,,,,QLTO not available
+256,18432,error,,,,,QLTO not available
+400,28800,error,,,,,QLTO not available
