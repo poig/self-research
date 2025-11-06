@@ -349,6 +349,143 @@ def encode_key_schedule(master_key_vars, next_var_id, sbox_mode='naive'):
     return round_keys, clauses, next_var_id
 
 
+def encode_key_schedule_256(master_key_vars, next_var_id, sbox_mode='naive'):
+    """
+    Key schedule for AES-256. Produces 60 words (4 bytes each) -> 15 round keys.
+    Implements the AES-256 schedule where Nk=8, Nr=14 and the SubWord is applied
+    when i % Nk == 0 and also when i % Nk == 4.
+    """
+    clauses = []
+    Nk = 8
+    # total words
+    W = 4 * (14 + 1)  # 60
+    w = [None] * W
+
+    # First 8 words from master key (256 bits)
+    for i in range(8):
+        w[i] = master_key_vars[i*32:(i+1)*32]
+
+    for i in range(8, W):
+        # allocate 32 vars
+        w[i] = list(range(next_var_id, next_var_id + 32))
+        next_var_id += 32
+
+        temp = w[i-1]
+
+        if i % Nk == 0:
+            # RotWord
+            temp_rot = rot_word(temp)
+            # SubWord
+            temp_sub = list(range(next_var_id, next_var_id + 32))
+            next_var_id += 32
+            next_var_id = encode_sub_word(temp_rot, temp_sub, next_var_id, clauses, sbox_mode=sbox_mode)
+
+            # Rcon
+            rcon_byte_val = Rcon[i // Nk] if (i // Nk) < len(Rcon) else 0
+            rcon_word_vars = list(range(next_var_id, next_var_id + 32))
+            next_var_id += 32
+            for j in range(32):
+                if j < 8:
+                    bit_val = (rcon_byte_val >> j) & 1
+                    clauses.append((rcon_word_vars[j],) if bit_val else (-rcon_word_vars[j],))
+                else:
+                    clauses.append((-rcon_word_vars[j],))
+
+            # XOR temp_sub with Rcon
+            temp_xor_rcon = list(range(next_var_id, next_var_id + 32))
+            next_var_id += 32
+            encode_xor_4byte_word(temp_sub, rcon_word_vars, temp_xor_rcon, clauses)
+            temp = temp_xor_rcon
+        elif i % Nk == 4:
+            # SubWord (no Rot)
+            temp_sub = list(range(next_var_id, next_var_id + 32))
+            next_var_id += 32
+            next_var_id = encode_sub_word(temp, temp_sub, next_var_id, clauses, sbox_mode=sbox_mode)
+            temp = temp_sub
+
+        # w[i] = w[i-Nk] XOR temp
+        encode_xor_4byte_word(w[i - Nk], temp, w[i], clauses)
+
+    # Group into round keys: 15 keys
+    round_keys = []
+    for i in range(15):
+        round_key_vars = w[i*4] + w[i*4+1] + w[i*4+2] + w[i*4+3]
+        round_keys.append(round_key_vars)
+
+    return round_keys, clauses, next_var_id
+
+
+def encode_aes_256(plaintext_bytes, ciphertext_bytes, master_key_vars, sbox_mode='naive'):
+    """
+    Encode full AES-256 encryption as SAT.
+    Returns (clauses, total_vars, round_keys)
+    """
+    clauses = []
+    next_var_id = max(master_key_vars) + 1
+
+    print("Encoding AES-256 circuit...")
+
+    # Plaintext bits
+    print("  [1/16] Encoding plaintext constraints...")
+    plaintext_vars = []
+    for byte in plaintext_bytes:
+        for bit_idx in range(8):
+            var = next_var_id
+            next_var_id += 1
+            plaintext_vars.append(var)
+            bit_val = (byte >> bit_idx) & 1
+            clauses.append((var,) if bit_val else (-var,))
+
+    # Key schedule
+    print("  [2/16] Generating round keys (full key schedule)...")
+    schedule_start_vars = next_var_id
+    round_keys, key_sched_clauses, next_var_id = encode_key_schedule_256(master_key_vars, next_var_id, sbox_mode=sbox_mode)
+    clauses.extend(key_sched_clauses)
+    schedule_vars = next_var_id - schedule_start_vars
+    schedule_clauses = len(key_sched_clauses)
+    print(f"     Key schedule: {schedule_vars:,} variables, {schedule_clauses:,} clauses")
+
+    # Initial AddRoundKey
+    print("  [3/16] Encoding initial AddRoundKey...")
+    state_vars, ark_clauses, next_var_id = encode_add_round_key(plaintext_vars, round_keys[0], next_var_id)
+    clauses.extend(ark_clauses)
+
+    Nr = 14
+    # Main rounds 1..13
+    for round_num in range(1, Nr):
+        print(f"  [{3+round_num}/16] Encoding round {round_num}...")
+        state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id, sbox_mode=sbox_mode)
+        clauses.extend(sb_clauses)
+        state_vars = encode_shift_rows(state_vars)
+        state_vars, mc_clauses, next_var_id = encode_mix_columns_full(state_vars, next_var_id)
+        clauses.extend(mc_clauses)
+        state_vars, ark_clauses, next_var_id = encode_add_round_key(state_vars, round_keys[round_num], next_var_id)
+        clauses.extend(ark_clauses)
+
+    # Final round (Nr)
+    print(f"  [{3+Nr}/16] Encoding final round...")
+    state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id, sbox_mode=sbox_mode)
+    clauses.extend(sb_clauses)
+    state_vars = encode_shift_rows(state_vars)
+    state_vars, ark_clauses, next_var_id = encode_add_round_key(state_vars, round_keys[Nr], next_var_id)
+    clauses.extend(ark_clauses)
+
+    # Assert output equals ciphertext
+    print("  [FINAL] Encoding ciphertext constraints...")
+    for byte_idx, byte in enumerate(ciphertext_bytes):
+        for bit_idx in range(8):
+            var = state_vars[byte_idx*8 + bit_idx]
+            bit_val = (byte >> bit_idx) & 1
+            clauses.append((var,) if bit_val else (-var,))
+
+    print(f"\n✅ AES-256 circuit encoding complete!")
+    print(f"   Total clauses: {len(clauses):,}")
+    print(f"   Total variables: {next_var_id - 1:,}")
+    print(f"   Master key variables: {master_key_vars[0]} to {master_key_vars[-1]}")
+
+    return clauses, next_var_id - 1, round_keys
+
+
 def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars, sbox_mode='naive'):
     """
     Encode full AES-128 encryption as SAT.

@@ -1,0 +1,2 @@
+approach,part_file,n_vars,n_clauses,pauli_weight_hist,cnot_per_layer,total_cnot_logical,logical_qubits,physical_qubits_est
+QLTO_cnf_part_part_0_cnf_compact.pkl.gz,part_0_cnf_compact.pkl.gz,36,756,"{2: 720, 1: 36}",1440,2880,38,38000

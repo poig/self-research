@@ -1,0 +1,9 @@
+approach,part_file,n_vars,n_clauses,pauli_weight_hist,cnot_per_layer,total_cnot_logical,logical_qubits,physical_qubits_est
+QLTO_cnf_part_part_0_cnf_compact.pkl.gz,part_0_cnf_compact.pkl.gz,10000,300700,"{2: 290700, 1: 10000}",581400,1162800,10002,10002000
+QLTO_cnf_part_part_1_cnf_compact.pkl.gz,part_1_cnf_compact.pkl.gz,10000,203200,"{2: 193200, 1: 10000}",386400,772800,10002,10002000
+QLTO_cnf_part_part_2_cnf_compact.pkl.gz,part_2_cnf_compact.pkl.gz,10000,151900,"{2: 141900, 1: 10000}",283800,567600,10002,10002000
+QLTO_cnf_part_part_3_cnf_compact.pkl.gz,part_3_cnf_compact.pkl.gz,10000,136000,"{2: 126000, 1: 10000}",252000,504000,10002,10002000
+QLTO_cnf_part_part_4_cnf_compact.pkl.gz,part_4_cnf_compact.pkl.gz,10000,120700,"{2: 110700, 1: 10000}",221400,442800,10002,10002000
+QLTO_cnf_part_part_5_cnf_compact.pkl.gz,part_5_cnf_compact.pkl.gz,10000,280000,"{2: 270000, 1: 10000}",540000,1080000,10002,10002000
+QLTO_cnf_part_part_6_cnf_compact.pkl.gz,part_6_cnf_compact.pkl.gz,10000,136000,"{2: 126000, 1: 10000}",252000,504000,10002,10002000
+QLTO_cnf_part_part_7_cnf_compact.pkl.gz,part_7_cnf_compact.pkl.gz,10000,120700,"{2: 110700, 1: 10000}",221400,442800,10002,10002000

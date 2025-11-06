@@ -1740,6 +1740,180 @@ def verify_counts_with_verifier(counts: Dict[str, float], n_vars: int, sat_probl
 
     return None, 0.0, ''
 
+# ---------- BEGIN PATCH: add export & budget helpers ----------
+import pickle
+import inspect
+import types
+from typing import List, Tuple
+
+# Utility: canonical pauli-term format: List[ (float coeff, tuple(qubit_indices)) ]
+def get_pauli_terms_from_internal_ham(ham_obj) -> List[Tuple[float, Tuple[int, ...]]]:
+    """
+    Convert internal Hamiltonian representations to canonical list of (coeff, qubit-tuple).
+    Try several common shapes:
+      - list of (coeff, qubits)
+      - qiskit PauliList-like objects
+      - dict/object with .terms/.paulis
+    If conversion fails, raise ValueError.
+    """
+    # If already canonical-like
+    if isinstance(ham_obj, list):
+        out = []
+        for t in ham_obj:
+            if isinstance(t, (list, tuple)) and len(t) >= 1:
+                if len(t) == 2 and isinstance(t[1], (list, tuple)):
+                    coeff = float(t[0])
+                    qs = tuple(int(x) for x in t[1])
+                    out.append((coeff, tuple(sorted(qs))))
+                elif len(t) == 1 and isinstance(t[0], (list, tuple)):
+                    out.append((1.0, tuple(sorted(int(x) for x in t[0]))))
+                else:
+                    # try flattening possibilities
+                    try:
+                        coeff = float(t[0])
+                        qs = tuple(sorted(int(x) for x in t[1:]))
+                        out.append((coeff, qs))
+                    except Exception:
+                        continue
+        if out:
+            return out
+
+    # dict-like or object-like
+    if isinstance(ham_obj, dict):
+        for k in ('terms','paulis','pauli_terms','ham_terms'):
+            if k in ham_obj:
+                return get_pauli_terms_from_internal_ham(ham_obj[k])
+    if hasattr(ham_obj, 'terms'):
+        return get_pauli_terms_from_internal_ham(ham_obj.terms)
+    if hasattr(ham_obj, 'paulis'):
+        return get_pauli_terms_from_internal_ham(ham_obj.paulis)
+
+    # Qiskit Operator / PauliList heuristics
+    # try to detect objects exposing .to_list() or .to_pauli_label() etc
+    if hasattr(ham_obj, 'to_list'):
+        try:
+            lst = ham_obj.to_list()
+            out = []
+            for coeff, pauli in lst:
+                # pauli might be string like 'IZX' or Pauli object; extract indices of non-I
+                if isinstance(pauli, str):
+                    qs = [i for i, ch in enumerate(pauli) if ch != 'I']
+                    out.append((float(coeff.real if hasattr(coeff,'real') else coeff), tuple(qs)))
+                else:
+                    # fallback: treat pauli as iterable of qubit indices if possible
+                    try:
+                        qs = tuple(int(x) for x in pauli)
+                        out.append((float(coeff), qs))
+                    except Exception:
+                        continue
+            if out:
+                return out
+        except Exception:
+            pass
+
+    raise ValueError("Unrecognized Hamiltonian format for export. Provide a canonical list or adapt this function.")
+
+def export_canonical_hamiltonian(path: str, ham_obj=None, cnf=None, overwrite: bool=True):
+    """
+    Export a canonical pickled Hamiltonian [(coeff, (q0,q1,...)), ...] to `path`.
+    - If `ham_obj` is provided it will be converted and exported.
+    - Else, if `cnf` is provided we will call the module's sat->ham routine to convert it.
+    - Else we try to call local `sat_to_hamiltonian()` if present in this module.
+    """
+    # If a ham object was given
+    if ham_obj is not None:
+        terms = get_pauli_terms_from_internal_ham(ham_obj)
+    else:
+        # attempt to build from provided CNF or internal generator
+        if cnf is not None:
+            # try to call external encoder exposed by module
+            if 'sat_to_hamiltonian' in globals() and callable(globals()['sat_to_hamiltonian']):
+                internal_ham = globals()['sat_to_hamiltonian'](cnf)
+                terms = get_pauli_terms_from_internal_ham(internal_ham)
+            else:
+                raise RuntimeError("No local sat_to_hamiltonian available. Provide ham_obj or adapt exporter.")
+        else:
+            # try to call parameterless sat->ham generator if available
+            if 'build_full_problem_hamiltonian' in globals() and callable(globals()['build_full_problem_hamiltonian']):
+                internal_ham = globals()['build_full_problem_hamiltonian']()
+                terms = get_pauli_terms_from_internal_ham(internal_ham)
+            else:
+                raise RuntimeError("No ham_obj or CNF provided and no internal builder found.")
+
+    # save canonical list to pickle
+    if os.path.exists(path) and not overwrite:
+        raise FileExistsError(f"{path} exists and overwrite is False.")
+    with open(path, 'wb') as f:
+        pickle.dump(terms, f)
+    return path
+
+def get_logical_qubit_budget(n_vars:int, try_build_w:bool=True) -> dict:
+    """
+    Conservative logical-qubit budget estimator.
+    - n_vars: number of SAT variables (one qubit per var assumption)
+    - try_build_w: attempt to call available builder functions to infer additional ancilla usage
+    Returns a dict:
+      { 'n_vars': n_vars, 'detected_ancilla': X, 'logical_qubits': n_vars + X, 'notes': '...' }
+    """
+    detected = 0
+    notes = []
+    # Look for typical builder names and attempt a dry-run
+    candidates = []
+    if 'build_w_gate_nisq' in globals():
+        candidates.append(globals()['build_w_gate_nisq'])
+    if 'build_w_gate' in globals():
+        candidates.append(globals()['build_w_gate'])
+    if 'build_parametric_ansatz' in globals():
+        candidates.append(globals()['build_parametric_ansatz'])
+    if 'build_ansatz' in globals():
+        candidates.append(globals()['build_ansatz'])
+
+    for f in candidates:
+        try:
+            sig = inspect.signature(f)
+            # try common param names
+            kwargs = {}
+            if 'n_qubits' in sig.parameters:
+                kwargs['n_qubits'] = min(8, max(2, n_vars))  # small dry-run
+            elif 'n' in sig.parameters:
+                kwargs['n'] = min(8, max(2, n_vars))
+            # prefer a return_circuit flag if known
+            if 'return_circuit' in sig.parameters:
+                kwargs['return_circuit'] = True
+            res = f(**kwargs) if kwargs else f()
+            # try to read num_qubits attribute
+            if hasattr(res, 'num_qubits'):
+                nq = int(res.num_qubits)
+                extra = max(0, nq - kwargs.get('n_qubits', kwargs.get('n', 0) or 8))
+                detected = max(detected, extra)
+                notes.append(f"detected {extra} ancilla via builder {f.__name__} (num_qubits={nq})")
+            # some builders return tuple (circ, meta)
+            elif isinstance(res, (tuple, list)) and len(res) > 0 and hasattr(res[0], 'num_qubits'):
+                nq = int(res[0].num_qubits)
+                extra = max(0, nq - kwargs.get('n_qubits', kwargs.get('n', 0) or 8))
+                detected = max(detected, extra)
+                notes.append(f"detected {extra} ancilla via builder {f.__name__} (num_qubits={nq})")
+            else:
+                # fallback: if the builder returns an int-like workspace estimate
+                try:
+                    val = int(res)
+                    detected = max(detected, val)
+                    notes.append(f"builder {f.__name__} returned int estimate {val}")
+                except Exception:
+                    continue
+        except Exception as e:
+            # don't fail; just move on
+            notes.append(f"builder {getattr(f,'__name__',str(f))} call failed: {e}")
+            continue
+
+    if detected == 0:
+        # fallback heuristic: small overhead per param & control registers
+        detected = max(0, min(1024, int(n_vars * 0.1)))  # default: 10% of n_vars but cap 1024
+
+    logical_qubits = n_vars + detected
+    return {'n_vars': n_vars, 'detected_ancilla': detected, 'logical_qubits': logical_qubits, 'notes': notes}
+# ---------- END PATCH ----------
+
 
 if __name__ == "__main__":
     
