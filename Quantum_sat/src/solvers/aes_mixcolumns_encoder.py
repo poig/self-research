@@ -138,9 +138,9 @@ def encode_gf_mul3(input_vars: List[int], output_vars: List[int], temp_vars: Lis
 
 def encode_mixcolumns_column(
     input_vars: List[List[int]],  # 4 bytes × 8 bits
-    output_vars: List[List[int]],  # 4 bytes × 8 bits
+    output_vars: List[List[int]] | None,  # optional: 4 bytes × 8 bits (deprecated)
     next_var: int
-) -> Tuple[List[Tuple[int, ...]], int]:
+) -> Tuple[List[Tuple[int, ...]], int, List[List[int]]]:
     """
     Encode MixColumns for one 4-byte column.
     
@@ -154,6 +154,7 @@ def encode_mixcolumns_column(
     """
     clauses = []
     var_counter = next_var
+    computed_outputs = []
     
     # For each output byte
     for row in range(4):
@@ -192,16 +193,20 @@ def encode_mixcolumns_column(
                 var_counter += 8
                 clauses.extend(encode_gf_mul3(input_vars[col], temp3, temp2))
                 products.append(temp3)
-        
         # Now XOR all 4 products together
         # result = products[0] XOR products[1] XOR products[2] XOR products[3]
-        
-        # XOR in stages
+
+        # We'll allocate a fresh output byte for this row so we don't clash
+        # with internal temporaries. Append it to computed_outputs and use it
+        # as the target of the XOR operations.
+        out_byte = list(range(var_counter, var_counter + 8))
+        var_counter += 8
+        # XOR in stages using temporaries
         temp1 = list(range(var_counter, var_counter + 8))
         var_counter += 8
         temp2 = list(range(var_counter, var_counter + 8))
         var_counter += 8
-        
+
         # temp1 = products[0] XOR products[1]
         for bit in range(8):
             a, b, out = products[0][bit], products[1][bit], temp1[bit]
@@ -209,7 +214,7 @@ def encode_mixcolumns_column(
             clauses.append((-a, b, out))
             clauses.append((a, -b, out))
             clauses.append((a, b, -out))
-        
+
         # temp2 = products[2] XOR products[3]
         for bit in range(8):
             a, b, out = products[2][bit], products[3][bit], temp2[bit]
@@ -217,16 +222,32 @@ def encode_mixcolumns_column(
             clauses.append((-a, b, out))
             clauses.append((a, -b, out))
             clauses.append((a, b, -out))
-        
-        # output[row] = temp1 XOR temp2
+
+        # out_byte = temp1 XOR temp2
         for bit in range(8):
-            a, b, out = temp1[bit], temp2[bit], output_vars[row][bit]
+            a, b, out = temp1[bit], temp2[bit], out_byte[bit]
             clauses.append((-a, -b, -out))
             clauses.append((-a, b, out))
             clauses.append((a, -b, out))
             clauses.append((a, b, -out))
+
+        # collect the computed output byte
+        computed_outputs.append(out_byte)
     
-    return clauses, var_counter
+    # computed_outputs holds the 4 output bytes we produced during the loop
+    allocated_outputs = computed_outputs
+
+    # If caller supplied explicit output_vars, add equivalence clauses
+    # between their variables and our allocated outputs.
+    if output_vars is not None:
+        for row in range(4):
+            for bit in range(8):
+                a = output_vars[row][bit]
+                b = allocated_outputs[row][bit]
+                clauses.append((a, -b))
+                clauses.append((-a, b))
+
+    return clauses, var_counter, allocated_outputs
 
 
 def test_mixcolumns():
@@ -257,7 +278,7 @@ def test_mixcolumns():
         output_vars.append(byte_vars)
     
     # Encode MixColumns
-    clauses, final_var = encode_mixcolumns_column(input_vars, output_vars, var_counter)
+    clauses, final_var, allocated = encode_mixcolumns_column(input_vars, output_vars, var_counter)
     
     print(f"MixColumns encoding statistics:")
     print(f"  Input variables: 4 bytes × 8 bits = 32 vars")

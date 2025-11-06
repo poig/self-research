@@ -113,7 +113,8 @@ class SATDecomposer:
                  max_partition_size: int = 10, 
                  quantum_algorithm: str = "polynomial",
                  verbose: bool = True,
-                 n_jobs: int = 1):
+                 n_jobs: int = 1,
+                 max_treewidth_to_solve: int = 20):
         """
         Initialize the decomposer
         
@@ -131,9 +132,14 @@ class SATDecomposer:
         self.quantum_algorithm = quantum_algorithm
         self.verbose = verbose
         self.n_jobs = n_jobs
+        # Maximum treewidth we are willing to attempt classical/FPT solving for
+        # Default 20 (2^20 ≈ 1,048,576 checks) is a reasonable cap for classical phase
+        self.max_treewidth_to_solve = max_treewidth_to_solve
         
         # Build constraint graph (will be used by multiple strategies)
         self.constraint_graph = self._build_constraint_graph()
+        # Cache for treewidth computations to avoid recomputation on same sets
+        self._treewidth_cache: Dict[frozenset, int] = {}
         
     def _build_constraint_graph(self) -> nx.Graph:
         """
@@ -237,7 +243,9 @@ class SATDecomposer:
     def decompose(self, backdoor_vars: Optional[List[int]] = None,
                   strategies: Optional[List[DecompositionStrategy]] = None,
                   optimize_for: str = 'separator', # This will be ignored, but kept for compatibility
-                  progress_callback: Optional[callable] = None) -> DecompositionResult:
+                  progress_callback: Optional[callable] = None,
+                  max_recursion_depth: int = 2,
+                  target_partition_size: Optional[int] = None) -> DecompositionResult:
         """
         Try to decompose the problem using an ordered list of strategies,
         returning the first successful result.
@@ -257,10 +265,12 @@ class SATDecomposer:
         if strategies is None:
             # Default ordered list of strategies
             strategies = [
+                # Try stronger spectral / information-theoretic strategies before
+                # falling back to Louvain community detection (which can fail on dense cores).
+                DecompositionStrategy.FISHER_INFO,
                 DecompositionStrategy.TREEWIDTH,
                 DecompositionStrategy.BRIDGE_BREAKING,
                 DecompositionStrategy.COMMUNITY_DETECTION,
-                DecompositionStrategy.FISHER_INFO,
                 DecompositionStrategy.RENORMALIZATION
             ]
         
@@ -275,7 +285,8 @@ class SATDecomposer:
             except Exception:
                 pass
         
-        # --- NEW SHORT-CIRCUITING LOGIC ---
+        # --- NEW: Collect best successful result across strategies ---
+        best_result: Optional[DecompositionResult] = None
         for idx, strategy in enumerate(strategies):
             if progress_callback is not None:
                 try:
@@ -296,23 +307,239 @@ class SATDecomposer:
 
             if result and result.success:
                 if self.verbose:
-                    print(f"     ✅ Success! Using result from {strategy.value}.\n")
-                
-                if progress_callback is not None:
+                    print(f"     ✅ Success from {strategy.value}. Separator size: {result.separator_size}\n")
+
+                # Keep the best result according to a heuristic score that
+                # prefers: (1) meaningful multi-part splits, (2) balanced (smaller) avg partition size,
+                # and (3) reasonably small separators. This avoids choosing
+                # tiny separators that don't produce useful large-part splits.
+                def _result_score(res: DecompositionResult) -> float:
+                    # If no partitions, make score large
+                    if not res or not res.partitions:
+                        return float('inf')
+                    num_parts = len(res.partitions)
+                    sizes = [len(p) for p in res.partitions]
+                    avg_size = float(np.mean(sizes)) if sizes else float(len(backdoor_vars))
+                    std_size = float(np.std(sizes)) if sizes else 0.0
+                    sep = float(res.separator_size) if hasattr(res, 'separator_size') else float(len(backdoor_vars))
+
+                    # Modularity (if provided by strategy metadata) is a strong sign
+                    # that community-based splits are meaningful. Higher modularity
+                    # should reduce the score (prefer those results).
+                    modularity = 0.0
                     try:
-                        progress_callback(stage='done', result=result)
+                        modularity = float(res.metadata.get('modularity', 0.0)) if res.metadata else 0.0
                     except Exception:
-                        pass
-                return result # Return on first success
+                        modularity = 0.0
+
+                    # Tunable weights (heuristic) - increase partition-count benefit
+                    w_sep = 1.0       # cost per separator variable
+                    w_avg = 0.2       # cost per average partition size
+                    w_std = 0.5       # cost for uneven partitioning (penalize high std)
+                    w_parts = 80.0    # large benefit per partition to prefer many-way splits
+                    w_mod = 150.0     # strong bonus for modularity
+
+                    # Lower score = better
+                    score = (w_sep * sep) + (w_avg * avg_size) + (w_std * std_size) - (w_parts * num_parts) - (w_mod * modularity)
+
+                    # Small correction: prefer splits with at least 3 parts strongly
+                    if num_parts >= 3:
+                        score *= 0.5
+
+                    return score
+
+                if best_result is None or _result_score(result) < _result_score(best_result):
+                    best_result = result
+                    if self.verbose:
+                        print(f"       -> New best decomposition (score) from {strategy.value} (sep={result.separator_size}, parts={len(result.partitions)})")
+
+                # NOTE: We used to early-exit here if a separator was "small enough".
+                # That heuristic caused the decomposer to stop after a suboptimal
+                # community-detection result on some instances (returning a very
+                # large separator) and never try later strategies that could
+                # find a much smaller separator (e.g., bridge_breaking).
+                #
+                # Remove the early-exit behavior: always continue trying all
+                # strategies and keep the best (smallest) separator found so far.
+                # This ensures we pick the globally best strategy across trials.
+                if self.verbose:
+                    print(f"       -> Candidate separator (size={result.separator_size}) recorded; continuing to try other strategies...\n")
             else:
                 if self.verbose:
                     reason = result.metadata.get('reason', 'Unknown') if result else 'Execution failed'
                     print(f"     ❌ Failed. {reason}\n")
 
-        # If the loop completes, no strategy was successful
+        # After trying all strategies, if we found at least one successful result, return the best
+        if best_result is not None:
+            if self.verbose:
+                print(f"   Selected best decomposition: {best_result.strategy.value} with separator size {best_result.separator_size}")
+
+            # If requested, recursively refine any large partitions
+            if max_recursion_depth and max_recursion_depth > 0:
+                # Determine target size for recursion
+                target = target_partition_size if target_partition_size is not None else max(self.max_partition_size, 100)
+
+                if self.verbose:
+                    print(f"   Refining partitions recursively (max_depth={max_recursion_depth}, target_size={target})...")
+
+                def _refine_partitions(parts: List[List[int]], depth: int) -> List[List[int]]:
+                    if depth <= 0:
+                        return parts
+                    refined: List[List[int]] = []
+                    for p in parts:
+                        # Skip trivial partitions
+                        if not p or len(p) <= target:
+                            refined.append(p)
+                            continue
+
+                        if self.verbose:
+                            print(f"     -> Recursing into large partition (size={len(p)})")
+
+                        # Attempt to decompose this partition further using the same strategy set
+                        try:
+                            sub_res = self.decompose(
+                                backdoor_vars=p,
+                                strategies=strategies,
+                                optimize_for=optimize_for,
+                                progress_callback=progress_callback,
+                                max_recursion_depth=max(0, depth - 1),
+                                target_partition_size=target_partition_size
+                            )
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"       ✖ Recursive decompose failed: {e}")
+                            sub_res = None
+
+                        # If recursive decomposition produced useful partitions, incorporate them
+                        if sub_res and sub_res.success and sub_res.partitions:
+                            # Further refine the returned partitions recursively
+                            refined_sub = _refine_partitions(sub_res.partitions, depth - 1)
+                            refined.extend(refined_sub)
+                        else:
+                            # Keep the original partition if recursion failed or didn't help
+                            refined.append(p)
+
+                    return refined
+
+                try:
+                    # Record a decomposition tree structure while refining
+                    decomposition_tree = {'vars': backdoor_vars, 'strategy': best_result.strategy.value, 'separator_size': best_result.separator_size, 'children': []}
+
+                    def _refine_partitions_with_tree(parts: List[List[int]], depth: int, tree_node: dict) -> List[List[int]]:
+                        if depth <= 0:
+                            return parts
+                        refined: List[List[int]] = []
+                        for p in parts:
+                            # Skip trivial partitions
+                            if not p or len(p) <= target:
+                                refined.append(p)
+                                continue
+
+                            if self.verbose:
+                                print(f"     -> Recursing into large partition (size={len(p)})")
+
+                            # Node for this child
+                            child_node = {'vars': p, 'strategy': None, 'separator_size': None, 'children': []}
+
+                            # Attempt to decompose this partition further using the same strategy set
+                            try:
+                                # Deprioritize the parent strategy to avoid repeating
+                                # the same expensive method on the same partition.
+                                child_strategies = list(strategies)
+                                parent_strat = tree_node.get('strategy') if 'tree_node' in locals() else None
+                                try:
+                                    # If parent_strat matches an enum value, move it to the end
+                                    if parent_strat is not None:
+                                        for s in list(child_strategies):
+                                            if s.value == parent_strat:
+                                                child_strategies.remove(s)
+                                                child_strategies.append(s)
+                                                break
+                                except Exception:
+                                    pass
+
+                                sub_res = self.decompose(
+                                    backdoor_vars=p,
+                                    strategies=child_strategies,
+                                    optimize_for=optimize_for,
+                                    progress_callback=progress_callback,
+                                    max_recursion_depth=max(0, depth - 1),
+                                    target_partition_size=target_partition_size
+                                )
+                            except Exception as e:
+                                if self.verbose:
+                                    print(f"       ✖ Recursive decompose failed: {e}")
+                                sub_res = None
+
+                            if sub_res and sub_res.success and sub_res.partitions:
+                                child_node['strategy'] = sub_res.strategy.value if hasattr(sub_res, 'strategy') else None
+                                child_node['separator_size'] = sub_res.separator_size if hasattr(sub_res, 'separator_size') else None
+                                # Further refine the returned partitions recursively
+                                refined_sub = _refine_partitions_with_tree(sub_res.partitions, depth - 1, child_node)
+                                refined.extend(refined_sub)
+                                tree_node['children'].append(child_node)
+                            else:
+                                # Keep the original partition if recursion failed or didn't help
+                                refined.append(p)
+                                tree_node['children'].append(child_node)
+
+                        return refined
+
+                    refined_partitions = _refine_partitions_with_tree(best_result.partitions, max_recursion_depth, decomposition_tree)
+                    # Update best_result with refined partitions and recompute separator/size
+                    best_result.partitions = refined_partitions
+                    best_result.separator = self.compute_separator(refined_partitions, backdoor_vars)
+                    best_result.separator_size = len(best_result.separator)
+                    best_result.metadata = dict(best_result.metadata) if best_result.metadata else {}
+                    best_result.metadata.update({'recursed': True, 'recursion_depth': max_recursion_depth})
+                    # Attach decomposition tree to metadata for visualization
+                    try:
+                        best_result.metadata['decomposition_tree'] = decomposition_tree
+                    except Exception:
+                        pass
+                    if self.verbose:
+                        print(f"   Refinement complete. New num_partitions={len(best_result.partitions)}, separator_size={best_result.separator_size}")
+                        # After refinement, compute per-partition treewidths (memoized)
+                        try:
+                            partition_tw = {}
+                            solvable_partitions = []
+                            for i, part in enumerate(best_result.partitions):
+                                key = frozenset(part)
+                                if key in self._treewidth_cache:
+                                    tw = self._treewidth_cache[key]
+                                else:
+                                    tw, _ = self._approximate_tree_decomposition(self.constraint_graph.subgraph(part).copy())
+                                    self._treewidth_cache[key] = tw
+                                partition_tw[i] = int(tw)
+                                if tw <= self.max_treewidth_to_solve:
+                                    solvable_partitions.append(i)
+
+                            best_result.metadata['partition_treewidths'] = partition_tw
+                            best_result.metadata['partition_classical_solvable'] = solvable_partitions
+                            if self.verbose:
+                                print(f"   Partition treewidths: {partition_tw}")
+                                if solvable_partitions:
+                                    print(f"   Classical-solvable partitions (<= {self.max_treewidth_to_solve}): {solvable_partitions}")
+                                else:
+                                    print(f"   No partitions had treewidth <= {self.max_treewidth_to_solve}")
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"   ⚠️  Partition treewidth computation failed: {e}")
+                except Exception as e:
+                    if self.verbose:
+                        print(f"   ⚠️  Partition refinement failed: {e}")
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(stage='done', result=best_result)
+                except Exception:
+                    pass
+            return best_result
+
+        # If the loop completes and no strategy succeeded
         if self.verbose:
             print("   No successful decomposition strategy found.")
-        
+
         failure_result = DecompositionResult(
             strategy=DecompositionStrategy.NONE,
             success=False,
@@ -343,10 +570,12 @@ class SATDecomposer:
         if self.verbose:
             print("    Building subgraph for treewidth decomposition...")
         
-        # --- FIX: Use the full graph for treewidth decomposition ---
+        # Build a subgraph restricted to backdoor_vars so recursive calls
+        # operate only on the intended subset of variables. This is crucial
+        # to avoid repeatedly analyzing the full graph during recursion.
         if self.verbose:
-            print("    INFO: Using the full constraint graph for treewidth decomposition.")
-        subgraph = self.constraint_graph
+            print("    INFO: Building induced subgraph for treewidth decomposition (restricted to backdoor_vars).")
+        subgraph = self.constraint_graph.subgraph(backdoor_vars).copy()
         
         if self.verbose:
             print(f"    Computing treewidth on {len(subgraph.nodes())} nodes...")
@@ -356,46 +585,70 @@ class SATDecomposer:
         
         if self.verbose:
             print(f"    ✅ Treewidth computed: {treewidth}")
-        
+
         # --- FIX: Don't filter partitions, just check treewidth ---
         # The treewidth *itself* is the partition size limit
-        if treewidth <= self.max_partition_size:
+        # Accept treewidth up to our configured cap. Previously this incorrectly
+        # used max_partition_size as the threshold which was far too small.
+        if treewidth <= self.max_treewidth_to_solve:
             # Good! Can use tree decomposition
             partitions = tree_decomp
-            
+
             # Compute separator (variables in multiple bags)
             separator = self.compute_separator(partitions, backdoor_vars)
-            
+
             # Complexity using quantum algorithm
             num_bags = len(partitions)
             avg_bag_size = np.mean([len(p) for p in partitions]) if partitions else 0
             complexity = self._compute_separator_complexity(
                 len(separator), num_bags, avg_bag_size
             )
-            
+
             return DecompositionResult(
                 strategy=DecompositionStrategy.TREEWIDTH,
                 success=True,
-                partitions=partitions, # Return ALL bags/partitions
+                partitions=partitions,  # Return ALL bags/partitions
                 separator=separator,
                 separator_size=len(separator),
                 complexity_estimate=complexity,
                 metadata={
                     'treewidth': treewidth,
                     'num_bags': num_bags,
-                    'avg_bag_size': avg_bag_size
-                }
+                    'avg_bag_size': avg_bag_size,
+                },
             )
-        else:
-            return DecompositionResult(
+        
+            # Attach backdoor_vars attribute for compatibility with callers
+            # (use separator as candidate backdoor set)
+            result = DecompositionResult(
                 strategy=DecompositionStrategy.TREEWIDTH,
-                success=False,
-                partitions=[],
-                separator=[],
-                separator_size=float('inf'),
-                complexity_estimate=float('inf'),
-                metadata={'reason': f'Treewidth {treewidth} > {self.max_partition_size}'}
+                success=True,
+                partitions=partitions,
+                separator=separator,
+                separator_size=len(separator),
+                complexity_estimate=complexity,
+                metadata={
+                    'treewidth': treewidth,
+                    'num_bags': num_bags,
+                    'avg_bag_size': avg_bag_size,
+                },
             )
+            try:
+                result.backdoor_vars = separator
+            except Exception:
+                pass
+            return result
+
+        # Treewidth too large for our configured cap
+        return DecompositionResult(
+            strategy=DecompositionStrategy.TREEWIDTH,
+            success=False,
+            partitions=[],
+            separator=[],
+            separator_size=float('inf'),
+            complexity_estimate=float('inf'),
+            metadata={'reason': f'Treewidth {treewidth} > {self.max_treewidth_to_solve}'},
+        )
     
     def _approximate_tree_decomposition(self, graph: nx.Graph) -> Tuple[int, List[List[int]]]:
         """
@@ -417,7 +670,7 @@ class SATDecomposer:
         # --- NEW: Add tqdm progress bar ---
         pbar = None
         if self.verbose and TQDM_AVAILABLE and total_nodes > 1000:
-             pbar = tqdm(total=total_nodes, desc="      Treewidth elimination", ncols=100, leave=False)
+            pbar = tqdm(total=total_nodes, desc="      Treewidth elimination", ncols=100, leave=False)
         # --- END NEW ---
 
         while len(G.nodes()) > 0:
@@ -525,17 +778,21 @@ class SATDecomposer:
         k = len(backdoor_vars)
         FIM = np.zeros((k, k))
         
-        # --- OPTIMIZATION: Use a sample of clauses for speed ---
-        sample_fraction = 0.1 # Use 10% of clauses
-        num_samples = int(len(self.clauses) * sample_fraction)
-        if num_samples > 0:
+        # --- OPTIMIZATION: Use a larger sample of clauses for better structure ---
+        # Increase sample fraction to improve the quality of the Fisher Info matrix
+        # while keeping a safety cap on the number of sampled clauses.
+        sample_fraction = 0.5  # Use 50% of clauses (was 10%)
+        max_samples = 200000   # safety cap to avoid memory blowups on huge instances
+        num_samples = min(int(len(self.clauses) * sample_fraction), max_samples)
+        if num_samples > 0 and num_samples < len(self.clauses):
             sampled_indices = np.random.choice(len(self.clauses), num_samples, replace=False)
             clause_iter = [self.clauses[i] for i in sampled_indices]
+            if self.verbose:
+                print(f"    INFO: Sampling {num_samples:,}/{len(self.clauses):,} clauses ({sample_fraction:.0%}, capped at {max_samples:,}) for Fisher Info matrix.")
         else:
             clause_iter = self.clauses
-
-        if self.verbose:
-            print(f"    INFO: Using a sample of {len(clause_iter):,} clauses ({sample_fraction:.0%}) for Fisher Info matrix.")
+            if self.verbose:
+                print(f"    INFO: Using all {len(clause_iter):,} clauses for Fisher Info matrix.")
 
         # --- NEW: Add tqdm progress bar ---
         if self.verbose and TQDM_AVAILABLE:
@@ -655,7 +912,7 @@ class SATDecomposer:
             return []
         
         if num_clusters <= 0:
-             num_clusters = 1
+            num_clusters = 1
         
         if num_clusters > k:
             num_clusters = k
@@ -771,44 +1028,25 @@ class SATDecomposer:
             components = list(nx.connected_components(test_graph))
             
             if len(components) > 1:
-                # --- NEW: Implement 2-level decomposition for giant partitions ---
-                final_partitions = []
-                for comp in components:
-                    if len(comp) > 300: # Threshold for what is considered a "giant" partition
-                        if self.verbose:
-                            print(f"    Found giant partition with {len(comp)} vars. Re-decomposing with community detection...")
-                        # This is our pragmatic, 2-level recursion.
-                        # We take this giant component and try to break it down further.
-                        sub_result = self._decompose_by_community_detection(list(comp))
-                        if sub_result and sub_result.success:
-                            # Add the newly found smaller partitions to our list
-                            final_partitions.extend(sub_result.partitions)
-                        else:
-                            # If we can't break it down, add the giant partition back.
-                            final_partitions.append(list(comp))
-                    else:
-                        # Partition is small enough, keep it.
-                        final_partitions.append(list(comp))
-                
-                partitions = final_partitions
-                # --- END of 2-level decomposition ---
+                # We have multiple components after removing weak bridges.
+                # Return them directly as partitions (no 2-level recursion).
+                partitions = [list(comp) for comp in components]
 
                 # --- FIX: Don't filter, return ALL partitions ---
                 good_partitions = partitions
-                
+
                 if len(good_partitions) >= 1:
                     # Compute separator (should be small - the bridge variables)
                     separator = self.compute_separator(good_partitions, backdoor_vars)
-                    
+
                     # Complexity using quantum algorithm
                     num_partitions = len(good_partitions)
                     avg_partition_size = np.mean([len(p) for p in good_partitions]) if good_partitions else 0
-                    repair_cost = len(weak_bridges) * 8  # Small local search per bridge
-                    
+
                     complexity = self._compute_separator_complexity(
                         len(separator), num_partitions, avg_partition_size
-                    ) + repair_cost
-                    
+                    )
+
                     result = DecompositionResult(
                         strategy=DecompositionStrategy.BRIDGE_BREAKING,
                         success=True,
@@ -819,11 +1057,10 @@ class SATDecomposer:
                         metadata={
                             'num_bridges': len(weak_bridges),
                             'num_components': len(good_partitions),
-                            'repair_cost': repair_cost,
                             'avg_partition_size': avg_partition_size
                         }
                     )
-                    
+
                     # Keep best (lowest complexity)
                     if best_result is None or complexity < best_result.complexity_estimate:
                         best_result = result
@@ -867,13 +1104,10 @@ class SATDecomposer:
             )
         
         if self.verbose:
-            print("    Building subgraph for community detection...")
-        
-        # --- FIX: Use the full graph for community detection, not just the backdoor subgraph ---
-        # The backdoor_vars hint is not useful when the graph is mostly outside the backdoor
-        if self.verbose:
-            print("    INFO: Using the full constraint graph for community detection.")
-        subgraph = self.constraint_graph
+            print("    Building subgraph for community detection (restricted to backdoor_vars)...")
+        # Use an induced subgraph on backdoor_vars so we only detect communities
+        # among the variables under consideration in this recursive step.
+        subgraph = self.constraint_graph.subgraph(backdoor_vars).copy()
         
         if len(subgraph.nodes()) < 4:
             return DecompositionResult(
@@ -917,25 +1151,25 @@ class SATDecomposer:
         # Convert to partition list
         partitions = list(communities.values())
 
-        # --- NEW: Implement "Constrained Louvain" by recursively decomposing large communities ---
+    # --- NEW: Implement "Constrained Louvain" by recursively decomposing large communities ---
         final_partitions = []
         for part in partitions:
             if len(part) > 300: # Our threshold for a partition that is too large
                 if self.verbose:
                     print(f"    -> Louvain found a large community of size {len(part)}. Recursively decomposing it...")
-                
+
                 try:
                     # Create a subgraph for the large partition and run Louvain on it
                     subgraph_part = self.constraint_graph.subgraph(part).copy()
                     sub_partition_map = community_louvain.best_partition(subgraph_part, random_state=42)
-                    
+
                     # Process the results of the recursive decomposition
                     sub_communities = {}
                     for var, comm_id in sub_partition_map.items():
                         if comm_id not in sub_communities:
                             sub_communities[comm_id] = []
                         sub_communities[comm_id].append(var)
-                    
+
                     # Add the new, smaller partitions to our final list
                     final_partitions.extend(list(sub_communities.values()))
                 except Exception as e:
@@ -1164,11 +1398,15 @@ class SATDecomposer:
         """
         separator = set()
         
-        # --- NEW: Use tqdm for this slow step ---
-        if self.verbose and TQDM_AVAILABLE and len(self.clauses) > 10000:
-            clause_iter = tqdm(self.clauses, desc="      Finding separator", total=len(self.clauses), ncols=100, leave=False)
+        # Only consider clauses that touch the variables in `all_vars`.
+        all_vars_set = set(all_vars)
+        relevant_clauses = [c for c in self.clauses if any((abs(lit)-1) in all_vars_set for lit in c)]
+
+        # --- NEW: Use tqdm for this slow step over the filtered clause set ---
+        if self.verbose and TQDM_AVAILABLE and len(relevant_clauses) > 10000:
+            clause_iter = tqdm(relevant_clauses, desc="      Finding separator", total=len(relevant_clauses), ncols=100, leave=False)
         else:
-            clause_iter = self.clauses
+            clause_iter = relevant_clauses
         # --- END NEW ---
 
         # Find variables that connect different partitions
@@ -1186,7 +1424,7 @@ class SATDecomposer:
             # If clause touches multiple partitions, its variables are in separator
             if len(set(touched_partitions)) > 1: # Use set to count unique partitions
                 for v in vars_in_clause:
-                    if v in all_vars:
+                    if v in all_vars_set:
                         separator.add(v)
         
         return sorted(list(separator))
@@ -1311,6 +1549,44 @@ class SATDecomposer:
         
         print("\nMetadata:", result.metadata)
         print("="*80)
+
+    def visualize_decomposition_tree(self, result: DecompositionResult, max_depth: int = 10):
+        """
+        Visualize the recursive decomposition tree stored in result.metadata['decomposition_tree']
+
+        Prints an ASCII tree where each node shows number of vars and separator size.
+        """
+        tree = None
+        try:
+            tree = result.metadata.get('decomposition_tree') if result.metadata else None
+        except Exception:
+            tree = None
+
+        if not tree:
+            print("No decomposition tree available in result.metadata['decomposition_tree'].")
+            return
+
+        def _print_node(node: dict, prefix: str = "", depth: int = 0):
+            if depth > max_depth:
+                print(prefix + "... (max depth reached)")
+                return
+
+            vars_list = node.get('vars')
+            nvars = len(vars_list) if vars_list is not None else 0
+            strat = node.get('strategy') or 'unknown'
+            sep = node.get('separator_size')
+            sep_str = str(sep) if sep is not None else 'N/A'
+
+            print(f"{prefix}- vars={nvars}, strategy={strat}, separator={sep_str}")
+
+            children = node.get('children') or []
+            for i, child in enumerate(children):
+                is_last = (i == len(children) - 1)
+                child_prefix = prefix + ("   " if is_last else "|  ")
+                _print_node(child, child_prefix, depth + 1)
+
+        print("\nDECOMPOSITION TREE:")
+        _print_node(tree, prefix="", depth=0)
 
 
 # =============================================================================
@@ -1561,7 +1837,7 @@ def benchmark_decomposition_strategies(n_vars_list: List[int] = [20, 30, 40],
                 clauses, backdoor_vars, _ = create_test_sat_instance(n_vars, k_backdoor, structure_type, ensure_sat=True)
                 
                 # Initialize decomposer
-                decomposer = SATDecomposer(clauses, n_vars, max_partition_size=10, verbose=True)
+                decomposer = SATDecomposer(clauses, n_vars, max_partition_size=10, verbose=True, max_treewidth_to_solve=20)
                 
                 # Try decomposition
                 result = decomposer.decompose(backdoor_vars)

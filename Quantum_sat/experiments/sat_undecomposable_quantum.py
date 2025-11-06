@@ -31,7 +31,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 # --- END PATCH 1 ---
-from Quantum_sat.tests.qlto_fpt_solver_v7_hard_benchmark import UF100_01_CNF, parse_dimacs_cnf, PYSAT_AVAILABLE
+from tests.qlto_fpt_solver_v7_hard_benchmark import UF100_01_CNF, parse_dimacs_cnf, PYSAT_AVAILABLE
 
 # Add local QLTO and QAADO to path
 # Note: This might be obsolete if QLTO is part of the project

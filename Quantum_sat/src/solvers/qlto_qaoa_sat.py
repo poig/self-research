@@ -220,7 +220,7 @@ def sat_to_hamiltonian(problem: SATProblem) -> SparsePauliOp:
                     new_coeff = existing_coeff * op_coeff
                     
                     if pauli_str_key not in new_projector_terms:
-                         new_projector_terms[pauli_str_key] = (new_pauli_dict, 0.0)
+                        new_projector_terms[pauli_str_key] = (new_pauli_dict, 0.0)
                     
                     new_projector_terms[pauli_str_key] = (
                         new_pauli_dict, 
@@ -1332,7 +1332,7 @@ def reduce_problem_by_fixing(sat_problem: SATProblem, fixed_assign: Dict[int, bo
     return reduced_problem, remaining_vars
 
 
-def try_candidate_backdoor_pysat(sat_problem: SATProblem, candidate_subset_0_idx: List[int]):
+def try_candidate_backdoor_pysat(sat_problem: SATProblem, candidate_subset_0_idx: List[int], timeout: Optional[float] = None, max_masks: Optional[int] = None):
     """Try all assignments to candidate_subset_0_idx using PySAT to solve the reduced instances.
 
     Returns a full assignment mapping (0-indexed -> bool) if found, else None.
@@ -1344,8 +1344,16 @@ def try_candidate_backdoor_pysat(sat_problem: SATProblem, candidate_subset_0_idx
         return None
 
     k_prime = len(candidate_subset_0_idx)
-    # Iterate all 2^k' assignments
-    for mask in range(2 ** k_prime):
+    # Determine mask iteration limit
+    total_masks = 2 ** k_prime
+    if max_masks is None:
+        max_masks = total_masks
+    else:
+        max_masks = min(int(max_masks), total_masks)
+
+    start_time = time.time()
+    # Iterate up to max_masks or until timeout
+    for mask in range(max_masks):
         fixed = {}
         for i, var0 in enumerate(candidate_subset_0_idx):
             bit = (mask >> i) & 1
@@ -1373,7 +1381,13 @@ def try_candidate_backdoor_pysat(sat_problem: SATProblem, candidate_subset_0_idx
             model = g.get_model()
             g.delete()
         except Exception:
+            # solver error - skip this mask
             continue
+
+        # Timeout check between masks
+        if timeout is not None and (time.time() - start_time) > float(timeout):
+            # Best-effort: stop searching further
+            return None
 
         # model contains values for the reduced_problem variables (1-indexed)
         full_assign = {}
@@ -1447,15 +1461,36 @@ def is_minimal_backdoor(sat_problem: SATProblem, subset_0_idx: List[int]) -> boo
     return True
 
 
-def shrink_superset_greedy(sat_problem: SATProblem, superset_0_idx: List[int]) -> List[int]:
-    """Attempt to greedily shrink a superset backdoor to a smaller one by dropping redundant vars."""
+def shrink_superset_greedy(sat_problem: SATProblem, superset_0_idx: List[int], timeout: Optional[float] = None, per_candidate_max_masks: Optional[int] = 200000) -> List[int]:
+    """Attempt to greedily shrink a superset backdoor to a smaller one by dropping redundant vars.
+
+    New: accepts an overall `timeout` (seconds) and `per_candidate_max_masks` to bound
+    the inner classical search on each trial. This makes shrinking fast and bounded.
+    """
     current = list(superset_0_idx)
     changed = True
-    while changed:
+    start = time.time()
+    # Guard: maximum outer iterations to avoid pathological loops
+    max_outer_iters = max(4, len(current) * 2)
+    outer_iter = 0
+    while changed and (timeout is None or (time.time() - start) < float(timeout)) and outer_iter < max_outer_iters:
+        outer_iter += 1
         changed = False
+        # Try removing each variable; randomize order to avoid worst-case deterministic behavior
         for v in list(current):
+            # Check global timeout
+            if timeout is not None and (time.time() - start) >= float(timeout):
+                return current
+
             trial = [x for x in current if x != v]
-            sol = try_candidate_backdoor_pysat(sat_problem, trial)
+            # Compute per-candidate mask cap: don't try more than per_candidate_max_masks masks
+            try:
+                total_masks = 2 ** len(trial)
+            except OverflowError:
+                total_masks = float('inf')
+            max_masks = min(int(total_masks) if total_masks != float('inf') else per_candidate_max_masks, int(per_candidate_max_masks))
+
+            sol = try_candidate_backdoor_pysat(sat_problem, trial, timeout=max(0.5, (timeout - (time.time() - start)) if timeout else None), max_masks=max_masks)
             if sol is not None:
                 current = trial
                 changed = True
@@ -1468,9 +1503,15 @@ def run_fpt_pipeline_from_samples(clauses: List[Tuple[int, ...]], n_vars: int, s
 
     Kept for backwards-compatibility with callers that already have a samples dict.
     """
-    # Build a SATProblem wrapper for helper functions
-    sat_clauses = [SATClause(c) for c in clauses]
-    problem = SATProblem(n_vars=n_vars, clauses=sat_clauses)
+    # Build a SATProblem wrapper for helper functions. Accept either a
+    # SATProblem instance or an iterable of clause tuples.
+    if isinstance(clauses, SATProblem):
+        problem = clauses
+        if n_vars is None:
+            n_vars = problem.n_vars
+    else:
+        sat_clauses = [SATClause(c) for c in clauses]
+        problem = SATProblem(n_vars=n_vars, clauses=sat_clauses)
 
     candidate_subsets = extract_subset_from_top_samples(samples, top_k, n_vars, n_mask_bits)
     for subset in candidate_subsets:
@@ -1507,11 +1548,27 @@ def run_fpt_pipeline(clauses: List[Tuple[int, ...]], n_vars: int, mode_or_name, 
     shots = cfg.get('shots', 2048)
     top_T_candidates = cfg.get('top_T_candidates', 50)
     freq_threshold = cfg.get('freq_threshold', 0.15)
+    # Verbose / progress control
+    verbose = bool(cfg.get('verbose', False) or cfg.get('progress', False))
 
-    # Build SATProblem
+    # Build SATProblem. Accept either:
+    #  - clauses: List[Tuple[int,...]] (the normal case), or
+    #  - clauses: SATProblem (caller already constructed a problem)
     try:
-        sat_clauses = [SATClause(c) for c in clauses]
-        problem = SATProblem(n_vars=n_vars, clauses=sat_clauses)
+        if isinstance(clauses, SATProblem):
+            # Caller passed a SATProblem directly
+            problem = clauses
+            # If n_vars provided as None or inconsistent, prefer the problem's n_vars
+            if n_vars is None:
+                n_vars = problem.n_vars
+            elif n_vars != problem.n_vars:
+                # Allow caller to pass n_vars but warn/normalize to the problem
+                # (we avoid raising here to be permissive)
+                n_vars = problem.n_vars
+        else:
+            # Expect clauses to be an iterable of tuples
+            sat_clauses = [SATClause(c) for c in clauses]
+            problem = SATProblem(n_vars=n_vars, clauses=sat_clauses)
     except Exception as e:
         return {'status': 'error', 'error': f'Failed to create SATProblem: {e}'}
 
@@ -1525,6 +1582,9 @@ def run_fpt_pipeline(clauses: List[Tuple[int, ...]], n_vars: int, mode_or_name, 
         vqe_hamiltonian = sat_to_hamiltonian(problem)
     except Exception as e:
         return {'status': 'error', 'error': f'ansatz/hamiltonian build failed: {e}'}
+
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: built ansatz (p={p_layers}, n_params={n_params}) and Hamiltonian")
 
     param_bounds = qls_np.array([[0.0, 2 * qls_np.pi] if i % 2 == 0 else [0.0, qls_np.pi] for i in range(n_params)])
     theta0 = qls_np.random.rand(n_params) * (param_bounds[:, 1] - param_bounds[:, 0]) + param_bounds[:, 0]
@@ -1542,19 +1602,27 @@ def run_fpt_pipeline(clauses: List[Tuple[int, ...]], n_vars: int, mode_or_name, 
             raise ValueError('U_PE build returned None')
     except Exception as e:
         return {'status': 'error', 'error': f'U_PE build failed: {e}'}
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: phase-oracle (U_PE) built")
 
     T_gate = build_tunneling_operator_QW(n_qubits_p)
     evol_qc = run_qlto_evolution_nisq(n_qubits_p, problem.n_vars, param_idx, U_PE, T_gate, K_steps=3)
     if evol_qc is None:
         return {'status': 'error', 'error': 'evolution circuit build failed'}
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: evolution circuit built (n_qubits_param={n_qubits_p})")
 
     sampler = CountingWrapper(BaseSampler())
 
     # Quantum sampling
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: starting quantum sampling (shots={shots})...")
     t0_sampler = time.time()
     samples = measure_and_process_samples_nisq(evol_qc, shots, n_qubits_p, 'param', sampler)
     t1_sampler = time.time()
     sampler_time = t1_sampler - t0_sampler
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: sampling completed in {sampler_time:.3f}s; collected {len(samples)} raw samples")
 
     if not samples:
         return {'status': 'ok', 'success': False, 'reason': 'no-samples', 'sampler_time': sampler_time}
@@ -1566,17 +1634,25 @@ def run_fpt_pipeline(clauses: List[Tuple[int, ...]], n_vars: int, mode_or_name, 
     samples_norm = {idx: p/totalp for idx,p in samples.items()}
 
     # Classical heuristic extraction & search (frequency-based + shrink + PySAT)
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: starting classical extraction and greedy shrink")
     t_classical_start = time.time()
     superset = extract_subset_from_top_samples(samples_norm, top_T_candidates, n_vars, n_mask_bits)
     k_prime_initial = len(superset)
+    if verbose:
+        print(f"    - superset candidates extracted: {k_prime_initial} vars (top_T_candidates={top_T_candidates})")
     shrunk_set = shrink_superset_greedy(problem, superset)
     k_prime_final = len(shrunk_set)
+    if verbose:
+        print(f"    - shrunk set size: {k_prime_final} vars")
     solution_0_idx = try_candidate_backdoor_pysat(problem, shrunk_set)
     is_minimal = None
     if solution_0_idx is not None:
         is_minimal = is_minimal_backdoor(problem, shrunk_set)
     t_classical_end = time.time()
     classical_search_time = t_classical_end - t_classical_start
+    if verbose:
+        print(f"  [QLTO-FPT] Trial {trial_seed}: classical search finished in {classical_search_time:.3f}s")
 
     total_time = time.time() - t0_sampler + classical_search_time
 

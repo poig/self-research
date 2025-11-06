@@ -1,0 +1,11 @@
+[
+  {
+    "k": 1,
+    "assumptions": [
+      -385
+    ],
+    "sat": true,
+    "method": "Classical SAT (Glucose3)",
+    "time": 0.8969831466674805
+  }
+]

@@ -25,7 +25,7 @@ import numpy as np
 # Add path to solvers, assuming this script is run from the root
 sys.path.insert(0, 'src/solvers')
 
-from aes_sbox_encoder import encode_sbox_naive, AES_SBOX
+from aes_sbox_encoder import encode_sbox_naive, encode_sbox_tseitin, AES_SBOX
 from aes_mixcolumns_encoder import encode_mixcolumns_column, gf_mul2, gf_mul3
 
 # --- NEW: AES Key Schedule Constants ---
@@ -73,7 +73,7 @@ def encode_xor_4byte_word(word_a_vars, word_b_vars, word_out_vars, clauses):
         ))
 
 # --- NEW: Helper for applying S-Box to a 32-bit word ---
-def encode_sub_word(input_word_vars, output_word_vars, next_var_id, clauses):
+def encode_sub_word(input_word_vars, output_word_vars, next_var_id, clauses, sbox_mode='naive'):
     """
     Applies the AES S-Box to each of the 4 bytes in a 32-bit word.
     input_word_vars: 32 variables
@@ -82,8 +82,12 @@ def encode_sub_word(input_word_vars, output_word_vars, next_var_id, clauses):
     for i in range(4):
         in_byte = input_word_vars[i*8 : (i+1)*8]
         out_byte = output_word_vars[i*8 : (i+1)*8]
-        sbox_clauses = encode_sbox_naive(in_byte, out_byte)
-        clauses.extend(sbox_clauses)
+        if sbox_mode == 'tseitin':
+            sbox_clauses, next_var_id = encode_sbox_tseitin(in_byte, out_byte, next_var_id)
+            clauses.extend(sbox_clauses)
+        else:
+            sbox_clauses = encode_sbox_naive(in_byte, out_byte)
+            clauses.extend(sbox_clauses)
     # S-Box does not add intermediate variables in this naive encoding
     return next_var_id
 
@@ -169,7 +173,7 @@ def encode_shift_rows(state_vars):
     return output_vars
 
 
-def encode_sub_bytes(state_vars, next_var_id):
+def encode_sub_bytes(state_vars, next_var_id, sbox_mode='naive'):
     """
     Encode SubBytes transformation.
     Apply AES S-box to each of 16 bytes.
@@ -192,9 +196,13 @@ def encode_sub_bytes(state_vars, next_var_id):
         output_byte_vars = list(range(next_var_id, next_var_id + 8))
         next_var_id += 8
         
-        # Encode S-box
-        sbox_clauses = encode_sbox_naive(input_vars, output_byte_vars)
-        clauses.extend(sbox_clauses)
+        # Encode S-box (naive or tseitin)
+        if sbox_mode == 'tseitin':
+            sbox_clauses, next_var_id = encode_sbox_tseitin(input_vars, output_byte_vars, next_var_id)
+            clauses.extend(sbox_clauses)
+        else:
+            sbox_clauses = encode_sbox_naive(input_vars, output_byte_vars)
+            clauses.extend(sbox_clauses)
         
         output_vars.extend(output_byte_vars)
     
@@ -239,17 +247,18 @@ def encode_mix_columns_full(state_vars, next_var_id):
             next_var_id += 8
         
         # Encode MixColumns for this column
-        col_clauses, final_next_id = encode_mixcolumns_column(
+        # Note: encode_mixcolumns_column now returns (clauses, next_var_id, allocated_outputs)
+        col_clauses, final_next_id, allocated_outputs = encode_mixcolumns_column(
             col_input_vars,      # List of 4 lists of 8 bits each
-            col_output_vars,     # List of 4 lists of 8 bits each
+            col_output_vars,     # Optional: caller-provided outputs (equivalence will be enforced)
             next_var_id
         )
         clauses.extend(col_clauses)
         next_var_id = final_next_id
-        
-        # Store output in correct position
+
+        # Store output in correct position (use allocated outputs returned by encoder)
         for i, byte_idx in enumerate(col_byte_indices):
-            temp_output_bytes[byte_idx] = col_output_vars[i]
+            temp_output_bytes[byte_idx] = allocated_outputs[i]
 
     # Flatten the collected output bytes
     output_vars = [var for byte_vars in temp_output_bytes for var in byte_vars]
@@ -257,7 +266,7 @@ def encode_mix_columns_full(state_vars, next_var_id):
     return output_vars, clauses, next_var_id
 
 
-def encode_key_schedule(master_key_vars, next_var_id):
+def encode_key_schedule(master_key_vars, next_var_id, sbox_mode='naive'):
     """
     --- FULLY IMPLEMENTED AES-128 KEY SCHEDULE ---
     Generate 11 round keys (176 bytes total) from the 16-byte master key.
@@ -300,7 +309,7 @@ def encode_key_schedule(master_key_vars, next_var_id):
             # Allocate 32 vars for SubWord output
             temp_sub = list(range(next_var_id, next_var_id + 32))
             next_var_id += 32
-            next_var_id = encode_sub_word(temp_rot, temp_sub, next_var_id, clauses)
+            next_var_id = encode_sub_word(temp_rot, temp_sub, next_var_id, clauses, sbox_mode=sbox_mode)
             
             # 3. XOR with Rcon[i/4]
             # Create Rcon word [Rcon[i/4], 0, 0, 0]
@@ -340,7 +349,7 @@ def encode_key_schedule(master_key_vars, next_var_id):
     return round_keys, clauses, next_var_id
 
 
-def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars):
+def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars, sbox_mode='naive'):
     """
     Encode full AES-128 encryption as SAT.
     
@@ -384,7 +393,7 @@ def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars):
     print("  [2/13] Generating round keys (full key schedule)...")
     schedule_start_vars = next_var_id
     round_keys, key_sched_clauses, next_var_id = encode_key_schedule(
-        master_key_vars, next_var_id
+        master_key_vars, next_var_id, sbox_mode=sbox_mode
     )
     clauses.extend(key_sched_clauses)
     schedule_vars = next_var_id - schedule_start_vars
@@ -403,7 +412,7 @@ def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars):
         print(f"  [{3+round_num}/13] Encoding round {round_num}...")
         
         # SubBytes
-        state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id)
+        state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id, sbox_mode=sbox_mode)
         clauses.extend(sb_clauses)
         
         # ShiftRows (permutation, no clauses)
@@ -423,7 +432,7 @@ def encode_aes_128(plaintext_bytes, ciphertext_bytes, master_key_vars):
     print(f"  [13/13] Encoding final round...")
     
     # SubBytes
-    state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id)
+    state_vars, sb_clauses, next_var_id = encode_sub_bytes(state_vars, next_var_id, sbox_mode=sbox_mode)
     clauses.extend(sb_clauses)
     
     # ShiftRows
@@ -481,9 +490,9 @@ if __name__ == "__main__":
     print(f"  Master key: {'??' * 16} (to be recovered!)")
     print()
     
-    # Encode AES
+    # Encode AES (default to naive S-box in test main)
     clauses, total_vars, round_keys = encode_aes_128(
-        plaintext, ciphertext, master_key_vars
+        plaintext, ciphertext, master_key_vars, sbox_mode='naive'
     )
     
     print()

@@ -24,7 +24,9 @@ import re
 from itertools import product
 from typing import Dict, List, Tuple, Optional, Set
 import sys
-sys.path.append('..')
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Import your QLTO module; adjust path if needed
 try:
@@ -32,7 +34,7 @@ try:
 except Exception as e:
     # Try local import
     try:
-        import qlto_qaoa_sat as qls
+        from src.solvers.qlto_qaoa_sat import QLTO_QAOA_SAT_Solver as qls
     except ImportError as e2:
         raise ImportError(f"Could not import qlto_qaoa_sat. Run from repo root or adjust import path. Error: {e2}")
 
