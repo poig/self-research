@@ -7,6 +7,7 @@ Current projects:
 
 - `Quantum_df/` — Calculating Pi on Quantum Computing (see `Quantum_df/README.md`)
 - `Quantum_sat/` — Compute SAT on Quantum Computer (see `Quantum_sat/README.md`)
+- `Quantum_games/` — Simulating Conway's Game of Life on Quantum Computer (see `Quantum_games/README.md`)
 
 Permissions & license
 ---------------------
