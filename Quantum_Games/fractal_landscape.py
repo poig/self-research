@@ -59,6 +59,55 @@ class FractalLandscapeEngine:
         sim = AerSimulator()
         return sim.run(self.qc, shots=8192).result().get_counts()
 
+class NativeFractalEngine:
+    def __init__(self, n_bits=3):
+        self.n = n_bits
+        self.qr_x = QuantumRegister(self.n, 'x')
+        self.qr_y = QuantumRegister(self.n, 'y')
+        self.qr_check = QuantumRegister(self.n, 'check') # Ancilla
+        self.qr_target = QuantumRegister(1, 'target')
+        self.cr = ClassicalRegister(self.n + self.n + 1, 'readout')
+        self.qc = QuantumCircuit(self.qr_x, self.qr_y, self.qr_check, self.qr_target, self.cr)
+
+        
+    def construct_linear_circuit(self):
+        # 1. Superposition
+        self.qc.h(self.qr_x)
+        self.qc.h(self.qr_y)
+        
+        # 2. NATIVE LOGIC (Linear Loop: O(N))
+        # Instead of 64 loops, we run 3 loops.
+        print(f"Constructing Logic with {self.n} parallel checks...")
+        
+        # Step A: Compute Penalties in Parallel
+        # For each bit i, if x[i] AND y[i] are 1, set check[i]=1
+        for i in range(self.n):
+            self.qc.ccx(self.qr_x[i], self.qr_y[i], self.qr_check[i])
+            
+        # Step B: Aggregate (The "AND" Gate)
+        # We want Target=1 only if ALL check bits are 0.
+        # Flip check bits so we can use standard MCX (trigger on 111)
+        self.qc.x(self.qr_check)
+        
+        # If all checks are now 1 (meaning original checks were 0), flip Target
+        self.qc.mcx(self.qr_check, self.qr_target)
+        
+        # Restore check bits
+        self.qc.x(self.qr_check)
+        
+        # Step C: Uncompute Penalties (Reverse Step A)
+        for i in range(self.n):
+            self.qc.ccx(self.qr_x[i], self.qr_y[i], self.qr_check[i])
+
+    def run_simulation(self):
+        # 3. OBSERVE
+        self.qc.measure(self.qr_x, self.cr[:self.n])
+        self.qc.measure(self.qr_y, self.cr[self.n : self.n+self.n])
+        self.qc.measure(self.qr_target, self.cr[-1])
+        
+        sim = AerSimulator()
+        return sim.run(self.qc, shots=8192).result().get_counts()
+
 if __name__ == "__main__":
     bits = 4
     engine = FractalLandscapeEngine(n_bits_x=bits, n_bits_y=bits)
@@ -66,6 +115,31 @@ if __name__ == "__main__":
     counts = engine.run_simulation()
     
     print("\n--- FRACTAL LOGIC SURFACE (Corrected) ---")
+    grid = [['.' for _ in range(2**bits)] for _ in range(2**bits)]
+    
+    for k, count in counts.items():
+        # k format: "State Y X" (e.g. "1 011 001")
+        # Remove spaces if present
+        k = k.replace(" ", "")
+        
+        state = k[0]
+        y_bits = k[1 : 1+bits] # Y is middle
+        x_bits = k[1+bits : 1+2*bits] # X is last
+        
+        if state == '1':
+            grid[int(y_bits, 2)][int(x_bits, 2)] = '█'
+            
+    # print("  0 1 2 3 4 5 6 7 (X)")
+    print(f"{bits}x{bits} Grid")
+    print("  " + " ".join([str(i) for i in range(2**bits)]))
+    for y in range(2**bits):
+        print(f"{y} " + " ".join(grid[y]))
+
+    engine = NativeFractalEngine(n_bits=bits)
+    engine.construct_linear_circuit()
+    counts = engine.run_simulation()
+    
+    print("\n--- NATIVE FRACTAL LOGIC SURFACE ---")
     grid = [['.' for _ in range(2**bits)] for _ in range(2**bits)]
     
     for k, count in counts.items():
