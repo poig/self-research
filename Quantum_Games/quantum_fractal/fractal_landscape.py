@@ -109,7 +109,7 @@ class NativeFractalEngine:
         return sim.run(self.qc, shots=8192).result().get_counts()
 
 if __name__ == "__main__":
-    bits = 4
+    bits = 5
     engine = FractalLandscapeEngine(n_bits_x=bits, n_bits_y=bits)
     engine.fuse_fractal_rule()
     counts = engine.run_simulation()
@@ -159,3 +159,7 @@ if __name__ == "__main__":
     print("  " + " ".join([str(i) for i in range(2**bits)]))
     for y in range(2**bits):
         print(f"{y} " + " ".join(grid[y]))
+
+"""
+If the SAT formula creates a random landscape: You verify satisfiability in $O(\sqrt{2^N})$ steps.If the SAT formula creates a "Fractal" (e.g., Modular Arithmetic): You can solve it in $O(Poly(N))$ steps (Exponentially fast).
+"""
