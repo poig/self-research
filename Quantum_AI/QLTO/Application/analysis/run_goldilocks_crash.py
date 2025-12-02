@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import linregress
 from scipy.optimize import curve_fit
 import warnings
+import sys
+sys.path.append("..") 
 
 warnings.filterwarnings("ignore")
 
