@@ -51,6 +51,29 @@ These papers provide the mathematical foundation for the Commuting-Block ansatz 
 
 ## Usage
 
+```python
+from nisq_v2 import RiemannianQLTO
+
+# Initialize optimizer
+qlto = RiemannianQLTO(ansatz, H, bits_per_param=1, shot_budget=8192,
+backend=None,
+fim_full=False
+)
+
+# Step
+r = max(search_radius * (0.8 ** epoch), 1e-4)
+dt = max(0.5 * (0.85 ** epoch), 0.01)
+
+# Run optimization
+result = optimizer.run_walk(params, 
+k_steps=3, 
+delta_t=dt, 
+search_radius=r, 
+layer=True, 
+gradient_reuse=True, coherence=True
+)
+```
+
 ### Running the Optimizer
 To run the main QLTO optimizer on a Heisenberg spin chain:
 ```bash
