@@ -5,9 +5,9 @@ This repository will contain multiple research projects (one per subdirectory). 
 
 Current projects:
 
-- `Quantum_df/` — Calculating Pi on Quantum Computing (see `Quantum_df/README.md`)
-- `Quantum_sat/` — Compute SAT on Quantum Computer (see `Quantum_sat/README.md`)
-- `Quantum_games/` — Simulating Conway's Game of Life on Quantum Computer (see `Quantum_games/README.md`)
+- `Quantum_AI/` - Include all my Quantum AI related project (see `Quantum_AI/README.md`)
+- `Quantum_df/` - Calculating Pi on Quantum Computing (see `Quantum_df/README.md`)
+- `Quantum_games/` - Simulating Conway's Game of Life on Quantum Computer (see `Quantum_games/README.md`)
 
 Permissions & license
 ---------------------
