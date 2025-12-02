@@ -1,0 +1,867 @@
+"""
+qlto_benchmarks.py
+
+Comprehensive benchmark suite for QLTO vs Classical vs QNG vs AdamW.
+Tests on H2, LiH, and Heisenberg (N=4, 6, 8).
+
+Features:
+- Exact NEFV Tracking (Circuit Executions).
+- Correct QNG (Efficient Simulation): Uses Param Shift for values but counts O(L) cost.
+- Block-Diagonal Inversion: Avoids O(N^3) classical overhead.
+- AdamW: Uses Param Shift (O(N) cost).
+- QLTO: Global Mode (Riemannian Coherent Walk).
+"""
+
+# Set non-interactive backend BEFORE importing pyplot to avoid tkinter threading issues
+import matplotlib
+matplotlib.use('Agg')
+
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+from qiskit.circuit.library import efficient_su2
+from qiskit.quantum_info import SparsePauliOp
+from qiskit_aer import AerSimulator
+from qiskit.primitives import StatevectorEstimator as Estimator
+
+# Import Efficient Engines
+import sys
+import os
+
+try:
+    from commute_fim import CommutingBlockFIM
+    from commute_gradient import CommutingBlockGradient
+    from nisq_v2 import RiemannianQLTO
+    ENGINES_AVAILABLE = True
+except ImportError as e:
+    print(f"WARNING: Efficient Engines not found: {e}")
+    ENGINES_AVAILABLE = False
+
+# --- Helper Functions ---
+
+def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
+    """
+    Solves F * x = g using Block-Diagonal approximation to avoid O(N^3) inversion.
+    Inverts each layer's block independently. reduce to O(L⋅(N/L)^3)≈O(N)
+    
+    Args:
+        fim (np.ndarray): Full Fisher Information Matrix (NxN).
+        grad (np.ndarray): Gradient vector (N).
+        layers (list): List of layers from the FIM engine, used to determine blocks.
+    
+    Returns:
+        np.ndarray: The natural gradient update vector.
+    """
+    nat_grad = np.zeros_like(grad)
+    used_indices = []
+    
+    try:
+        # Iterate through layers to identify parameter blocks
+        for layer in layers:
+            # Extract indices for the current block
+            # Case A: Layer is a list of objects with 'index' (e.g., PauliStrings)
+            if isinstance(layer, list) and hasattr(layer[0], 'index'):
+                idxs = [op.index for op in layer if hasattr(op, 'index')]
+            # Case B: Layer is a list of indices directly
+            elif isinstance(layer, list) and isinstance(layer[0], int):
+                idxs = layer
+            else:
+                # Fallback: Sequential assumption or skip
+                continue
+                
+            if not idxs:
+                continue
+                
+            # Extract sub-matrices
+            # np.ix_ creates the meshgrid for block slicing
+            fim_block = fim[np.ix_(idxs, idxs)]
+            grad_block = grad[idxs]
+            
+            # Regularize and Invert Block
+            # Cost is O(k^3) where k is params per layer (small), not N (large)
+            fim_block_reg = fim_block + regularization * np.eye(len(fim_block))
+            nat_grad_block = np.linalg.pinv(fim_block_reg) @ grad_block
+            
+            # Place result back
+            nat_grad[idxs] = nat_grad_block
+            used_indices.extend(idxs)
+            
+        # Handle any 'orphaned' parameters not in a layer (fallback to standard gradient)
+        all_indices = set(range(len(grad)))
+        remaining = list(all_indices - set(used_indices))
+        if remaining:
+            nat_grad[remaining] = grad[remaining]
+            
+    except Exception as e:
+        print(f"Warning: Block-Diagonal solver failed ({e}), falling back to full PINV.")
+        fim_reg = fim + regularization * np.eye(len(fim))
+        nat_grad = np.linalg.pinv(fim_reg) @ grad
+        
+    return nat_grad
+
+# --- Optimizers ---
+
+class QLTO_Wrapper:
+    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10):
+        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full)
+        self.estimator = self.optimizer.estimator # Use the one from optimizer
+        self.epoch = 0
+        self.layer = layer
+        self.gradient_reuse=gradient_reuse
+        self.coherence=coherence
+        self.k_step=k_step
+
+    @property
+    def nefv(self):
+        return self.optimizer.nefv
+    
+    @property
+    def circuit_depth(self):
+        """Return the last circuit depth used by the optimizer."""
+        return self.optimizer.last_circuit_depth
+    
+    @property
+    def max_circuit_depth(self):
+        """Return the maximum circuit depth seen across all iterations."""
+        return self.optimizer.max_circuit_depth
+
+    def step(self, params):
+        self.epoch += 1
+        # Annealing schedule from nisq_v2.py main
+        r = max(0.6 * (0.9 ** (self.epoch - 1)), 1e-4)
+        dt = max(0.5 * (0.95 ** self.epoch), 0.01)
+        return self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
+
+class CorrectQNG:
+    """
+    Correct Quantum Natural Gradient using Commuting Block FIM/Grad.
+    
+    Uses 'compute_gradient_efficient_simulated' to simulate the cost of the 
+    Efficient Protocol (arXiv:2306.14962) which achieves O(L) gradient measurement.
+    
+    Includes Block-Diagonal classical inversion to ensure scalability.
+    
+    NEFV: 2*L (Grad Efficient) + L (FIM) = 3*L per step.
+    """
+    def __init__(self, ansatz, hamiltonian, lr=0.1):
+        self.ansatz = ansatz
+        self.grad_engine = CommutingBlockGradient(ansatz, hamiltonian)
+        self.fim_engine = CommutingBlockFIM(ansatz)
+        self.lr = lr
+        self.estimator = Estimator()
+        self.nefv = 0
+        
+    def step(self, params):
+        # 1. Gradient (Efficient Simulation)
+        # Returns correct gradient values but counts O(L) cost
+        # FIX: Use param shift for values, but count cost as efficient (O(L))
+        grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
+        grad_nefv = self.grad_engine.get_nefv_cost()
+        self.nefv += grad_nefv
+        
+        # 2. FIM (L)
+        # Calculates FIM (could be full or diagonal, we assume full matrix returned)
+        fim = self.fim_engine.compute_fim(self.estimator, params)
+        self.nefv += len(self.fim_engine.layers)
+        
+        # 3. Natural Gradient (Block-Diagonal Approximation)
+        # Use helper to solve efficiently
+        nat_grad = block_diagonal_solve(fim, grad, self.fim_engine.layers)
+        
+        new_params = params - self.lr * nat_grad
+        return new_params
+    
+    def linear_inv_step(self, params):
+        # 1. Gradient (Efficient Simulation)
+        # Returns correct gradient values but O(L) cost
+        grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
+        grad_nefv = self.grad_engine.get_nefv_cost()
+        self.nefv += grad_nefv
+        
+        # 2. FIM (L)
+        fim = self.fim_engine.compute_fim(self.estimator, params)
+        self.nefv += len(self.fim_engine.layers)
+        
+        # 3. Natural Gradient
+        fim_reg = fim + 1e-3 * np.eye(len(fim))
+        nat_grad = np.linalg.pinv(fim_reg) @ grad
+        
+        new_params = params - self.lr * nat_grad
+        return new_params
+
+class AdamW:
+    """
+    AdamW Optimizer using Standard Quantum Gradient (Param Shift).
+    NEFV: 2N (Grad) per step.
+    """
+    def __init__(self, ansatz, hamiltonian, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01):
+        self.ansatz = ansatz
+        self.grad_engine = CommutingBlockGradient(ansatz, hamiltonian)
+        self.lr = lr
+        self.betas = betas
+        self.eps = eps
+        self.weight_decay = weight_decay
+        self.estimator = Estimator()
+        self.nefv = 0
+        
+        self.m = np.zeros(ansatz.num_parameters)
+        self.v = np.zeros(ansatz.num_parameters)
+        self.t = 0
+        
+    def step(self, params):
+        self.t += 1
+        # 1. Gradient (Standard Param Shift)
+        grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
+        grad_nefv = 2 * len(params)
+        self.nefv += grad_nefv
+        
+        # 2. AdamW Logic
+        params = params * (1 - self.lr * self.weight_decay)
+        self.m = self.betas[0] * self.m + (1 - self.betas[0]) * grad
+        self.v = self.betas[1] * self.v + (1 - self.betas[1]) * (grad ** 2)
+        m_hat = self.m / (1 - self.betas[0] ** self.t)
+        v_hat = self.v / (1 - self.betas[1] ** self.t)
+        update = self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
+        new_params = params - update
+        return new_params
+
+class SPSA:
+    """
+    SPSA Optimizer.
+    NEFV: 2 per step.
+    """
+    def __init__(self, ansatz, hamiltonian, lr=0.1, alpha=0.602, gamma=0.101, c=0.2):
+        self.ansatz = ansatz
+        self.hamiltonian = hamiltonian
+        self.lr = lr
+        self.alpha = alpha
+        self.gamma = gamma
+        self.c = c
+        self.estimator = Estimator()
+        self.nefv = 0
+        self.t = 0
+        
+    def step(self, params):
+        self.t += 1
+        ak = self.lr / (self.t + 1)**self.alpha
+        ck = self.c / (self.t + 1)**self.gamma
+        delta = 2 * np.random.randint(0, 2, size=len(params)) - 1
+        
+        p_plus = params + ck * delta
+        p_minus = params - ck * delta
+        
+        job = self.estimator.run([(self.ansatz.assign_parameters(p_plus), self.hamiltonian),
+                                  (self.ansatz.assign_parameters(p_minus), self.hamiltonian)])
+        results = job.result()
+        e_plus = float(results[0].data.evs)
+        e_minus = float(results[1].data.evs)
+        self.nefv += 2
+        
+        grad_est = (e_plus - e_minus) / (2 * ck * delta)
+        new_params = params - ak * grad_est
+        return new_params
+
+class QAOA:
+    """
+    Quantum Approximate Optimization Algorithm (QAOA).
+    
+    Standard QAOA with p layers of alternating cost (gamma) and mixer (beta) unitaries.
+    Uses COBYLA for classical optimization (gradient-free).
+    
+    The QAOA ansatz implements:
+        |ψ(γ,β)⟩ = Π_l e^{-iβ_l B} e^{-iγ_l C} |+⟩^n
+    where C = Σ_{ij} w_ij Z_i Z_j (cost) and B = Σ_i X_i (mixer)
+    
+    NEFV: 1 per function evaluation
+    """
+    def __init__(self, ansatz, hamiltonian, n_qubits, p_layers=2, maxiter_per_step=10):
+        from qiskit.circuit import QuantumCircuit, Parameter
+        from scipy.optimize import minimize
+        
+        self.hamiltonian = hamiltonian
+        self.n_qubits = n_qubits
+        self.p_layers = p_layers
+        self.maxiter_per_step = maxiter_per_step
+        self.estimator = Estimator()
+        self.nefv = 0
+        self._total_maxiter = 0  # Track total iterations for proper optimization
+        
+        # Build QAOA ansatz
+        self.qaoa_ansatz = self._build_qaoa_ansatz(n_qubits, hamiltonian, p_layers)
+        self.n_params = 2 * p_layers  # gamma and beta for each layer
+        
+        # Circuit depth (computed once at init since QAOA structure is fixed)
+        self._circuit_depth = self.qaoa_ansatz.depth()
+        
+        # Store current best for warm restart
+        self._current_best_params = None
+        self._current_best_energy = float('inf')
+    
+    @property
+    def circuit_depth(self):
+        """Return the QAOA circuit depth."""
+        return self._circuit_depth
+    
+    @property
+    def max_circuit_depth(self):
+        """Return max circuit depth (same as circuit_depth for QAOA)."""
+        return self._circuit_depth
+        
+    def _build_qaoa_ansatz(self, n_qubits, hamiltonian, p_layers):
+        """
+        Build standard QAOA ansatz: alternating cost and mixer layers.
+        
+        Cost layer uses ZZ interactions from Hamiltonian.
+        Mixer layer uses transverse field (RX).
+        """
+        from qiskit.circuit import QuantumCircuit, Parameter
+        
+        qc = QuantumCircuit(n_qubits)
+        
+        # Initial state: |+⟩^n
+        qc.h(range(n_qubits))
+        
+        # Create parameters
+        gammas = [Parameter(f'γ_{i}') for i in range(p_layers)]
+        betas = [Parameter(f'β_{i}') for i in range(p_layers)]
+        
+        # Extract ZZ and Z terms from Hamiltonian
+        zz_terms = []  # List of (i, j, coeff)
+        z_terms = []   # List of (i, coeff)
+        
+        for pauli_str, coeff in hamiltonian.to_list():
+            # Find Z positions
+            z_positions = [i for i, p in enumerate(reversed(pauli_str)) if p == 'Z']
+            
+            if len(z_positions) == 2:
+                i, j = z_positions
+                zz_terms.append((i, j, float(coeff.real)))
+            elif len(z_positions) == 1:
+                z_terms.append((z_positions[0], float(coeff.real)))
+        
+        for layer in range(p_layers):
+            # Cost unitary: e^{-i γ C} where C contains ZZ terms
+            # RZZ(θ) = e^{-i θ/2 Z⊗Z}
+            # We need e^{-i γ w Z_i Z_j} = RZZ(2γw)
+            for i, j, coeff in zz_terms:
+                qc.cx(i, j)
+                qc.rz(2 * gammas[layer] * coeff, j)
+                qc.cx(i, j)
+            
+            # Single Z terms (bias)
+            for i, coeff in z_terms:
+                qc.rz(2 * gammas[layer] * coeff, i)
+            
+            # Mixer unitary: e^{-i β B} where B = Σ X_i
+            # RX(2β) implements e^{-i β X}
+            for i in range(n_qubits):
+                qc.rx(2 * betas[layer], i)
+        
+        return qc
+    
+    def _cost_function(self, params):
+        """Evaluate energy for given parameters."""
+        bound_circuit = self.qaoa_ansatz.assign_parameters(params)
+        job = self.estimator.run([(bound_circuit, self.hamiltonian)])
+        result = job.result()
+        energy = float(result[0].data.evs)
+        self.nefv += 1
+        
+        # Track best
+        if energy < self._current_best_energy:
+            self._current_best_energy = energy
+            self._current_best_params = params.copy()
+        
+        return energy
+    
+    def step(self, params):
+        """
+        Run one 'step' of QAOA optimization.
+        Uses COBYLA, accumulating iterations properly.
+        """
+        from scipy.optimize import minimize
+        
+        self._total_maxiter += self.maxiter_per_step
+        
+        # QAOA typical parameter range: γ ∈ [0, π], β ∈ [0, π/2]
+        # COBYLA doesn't use bounds, so we rely on good initial values
+        result = minimize(
+            self._cost_function,
+            params,
+            method='COBYLA',
+            options={
+                'maxiter': self.maxiter_per_step, 
+                'rhobeg': 0.3,  # Smaller initial trust region
+                'tol': 1e-6
+            }
+        )
+        return result.x
+    
+    def optimize_full(self, initial_params=None, maxiter=100):
+        """
+        Run full QAOA optimization (for standalone use).
+        """
+        from scipy.optimize import minimize
+        
+        if initial_params is None:
+            # Better initialization for QAOA
+            # γ_l ≈ 0.5 * π/p and β_l ≈ 0.5 * π/(2p) are common heuristics
+            gammas = np.linspace(0.1, 0.8, self.p_layers) * np.pi / self.p_layers
+            betas = np.linspace(0.3, 0.6, self.p_layers) * np.pi / (2 * self.p_layers)
+            initial_params = np.concatenate([gammas, betas])
+        
+        result = minimize(
+            self._cost_function,
+            initial_params,
+            method='COBYLA',
+            options={'maxiter': maxiter, 'rhobeg': 0.2, 'tol': 1e-6}
+        )
+        return result.x, result.fun
+
+# --- Problems ---
+
+def get_heisenberg_problem(N):
+    # Use non-decomposed ansatz for proper layer detection (2 layers instead of 12)
+    ansatz = efficient_su2(N, reps=1)
+    ops = []
+    for i in range(N - 1):
+        for pauli in ['X', 'Y', 'Z']:
+            op_str = ["I"] * N
+            op_str[i] = pauli
+            op_str[i+1] = pauli
+            ops.append(("".join(op_str), 1.0))
+    H = SparsePauliOp.from_list(ops)
+    return ansatz, H, f"Heisenberg N={N}"
+
+def generate_frustrated_hamiltonian(n_qubits, seed=42):
+    """
+    Generates a Random Transverse-Field Ising Model (Spin Glass).
+    H = sum_{i<j} J_ij Z_i Z_j + sum_i h_i X_i
+    
+    - J_ij: Random couplings in [-1, 1]. Creates frustration (competing constraints).
+    - h_i:  Random transverse fields. Creates quantum fluctuations (non-commuting).
+    
+    This landscape is RUGGED. Simple gradient descent often fails.
+    """
+    np.random.seed(seed)
+    ops = []
+    
+    # 1. Interaction Terms (Z_i Z_j)
+    for i in range(n_qubits):
+        for j in range(i + 1, n_qubits):
+            J = np.random.uniform(-1.0, 1.0)
+            op_str = ["I"] * n_qubits
+            op_str[i] = "Z"
+            op_str[j] = "Z"
+            ops.append(("".join(op_str), J))
+            
+    # 2. Transverse Field (X_i)
+    for i in range(n_qubits):
+        h = np.random.uniform(-1.0, 1.0)
+        op_str = ["I"] * n_qubits
+        op_str[i] = "X"
+        ops.append(("".join(op_str), h))
+        
+    op = SparsePauliOp.from_list(ops)
+    ansatz = efficient_su2(n_qubits, reps=1)
+    if op is None:
+        raise ValueError("Failed to generate Hamiltonian! (Result was None)")
+    return ansatz, op, f"Frustrated Ising N={n_qubits}"
+
+def get_h2_problem():
+    N = 2
+    ansatz = efficient_su2(N, reps=1)
+    pauli_list = [
+        ("II", -1.052373245772859),
+        ("IZ", 0.39793742484318045),
+        ("ZI", -0.39793742484318045),
+        ("ZZ", -0.01128010425623538),
+        ("XX", 0.18093119978423156),
+    ]
+    H = SparsePauliOp.from_list(pauli_list)
+    return ansatz, H, "H2 Molecule"
+
+def get_lih_problem():
+    N = 4
+    ansatz = efficient_su2(N, reps=1)
+    pauli_list = [
+        ('IIII', -7.8825), ('IIIZ', 0.1777), ('IIZI', -0.2453), ('IZII', 0.1777),
+        ('ZIII', -0.2453), ('IIZZ', 0.1230), ('IZIZ', 0.0453), ('IZZI', 0.0453),
+        ('ZIIZ', 0.0453), ('ZIZI', 0.1230), ('ZZII', 0.1711), ('IXIX', 0.0453),
+        ('IYIY', 0.0453), ('YYYY', 0.0453), ('XXXX', 0.0453)
+    ]
+    H = SparsePauliOp.from_list(pauli_list)
+    return ansatz, H, "LiH Molecule"
+
+def generate_maxcut_hamiltonian(n_qubits, seed=42, density=0.7):
+    """
+    Generates a Weighted MaxCut Hamiltonian on a random graph.
+    H = sum_{i<j} w_ij * (1 - Z_i Z_j) / 2
+    
+    Minimizing <H> finds the maximum cut. The cost landscape is discrete
+    with many local minima - a challenging test for continuous optimizers.
+    
+    Args:
+        n_qubits: Number of vertices in the graph
+        seed: Random seed for reproducibility
+        density: Edge density (probability of edge between any two vertices)
+    
+    Returns:
+        ansatz, H, problem_name, (edges, optimal_cut)
+    """
+    np.random.seed(seed)
+    ops = []
+    edges = []
+    
+    for i in range(n_qubits):
+        for j in range(i + 1, n_qubits):
+            if np.random.random() < density:
+                # Random weight between 0.5 and 2.0
+                w = np.round(np.random.uniform(0.5, 2.0), 2)
+                
+                # MaxCut Hamiltonian: H = sum w_ij * (1 - Z_i Z_j) / 2
+                # Constant term (shifted for minimization)
+                op_str = ["I"] * n_qubits
+                ops.append(("".join(op_str), w / 2))
+                
+                # ZZ term
+                op_str[i] = "Z"
+                op_str[j] = "Z"
+                ops.append(("".join(op_str), -w / 2))
+                
+                edges.append((i, j, w))
+    
+    H = SparsePauliOp.from_list(ops).simplify()
+    ansatz = efficient_su2(n_qubits, reps=1)
+    
+    # Compute classical optimal (brute force for small instances)
+    optimal_cut = 0
+    if n_qubits <= 10:
+        for bitstring in range(2**n_qubits):
+            bits = format(bitstring, f'0{n_qubits}b')
+            cut_value = sum(w for (i, j, w) in edges if bits[i] != bits[j])
+            optimal_cut = max(optimal_cut, cut_value)
+    
+    return ansatz, H, f"MaxCut N={n_qubits} (Opt={optimal_cut:.1f})"
+
+def get_maxcut_problem(n_qubits, seed=42):
+    """Convenience wrapper for MaxCut problems."""
+    return generate_maxcut_hamiltonian(n_qubits, seed=seed, density=0.6)
+
+# --- Benchmark Runner ---
+    
+def run_benchmark(save=True):
+    problems = [
+        generate_frustrated_hamiltonian(4, seed=999),
+        get_maxcut_problem(4, seed=101),
+        get_maxcut_problem(6, seed=102),
+        get_h2_problem(),
+        get_lih_problem(),
+        get_heisenberg_problem(4),
+        get_heisenberg_problem(6),
+        get_heisenberg_problem(8),
+        get_heisenberg_problem(12),
+    ]
+    
+    # Note: QAOA needs n_qubits, so we pass ansatz.num_qubits
+    # Using p=3 layers for better QAOA performance (p=2 is often insufficient)
+    # QLTO Coherent uses k_step=20 for better convergence (depth scales with k, NOT NEFV)
+    optimizers_def = {
+        'QLTO (Layer)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=1, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=False),
+        'QLTO (Coherent)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True),
+        'QAOA (p=3)': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
+        'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=0.1),
+        'AdamW': lambda a, h, backend=None: AdamW(a, h, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01),
+        'SPSA': lambda a, h, backend=None: SPSA(a, h, lr=0.1)
+    }
+    
+    for ansatz, H, prob_name in problems:
+        print(f"\n{'='*40}\nBenchmarking: {prob_name}\n{'='*40}")
+        
+        # Use MPS for large problems (N >= 4)
+        if ansatz.num_qubits >= 4:
+            print("  Using Matrix Product State (MPS) Simulator due to size.")
+            # FIX: Ensure no coupling map limit
+            sim_backend = AerSimulator(method='matrix_product_state', coupling_map=None)
+        else:
+            sim_backend = AerSimulator() # Default statevector
+            
+        results = {}
+        
+        for name, opt_factory in optimizers_def.items():
+            print(f"  Running {name}...")
+            np.random.seed(42)
+            
+            # QAOA uses its own ansatz with different number of params
+            if 'QAOA' in name:
+                try:
+                    opt = opt_factory(ansatz, H, backend=sim_backend)
+                    # Better QAOA initialization: γ and β with heuristic values
+                    # Standard practice: γ ∈ [0, π], β ∈ [0, π/2]
+                    p = opt.p_layers
+                    gammas = np.linspace(0.3, 0.6, p) * np.pi
+                    betas = np.linspace(0.2, 0.4, p) * np.pi
+                    params = np.concatenate([gammas, betas])
+                except Exception as e:
+                    print(f"    Failed to init {name}: {e}")
+                    continue
+            else:
+                params = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
+                try:
+                    opt = opt_factory(ansatz, H, backend=sim_backend)
+                except Exception as e:
+                    print(f"    Failed to init {name}: {e}")
+                    continue
+                
+            history_energy = []
+            history_nefv = []
+            circuit_depth = 0  # Track circuit depth
+            
+            # Run Budget
+            # SPSA needs more epochs to match NEFV of others
+            max_epochs = 20
+            if name == 'SPSA': max_epochs = 200
+            
+            start_time = time.time()
+            
+            for epoch in range(max_epochs):
+                try:
+                    params = opt.step(params)
+                    
+                    # Track circuit depth if available
+                    if hasattr(opt, 'circuit_depth'):
+                        circuit_depth = max(circuit_depth, opt.max_circuit_depth if hasattr(opt, 'max_circuit_depth') else opt.circuit_depth)
+                    
+                    # Evaluate Energy (Logging only)
+                    # QAOA uses its own ansatz
+                    if 'QAOA' in name:
+                        eval_ansatz = opt.qaoa_ansatz
+                    else:
+                        eval_ansatz = ansatz
+                    
+                    # Handle different estimator types (V2 vs V1/wrapper)
+                    if hasattr(opt, 'estimator'):
+                        # V2 Style
+                        job = opt.estimator.run([(eval_ansatz.assign_parameters(params), H)])
+                        E = float(job.result()[0].data.evs)
+                    else:
+                        # Fallback
+                        E = 0.0
+                    
+                    history_energy.append(E)
+                    history_nefv.append(opt.nefv)
+                    
+                    if epoch % 5 == 0 or epoch == max_epochs - 1:
+                        depth_str = f" | Depth={circuit_depth}" if circuit_depth > 0 else ""
+                        print(f"    Ep {epoch}: E={E:.4f} | NEFV={opt.nefv}{depth_str}")
+                        
+                except Exception as e:
+                    print(f"    Error at epoch {epoch}: {e}")
+                    break
+            
+            results[name] = {
+                'energy': history_energy,
+                'nefv': history_nefv,
+                'time': time.time() - start_time,
+                'circuit_depth': circuit_depth
+            }
+            
+        # Plot 1: Energy vs NEFV (main convergence plot)
+        plt.figure(figsize=(10, 6))
+        for name, data in results.items():
+            if data['energy']:
+                plt.plot(data['nefv'], data['energy'], label=f"{name} (Final: {data['energy'][-1]:.3f})", linewidth=2)
+        
+        plt.xlabel('Total NEFV (Circuit Executions)', fontsize=12)
+        plt.ylabel('Energy', fontsize=12)
+        plt.title(f'Optimizer Benchmark: {prob_name}', fontsize=14)
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        safe_name = prob_name.replace(" ", "_").replace("=", "")
+        plt.savefig(f'benchmark_{safe_name}_convergence.png', dpi=150)
+        print(f"  Saved plot: benchmark_{safe_name}_convergence.png")
+        plt.close()
+        
+        # Plot 2: Circuit Depth Comparison (separate bar chart)
+        names_with_depth = [n for n, d in results.items() if d.get('circuit_depth', 0) > 0]
+        if names_with_depth:
+            plt.figure(figsize=(8, 5))
+            depths = [results[n]['circuit_depth'] for n in names_with_depth]
+            final_energies = [results[n]['energy'][-1] if results[n]['energy'] else 0 for n in names_with_depth]
+            
+            x_pos = np.arange(len(names_with_depth))
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b'][:len(names_with_depth)]
+            bars = plt.bar(x_pos, depths, color=colors, edgecolor='black', linewidth=0.5)
+            plt.xticks(x_pos, names_with_depth, rotation=30, ha='right', fontsize=10)
+            plt.ylabel('Circuit Depth (Gates)', fontsize=12)
+            plt.title(f'Circuit Depth: {prob_name}', fontsize=14)
+            
+            # Add energy labels on bars
+            for i, (bar, e) in enumerate(zip(bars, final_energies)):
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(depths)*0.02, 
+                        f'E={e:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
+            
+            plt.tight_layout()
+            plt.savefig(f'benchmark_{safe_name}_depth.png', dpi=150)
+            print(f"  Saved plot: benchmark_{safe_name}_depth.png")
+            plt.close()
+        
+        # Plot 3: NEFV Comparison (separate bar chart)
+        plt.figure(figsize=(8, 5))
+        names_all = list(results.keys())
+        nefvs = [results[n]['nefv'][-1] if results[n]['nefv'] else 0 for n in names_all]
+        final_energies_all = [results[n]['energy'][-1] if results[n]['energy'] else 0 for n in names_all]
+        
+        x_pos = np.arange(len(names_all))
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b'][:len(names_all)]
+        bars = plt.bar(x_pos, nefvs, color=colors, edgecolor='black', linewidth=0.5)
+        plt.xticks(x_pos, names_all, rotation=30, ha='right', fontsize=10)
+        plt.ylabel('Total NEFV (Circuit Executions)', fontsize=12)
+        plt.title(f'Measurement Cost: {prob_name}', fontsize=14)
+        
+        # Add energy labels on bars
+        for i, (bar, e) in enumerate(zip(bars, final_energies_all)):
+            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(nefvs)*0.02, 
+                    f'E={e:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.savefig(f'benchmark_{safe_name}_nefv.png', dpi=150)
+        print(f"  Saved plot: benchmark_{safe_name}_nefv.png")
+        plt.close()
+
+        if save:
+            # Save results to CSV
+            import csv
+            os.makedirs('output', exist_ok=True)
+            csv_file = 'output/qlto_benchmark_results.csv'
+            file_exists = os.path.isfile(csv_file)
+
+            with open(csv_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                if not file_exists:
+                    writer.writerow(['Problem', 'Optimizer', 'Final Energy', 'Total NEFV', 'Time', 'Circuit Depth'])
+
+                for name, data in results.items():
+                    if data['energy']:
+                        final_energy = data['energy'][-1]
+                        total_nefv = data['nefv'][-1]
+                        total_time = data['time']
+                        depth = data.get('circuit_depth', 0)
+                        writer.writerow([prob_name, name, final_energy, total_nefv, total_time, depth])
+        
+        # Print summary table with circuit depth
+        print(f"\n  === Summary for {prob_name} ===")
+        print(f"  {'Optimizer':<20} {'Final E':>10} {'NEFV':>8} {'Depth':>8} {'Time':>8}")
+        print(f"  {'-'*56}")
+        for name, data in results.items():
+            if data['energy']:
+                final_e = data['energy'][-1]
+                nefv = data['nefv'][-1]
+                depth = data.get('circuit_depth', 0)
+                t = data['time']
+                depth_str = f"{depth:>8}" if depth > 0 else "     N/A"
+                print(f"  {name:<20} {final_e:>10.4f} {nefv:>8} {depth_str} {t:>7.1f}s")
+
+def run_benchmark_with_stats(n_trials=5):
+    problems = [
+        generate_frustrated_hamiltonian(4, seed=999),
+        get_maxcut_problem(4, seed=101),
+        get_maxcut_problem(6, seed=102),
+        get_h2_problem(),
+        get_lih_problem(),
+        get_heisenberg_problem(4),
+        get_heisenberg_problem(6),
+        get_heisenberg_problem(8),
+        get_heisenberg_problem(12)
+    ]
+    
+    optimizers_def = {
+        'QLTO (Layer)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=1, layer=True, coherence=False, backend=backend),
+        'QLTO (Coherent)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=10, layer=True, coherence=True, backend=backend),
+        'QAOA (p=3)': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
+        'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=0.1),
+        'AdamW': lambda a, h, backend: AdamW(a, h, lr=0.1),
+        'SPSA': lambda a, h, backend: SPSA(a, h, lr=0.1)
+    }
+    
+    for ansatz, H, prob_name in problems:
+        print(f"\n{'='*40}\nBenchmarking: {prob_name} ({n_trials} trials)\n{'='*40}")
+        sim_backend = AerSimulator(method='matrix_product_state') #if ansatz.num_qubits >= 4 else AerSimulator()
+        
+        stats = {}
+        
+        for name, opt_factory in optimizers_def.items():
+            print(f"  Running {name}...")
+            energy_matrix = [] # Shape: (trials, epochs)
+            nefv_matrix = []
+            
+            for t in range(n_trials):
+                # New random seed for every trial
+                seed = 42 + t
+                np.random.seed(seed)
+                
+                try:
+                    opt = opt_factory(ansatz, H, sim_backend)
+                    # QAOA uses its own param count
+                    if 'QAOA' in name:
+                        params = np.random.uniform(0, 2*np.pi, opt.n_params)
+                        eval_ansatz = opt.qaoa_ansatz
+                    else:
+                        params = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
+                        eval_ansatz = ansatz
+                except Exception: continue
+
+                trial_energies = []
+                trial_nefv = []
+                
+                # Epoch loop
+                max_epochs = 20 if name != 'SPSA' else 100
+                for epoch in range(max_epochs):
+                    try:
+                        params = opt.step(params)
+                        # Eval (simplified)
+                        job = opt.estimator.run([(eval_ansatz.assign_parameters(params), H)])
+                        E = float(job.result()[0].data.evs)
+                        trial_energies.append(E)
+                        trial_nefv.append(opt.nefv)
+                    except Exception: break
+                
+                if trial_energies:
+                    energy_matrix.append(trial_energies)
+                    nefv_matrix.append(trial_nefv)
+            
+            # Aggregate stats
+            if energy_matrix:
+                # Truncate to min length
+                min_len = min(len(run) for run in energy_matrix)
+                clean_energy = np.array([run[:min_len] for run in energy_matrix])
+                clean_nefv = np.array([run[:min_len] for run in nefv_matrix])
+                
+                stats[name] = {
+                    'mean_E': np.mean(clean_energy, axis=0),
+                    'std_E': np.std(clean_energy, axis=0),
+                    'mean_nefv': np.mean(clean_nefv, axis=0)
+                }
+
+        # Plot with Error Bars
+        plt.figure(figsize=(10, 6))
+        for name, data in stats.items():
+            x = data['mean_nefv']
+            y = data['mean_E']
+            err = data['std_E']
+            
+            plt.plot(x, y, label=f"{name}")
+            plt.fill_between(x, y - err, y + err, alpha=0.2)
+            
+        plt.xlabel('Total NEFV')
+        plt.ylabel('Energy')
+        plt.title(f'{prob_name} (Mean ± Std over {n_trials} trials)')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(f'benchmark_{prob_name.replace(" ", "_")}_stats.png')
+        print(f"  Saved plot with error bars.")
+
+if __name__ == "__main__":
+    run_benchmark()
+    run_benchmark_with_stats()

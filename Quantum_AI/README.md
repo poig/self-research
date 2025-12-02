@@ -1,12 +1,43 @@
 
 
-direct inspire from this video: https://youtu.be/bO5nvE289ec?si=whOaCAf5QJqaYu7d
+# Quantum AI Research
 
-Block Component,Function,Status/Role in O(N) Classical Loop
-1. QNN Circuit (UQNN​),The parameterized trial state ansatz.,Quantum: No change.
-2. Dynamic Gradient/Metric,Measures the gradient (g) and QFIM (F) components.,Quantum-Aware: Use Parameter Shift Rule or Hadamard tests with mid-circuit measurement (MCM) to efficiently gather the data as classical bits.
-3. Quantum Linear Solver Circuit (UHHL​),Solves the N×N linear system Fg~​=g for the natural gradient g~​.,"Quantum: Eliminates the classical O(N3) bottleneck, achieving O(logN) computation time."
-4. Classical O(N) Control Unit,"Manages I/O, convergence, and final update.",Classical (The Minimum):
-4a. Update Extraction (I/O),Takes the output state $,\tilde{g}\rangle$ from UHHL​ (which has been measured and averaged) and extracts the final N continuous values Δθ to memory.
-4b. Convergence Logic,Checks the scalar cost function and applies classical update logic θnew​=θold​+η⋅Δθ.,
-4c. Reprogramming,Sends the N new floating-point values θnew​ to the quantum device controllers for the next iteration.,
+This repository contains research on information-theoretic approaches to variational quantum optimization.
+
+## Overview
+
+We investigate the fundamental thermodynamic constraints governing variational quantum algorithms (VQAs), with a focus on understanding the trainability transition (barren plateau phenomenon) through the lens of quantum information theory and the Dynamical Lie Algebra (DLA).
+
+## Projects
+
+### [QLTO](./QLTO/) - Quantum Landscape Tunneling Optimizer
+
+A geometry-aware quantum optimization framework that addresses the barren plateau problem through:
+
+1. **Theory Paper**: *Information-Theoretic Constraints on Variational Quantum Optimization*
+   - Establishes an empirical constitutive relation linking work extraction to mutual information
+   - Identifies efficiency transitions governed by DLA dimension (polynomial vs. exponential)
+   - Demonstrates quantum entanglement provides a factor-of-2 advantage over classical Landauer bounds
+
+2. **Algorithm Paper**: *Scalable Riemannian Quantum Optimization via Commuting-Block Decomposition*
+   - Introduces QLTO with $O(N)$ metric tensor estimation via commuting-block structure
+   - Implements ancilla-controlled quantum walk for geometry-aware optimization
+   - Achieves competitive accuracy with reduced function evaluations on benchmark problems
+
+## Key Contributions
+
+- **Thermodynamic perspective** on VQA trainability: optimization as a Maxwell's Demon heat engine
+- **Efficiency coefficient** $\eta = dW/dI$ as a diagnostic for algorithm trainability
+- **Commuting-block decomposition** reducing QNG complexity from $O(N^3)$ to $O(N)$
+- **Empirical phase transition** characterization between trainable (Ordered) and untrainable (Chaotic) regimes
+
+## References
+
+The theoretical framework builds upon:
+- Ragone et al. (2024) - DLA theory for barren plateaus
+- Francica et al. (2017) - Daemonic ergotropy
+- Stokes et al. (2020) - Quantum Natural Gradient
+
+## License
+
+This research is for academic purposes. See individual paper directories for specific licensing.
