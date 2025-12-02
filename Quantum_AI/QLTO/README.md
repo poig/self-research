@@ -4,11 +4,9 @@
 
 A geometry-aware quantum optimization framework for variational quantum algorithms.
 
-**Code Repository**: [github.com/poig/self-research/tree/main/Quantum_AI/QLTO](https://github.com/poig/self-research/tree/main/Quantum_AI/QLTO)
-
 ## Abstract
 
-This project investigates the information-theoretic foundations of variational quantum optimization. We demonstrate that the trainability of variational quantum algorithms is governed by thermodynamic constraints, specifically the information channel capacity of ancilla-mediated feedback control. By analyzing systems with different Dynamical Lie Algebra (DLA) scaling, we identify a phase transition between trainable ("Ordered") and untrainable ("Chaotic") regimes.
+This project investigates the information-theoretic foundations of variational quantum optimization. I demonstrate that the trainability of variational quantum algorithms is governed by thermodynamic constraints, specifically the information channel capacity of ancilla-mediated feedback control. By analyzing systems with different Dynamical Lie Algebra (DLA) scaling, I identify a phase transition between trainable ("Ordered") and untrainable ("Chaotic") regimes.
 
 ## Papers
 
@@ -16,7 +14,7 @@ This project investigates the information-theoretic foundations of variational q
 
 **Title**: *Information-Theoretic Constraints on Variational Quantum Optimization: Efficiency Transitions and the Dynamical Lie Algebra*
 
-**Summary**: We reframe the variational optimizer as a quantum Maxwell's Demon and establish an empirical constitutive relation $\Delta E \leq \eta \cdot I(S:A)$ linking work extraction to mutual information. Key findings:
+**Summary**: I reframe the variational optimizer as a quantum Maxwell's Demon and establish an empirical constitutive relation $\Delta E \leq \eta \cdot I(S:A)$ linking work extraction to mutual information. Key findings:
 
 - Quantum entanglement provides a factor-of-2 advantage over classical Landauer bounds
 - Systems with polynomial DLA ($O(N^3)$) exhibit sustained positive efficiency
@@ -27,7 +25,7 @@ This project investigates the information-theoretic foundations of variational q
 
 **Title**: *Scalable Riemannian Quantum Optimization via Commuting-Block Decomposition*
 
-**Summary**: We introduce QLTO, a practical optimizer that maintains trainability by decomposing the ansatz into commuting blocks. Key features:
+**Summary**: I introduce QLTO, a practical optimizer that maintains trainability by decomposing the ansatz into commuting blocks. Key features:
 
 - Reduces metric tensor estimation from $O(N^2)$ to $O(L)$ circuits
 - Reduces matrix inversion from $O(N^3)$ to $O(N)$ complexity
