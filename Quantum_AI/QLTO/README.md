@@ -53,25 +53,9 @@ QLTO/
 ## Requirements
 
 - Python 3.8+
-- Qiskit >= 0.45
+- Qiskit >= 2.0
 - NumPy, SciPy
 - Matplotlib (for visualization)
-
-## Usage
-
-```python
-from qlto import QLTOptimizer
-
-# Initialize optimizer with commuting-block structure
-optimizer = QLTOptimizer(
-    n_qubits=8,
-    n_layers=2,
-    mode='coherent'  # or 'layer' for shallow circuits
-)
-
-# Run optimization
-result = optimizer.minimize(hamiltonian, initial_params)
-```
 
 ## Benchmarks
 
@@ -86,7 +70,7 @@ If you use this code in your research, please cite the associated papers (arXiv 
 
 ## License
 
-MIT License
+See the repo-level `LICENSE` file.
 
 ## Acknowledgments
 
