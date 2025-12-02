@@ -19,7 +19,7 @@ A geometry-aware quantum optimization framework that addresses the barren platea
    - Identifies efficiency transitions governed by DLA dimension (polynomial vs. exponential)
    - Demonstrates quantum entanglement provides a factor-of-2 advantage over classical Landauer bounds
 
-2. **Algorithm Paper**: *Scalable Riemannian Quantum Optimization via Commuting-Block Decomposition*
+2. **Algorithm implementation**: *Scalable Riemannian Quantum Optimization via Commuting-Block Decomposition* `Application/algorithm.pdf`
    - Introduces QLTO with $O(N)$ metric tensor estimation via commuting-block structure
    - Implements ancilla-controlled quantum walk for geometry-aware optimization
    - Achieves competitive accuracy with reduced function evaluations on benchmark problems
