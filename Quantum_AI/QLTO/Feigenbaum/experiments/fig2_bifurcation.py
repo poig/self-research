@@ -32,13 +32,17 @@ def plot_quantum_bifurcation_2d(fast_mode=False):
     
     ax1.scatter(r_data, x_data, s=0.1, c='darkblue', alpha=0.4)
     
-    # Mark bifurcation points
+    # Set axis limits first so vertical lines span full range
+    ax1.set_xlim(0.5, 1.0)
+    ax1.set_ylim(0, 1)
+    
+    # Mark bifurcation points with full-height lines
     bif_points = find_bifurcation_points(4)
     colors = ['red', 'orange', 'green', 'purple']
     labels = ['r₁ (2→4)', 'r₂ (4→8)', 'r₃ (8→16)', 'r₄ (16→32)']
     
     for r_bif, color, label in zip(bif_points, colors, labels):
-        ax1.axvline(r_bif, color=color, linestyle='--', lw=2, alpha=0.8, label=label)
+        ax1.axvline(r_bif, color=color, linestyle='--', lw=1.5, alpha=0.7, label=label, ymin=0, ymax=1)
     
     ax1.set_xlabel('r (learning rate)', fontsize=12)
     ax1.set_ylabel('x* (steady state)', fontsize=12)
