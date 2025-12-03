@@ -36,10 +36,15 @@ def plot_quantum_bifurcation_2d(fast_mode=False):
     ax1.set_xlim(0.5, 1.0)
     ax1.set_ylim(0, 1)
     
+    # Shade the collapse region (r > 0.88)
+    ax1.axvspan(0.88, 1.0, alpha=0.15, color='red', label='Collapse region')
+    ax1.annotate('Collapse\n(x→0)', xy=(0.94, 0.5), fontsize=11, 
+                ha='center', va='center', color='darkred', fontweight='bold')
+    
     # Mark bifurcation points with full-height lines
-    bif_points = find_bifurcation_points(4)
-    colors = ['red', 'orange', 'green', 'purple']
-    labels = ['r₁ (2→4)', 'r₂ (4→8)', 'r₃ (8→16)', 'r₄ (16→32)']
+    bif_points = find_bifurcation_points(6)
+    colors = ['red', 'orange', 'green', 'purple', 'cyan', 'magenta']
+    labels = ['r₁ (1→2)', 'r₂ (2→4)', 'r₃ (4→8)', 'r₄ (8→16)', 'r₅ (16→32)', 'r₆ (32→64)']
     
     for r_bif, color, label in zip(bif_points, colors, labels):
         ax1.axvline(r_bif, color=color, linestyle='--', lw=1.5, alpha=0.7, label=label, ymin=0, ymax=1)
@@ -54,12 +59,12 @@ def plot_quantum_bifurcation_2d(fast_mode=False):
     ax2 = axes[1]
     
     if len(bif_points) >= 4:
-        # Compute ratios
+        # Compute ratios - need at least 3 consecutive points for each δ
         deltas = []
         for i in range(len(bif_points) - 2):
             delta_r1 = bif_points[i+1] - bif_points[i]
             delta_r2 = bif_points[i+2] - bif_points[i+1]
-            if delta_r2 > 1e-10:
+            if delta_r2 > 1e-12:  # Smaller threshold for higher ratios
                 deltas.append(delta_r1 / delta_r2)
         
         x_pos = np.arange(len(deltas))
