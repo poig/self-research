@@ -17,12 +17,13 @@ from fig2_bifurcation import plot_quantum_bifurcation_2d
 from fig3_fractal import plot_unified_fractal_bifurcation
 from fig4_trainability import plot_quantum_trainability_fractal
 from fig5_bandwidth import plot_qubit_bandwidth_comparison
+from fig6_vqa_trajectory import plot_vqa_trajectory_period_doubling, plot_vqa_feigenbaum_verification
 
 
 def main():
     parser = argparse.ArgumentParser(description='Generate paper figures')
     parser.add_argument('--fast', action='store_true', help='Fast mode with lower resolution')
-    parser.add_argument('--figure', type=int, choices=[1, 2, 3, 4, 5],
+    parser.add_argument('--figure', type=int, choices=[1, 2, 3, 4, 5, 6],
                        help='Generate specific figure only')
     args = parser.parse_args()
     
@@ -40,6 +41,10 @@ def main():
         3: ("unified_fractal_bifurcation.png", plot_unified_fractal_bifurcation),
         4: ("quantum_trainability_fractal.png", plot_quantum_trainability_fractal),
         5: ("qubit_bandwidth_comparison.png", plot_qubit_bandwidth_comparison),
+        6: ("vqa_trajectory_period_doubling.png", lambda fast_mode: (
+            plot_vqa_trajectory_period_doubling(fast_mode=fast_mode),
+            plot_vqa_feigenbaum_verification(fast_mode=fast_mode)
+        )),
     }
     
     if args.figure:
