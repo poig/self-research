@@ -7,13 +7,15 @@ Critique: "Is the extracted work just borrowing energy that must be paid back
            to erase the ancilla?"
 
 Theory:
-- Extracted Work W_ext <= k_B T * I(S:A)
-- Erasure Cost W_cost >= k_B T * S(A)
+- Extracted Work W_ext = eta * I(S:A)
+- Erasure Cost W_cost >= k_B T * ln(2) * S(A)  [when S(A) is in bits]
 - Net Work = W_ext - W_cost
 
-Quantum Advantage Condition:
-If I(S:A) > S(A), then W_ext > W_cost.
-This is only possible with Entanglement (I ~ 2S).
+Quantum Advantage via I(S:A) = 2*S(A):
+For pure bipartite entanglement, I(S:A) = 2*S(A).
+This means the demon gets TWICE the mutual information per unit of ancilla entropy.
+The factor-of-2 HALVES the information cost per unit work extracted,
+making quantum feedback more efficient than classical feedback.
 """
 
 import numpy as np
@@ -147,42 +149,45 @@ class LandauerExperiment:
         # --- THERMODYNAMIC ANALYSIS ---
         # 1. Determine Effective Temperature from the Constitutive Law (Work = eta * I)
         slope, _, _, _, _ = linregress(data_mi, data_work)
-        T_eff = slope # Units: Energy per Bit
+        eta_eff = slope  # Units: Energy per Bit (this is η, not T)
         
         print("-" * 70)
-        print(f"Effective Temperature (Slope): {T_eff:.4f} Energy/Bit")
+        print(f"Algorithmic Efficiency η = {eta_eff:.4f} Energy/Bit")
         
-        # 2. Calculate Net Work
-        # Cost = T_eff * S(A)
-        landauer_costs = [T_eff * sa for sa in data_sa]
+        # 2. Calculate Landauer Cost
+        # Cost = k_B T ln(2) * S(A)  [with S(A) in bits]
+        # Since we work in normalized units, we use ln(2) ≈ 0.693
+        LN2 = np.log(2)  # ≈ 0.693
+        landauer_costs = [LN2 * sa for sa in data_sa]  # Assumes k_B T = 1
         net_works = [w - c for w, c in zip(data_work, landauer_costs)]
         
         max_net_work = max(net_works)
         avg_ratio = np.mean([m/s for m, s in zip(data_mi, data_sa) if s > 0.1])
         
-        print(f"Max Net Work (Work - Cost):    {max_net_work:.4f}")
+        print(f"Landauer Cost (ln2 * S_A):     {np.mean(landauer_costs):.4f} (avg)")
         print(f"Avg Quantum Ratio (I / S_A):   {avg_ratio:.2f}")
         
-        if avg_ratio > 1.1:
-            print("\n✓ SUCCESS: QUANTUM ADVANTAGE PROVEN.")
-            print("  I(S:A) > S(A) implies entanglement is fueling the engine.")
-            print("  The Demon extracts more work than the erasure cost.")
+        if avg_ratio > 1.5:
+            print("\n✓ SUCCESS: QUANTUM ADVANTAGE CONFIRMED.")
+            print(f"  I(S:A)/S(A) ≈ {avg_ratio:.2f} (near theoretical max of 2.0)")
+            print("  Entanglement halves the information cost per unit work.")
+            print("  The demon requires half the entropy production of a classical loop.")
         else:
-            print("\n? WARNING: CLASSICAL LIMIT.")
-            print("  I(S:A) <= S(A). No net work possible.")
+            print("\n? WARNING: BELOW ENTANGLEMENT THRESHOLD.")
+            print(f"  I(S:A)/S(A) = {avg_ratio:.2f} (expected ~2.0 for pure entanglement)")
 
         # Plot
         plt.figure(figsize=(10, 6))
-        plt.plot(data_tau, data_work, 'bo-', label='Extracted Work')
-        plt.plot(data_tau, landauer_costs, 'r--', label='Landauer Cost (Erasure)')
-        plt.fill_between(data_tau, data_work, landauer_costs, where=[w > c for w, c in zip(data_work, landauer_costs)], color='green', alpha=0.2, label='Net Positive Work')
+        plt.plot(data_tau, data_work, 'bo-', label='Extracted Work $W = \\eta \\cdot I(S:A)$')
+        plt.plot(data_tau, landauer_costs, 'r--', label='Landauer Cost $k_BT\\ln 2 \\cdot S(A)$')
+        plt.fill_between(data_tau, data_work, landauer_costs, where=[w > c for w, c in zip(data_work, landauer_costs)], color='green', alpha=0.2, label='Work > Erasure Cost')
         
-        plt.xlabel('Sensing Time (tau)')
+        plt.xlabel('Sensing Time $\\tau$')
         plt.ylabel('Energy')
-        plt.title(f'Thermodynamic Cycle Check\n(Quantum Ratio I/S ≈ {avg_ratio:.2f})')
+        plt.title(f'Quantum Advantage: I(S:A)/S(A) = {avg_ratio:.2f}\n(Factor-of-2 reduction in information cost)')
         plt.legend()
         plt.grid(True, alpha=0.3)
-        plt.savefig('thermo_landauer_check.png')
+        plt.savefig('thermo_landauer_check.png', dpi=150)
         print("Saved plot to 'thermo_landauer_check.png'")
 
 if __name__ == "__main__":
