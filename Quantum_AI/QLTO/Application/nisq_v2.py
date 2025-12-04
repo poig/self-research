@@ -39,6 +39,13 @@ except ImportError:
     print("WARNING: 'commute_fim.py' or 'commute_gradient.py' not found. Falling back to heuristic mode.")
     ENGINES_AVAILABLE = False
 
+# Import Visualization (Optional)
+try:
+    from visualize_ancilla import AncillaVisualizer
+    VIZ_AVAILABLE = True
+except ImportError:
+    VIZ_AVAILABLE = False
+
 # --- Primitive Wrappers (Fixed for V2) ---
 class BaseEstimator: 
     def __init__(self, backend=None): 
@@ -764,9 +771,12 @@ if __name__ == "__main__":
     print("=== NISQ V2: Riemannian Coherent QLTO (Full Sensing Protocol) ===")
     print("[Info] Paper 1 Implementation: Ancilla sensing + activation monitoring")
     
+    # Visualization flag (set True to generate fractal visualization)
+    VISUALIZATION = True
+    
     # 1. Setup Problem
     N = 4
-    H = generate_frustrated_hamiltonian(N, seed=999)
+    H = generate_frustrated_hamiltonian(N, seed=42)
     # EfficientSU2 is naturally structured into commuting blocks (Rotation layers)
     # Decompose to ensure it's compatible with Aer primitives
     ansatz = EfficientSU2(N, reps=1, entanglement='linear').decompose()
@@ -786,11 +796,17 @@ if __name__ == "__main__":
     # Use V2 for reference too
     ref_est = AerEstimator(options={'backend_options': {'method': 'statevector'}})
     
+    # Initialize visualizer if enabled
+    visualizer = None
+    if VISUALIZATION and VIZ_AVAILABLE:
+        visualizer = AncillaVisualizer(output_dir="./figures")
+        print("[Viz] Ancilla visualizer enabled. Will generate fractal at end.")
+    
     print("\nStarting Optimization with Full Sensing Protocol...")
     print("=" * 70)
     start_time = time.time()
     
-    for epoch in range(15):
+    for epoch in range(30):
         # Eval current energy
         # V2: run([ (circuit, observables, params) ])
         pub = (ansatz, H, params)
@@ -806,17 +822,26 @@ if __name__ == "__main__":
         r = max(search_radius * (0.8 ** epoch), 1e-4)
         dt = max(0.5 * (0.85 ** epoch), 0.01)
         
-        params = qlto.run_walk(params, k_steps=3, delta_t=dt, search_radius=r, layer=True, gradient_reuse=True, coherence=True)
+        params = qlto.run_walk(params, k_steps=2, delta_t=dt, search_radius=r, layer=False, gradient_reuse=True, coherence=True)
         
         # Get sensing diagnostics (Paper 1: "monitor if layer is trained well")
         diag = qlto.get_sensing_diagnostics()
         
+        # Record for visualization
+        if visualizer:
+            visualizer.record(
+                epoch=epoch,
+                activation_rate=diag['mean_activation'],
+                energy=E,
+                entropy=diag['mean_entropy']
+            )
+        
         print(f"Epoch {epoch+1:02d} | E: {E:+.4f} | Act: {diag['mean_activation']:.1%} | "
               f"H: {diag['mean_entropy']:.2f} | Quality: {diag['training_quality']:10s} | NEFV: {qlto.nefv}")
         
-        if E < -5.5:
-            print(">>> Converged!")
-            break
+        # if E < -5.5:
+        #     print(">>> Converged!")
+        #     break
     
     print("=" * 70)
     print(f"Total Time: {time.time() - start_time:.2f}s")
@@ -828,3 +853,9 @@ if __name__ == "__main__":
     print(f"  Activation Range: [{final_diag['min_activation']:.1%}, {final_diag['max_activation']:.1%}]")
     print(f"  Mean Entropy: {final_diag['mean_entropy']:.3f}")
     print(f"  Training Quality: {final_diag['training_quality']}")
+    
+    # Generate visualizations
+    if visualizer:
+        print("\nGenerating visualizations...")
+        visualizer.generate_2d_summary(filename="qlto_sensing_summary.png")
+        visualizer.generate_3d_fractal(filename="qlto_fractal_3d.html")
