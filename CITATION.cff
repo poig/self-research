@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as shown below."
+authors:
+  - family-names: Tan
+    given-names: Jun Liang
+    email: junliang.tan@student.uq.edu.au
+    affiliation: University of Queensland
+title: "Feigenbaum Universality in Quantum Computing"
+version: "1.0"
+doi: "10.5281/zenodo.17834056"
+url: "https://github.com/poig/self-research"
+abstract: |
+  This repository contains a series of pre‑prints and code exploring Feigenbaum universality in quantum measurement dynamics, chaos control for variational quantum algorithms, and scaling structures as quantum resources.
+keywords:
+  - Feigenbaum
+  - quantum measurement
+  - chaos control
+  - variational quantum algorithms
+  - scaling structure
