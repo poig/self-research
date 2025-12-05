@@ -79,7 +79,7 @@ All simulation and hardware code is available in:
 @misc{tan2024feigenbaum,
   author = {Tan, Jun Liang},
   title = {Feigenbaum Universality in Quantum Computing},
-  year = {2024},
+  year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/poig/self-research}},
