@@ -1,6 +1,8 @@
 Repository: self-research
 =========================
 
+[![DOI](https://zenodo.org/badge/1079381087.svg)](https://doi.org/10.5281/zenodo.17834056)
+
 This repository will contain multiple research projects (one per subdirectory). See the per-project README files for details.
 
 Current projects:
