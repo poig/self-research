@@ -180,7 +180,6 @@ class LandauerExperiment:
         plt.figure(figsize=(10, 6))
         plt.plot(data_tau, data_work, 'bo-', label='Extracted Work $W = \\eta \\cdot I(S:A)$')
         plt.plot(data_tau, landauer_costs, 'r--', label='Landauer Cost $k_BT\\ln 2 \\cdot S(A)$')
-        plt.fill_between(data_tau, data_work, landauer_costs, where=[w > c for w, c in zip(data_work, landauer_costs)], color='green', alpha=0.2, label='Work > Erasure Cost')
         
         plt.xlabel('Sensing Time $\\tau$')
         plt.ylabel('Energy')
