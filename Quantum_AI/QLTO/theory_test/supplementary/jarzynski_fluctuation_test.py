@@ -95,7 +95,7 @@ N_QUBITS = 4          # System size
 N_TRAJECTORIES = 100  # Number of independent optimization runs
 N_STEPS = 5           # Steps per trajectory
 TAU_SENSING = 0.5     # Fixed sensing time
-KICK_STRENGTH = 0.3   # Feedback strength
+KICK_STRENGTH = 0.2   # Feedback strength (TABLE I: θ_gain = 0.2 rad)
 
 # ==============================================================================
 # JARZYNSKI EXPERIMENT

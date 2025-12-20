@@ -39,7 +39,7 @@ warnings.filterwarnings("ignore")
 N_QUBITS = 3  # Smaller for full statevector tracking
 N_CYCLES = 8
 TAU = 0.4
-KICK_STRENGTH = 0.4
+KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I)
 LN2 = np.log(2)
 
 # ==============================================================================

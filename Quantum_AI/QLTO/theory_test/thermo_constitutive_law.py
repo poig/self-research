@@ -40,7 +40,7 @@ warnings.filterwarnings("ignore")
 # CONFIGURATION
 # ==============================================================================
 N_QUBITS = 4
-KICK_STRENGTH = 0.5  # Fixed mechanical actuation
+KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I)
 TAU_STEPS = 20       # Number of sensing durations to test
 MAX_TAU = 1.5        # Max sensing time
 

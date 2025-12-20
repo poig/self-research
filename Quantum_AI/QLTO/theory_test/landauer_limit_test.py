@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 # CONFIGURATION
 # ==============================================================================
 N_QUBITS = 4
-KICK_STRENGTH = 0.5
+KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I). Note: Fig 1 uses 0.5
 TAU_STEPS = 20
 MAX_TAU = 1.5
 

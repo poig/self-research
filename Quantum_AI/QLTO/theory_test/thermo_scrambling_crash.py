@@ -30,7 +30,7 @@ warnings.filterwarnings("ignore")
 N_RANGE = [3, 4, 5, 6, 7, 8]  # Extended to catch the crash at N=6.4
 TRIALS = 5                    # Average over random disorder
 TAU_STEPS = 10                # Optimization sweep points
-MAX_TAU = 1.0                 # Sensing window
+MAX_TAU = 1.5                 # Sensing window (TABLE I: τ = 0.0-1.5)
 KICK_STRENGTH = 0.2           # Fixed actuation
 
 class ComplexityExperiment:
@@ -201,7 +201,7 @@ class ComplexityExperiment:
         
         # Add visual guide for the crash
         plt.axhline(0, color='black', linestyle=':', alpha=0.5)
-        plt.axvline(6.37, color='green', linestyle='-.', label='Critical N_c (Theory)')
+        # Note: Critical N_c is τ-dependent, not shown as fixed line
         
         plt.xlabel('System Size (N)')
         plt.ylabel('Normalized Efficiency (Work / Bit / N^2)')

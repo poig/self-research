@@ -43,20 +43,22 @@ warnings.filterwarnings("ignore")
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-SYSTEM_SIZES = [3, 4, 5]  # Reduced for speed
+SYSTEM_SIZES = [3, 4, 5, 6, 7]  # Extended to show crossover
 ANCILLA_COUNTS = [1, 2]   # Focus on 1 vs 2 comparison
-TAU_STEPS = 8
-MAX_TAU = 1.0
-KICK_STRENGTH = 0.3
+NUM_SEEDS = 5  # Average over multiple random seeds
+TAU_STEPS = 5  # Reduced for speed
+MAX_TAU = 1.5  # τ range: 0.0-1.5 (TABLE I)
+KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I)
 
 # ==============================================================================
 # K-ANCILLA BANDWIDTH EXPERIMENT (FIXED)
 # ==============================================================================
 
 class KAncillaBandwidthFixed:
-    def __init__(self, n_system, k_ancilla, hamiltonian_type='chaotic'):
+    def __init__(self, n_system, k_ancilla, hamiltonian_type='chaotic', seed=42):
         self.n_sys = n_system
         self.k_anc = k_ancilla
+        self.seed = seed
         self.backend = AerSimulator(method='statevector')
         
         if hamiltonian_type == 'chaotic':
@@ -64,9 +66,9 @@ class KAncillaBandwidthFixed:
         else:
             self.H_full, self.H_parts = self._build_partitioned_ordered()
 
-    def _build_partitioned_chaotic(self, seed=42):
+    def _build_partitioned_chaotic(self):
         """Build Spin Glass Hamiltonian partitioned into k independent parts."""
-        np.random.seed(seed)
+        np.random.seed(self.seed)
         all_terms = []
         
         # Generate all ZZ terms
@@ -165,9 +167,10 @@ class KAncillaBandwidthFixed:
         
         # --- INDEPENDENT FEEDBACK ---
         # Each ancilla feeds back to system qubits related to its partition
+        # Each ancilla applies FULL kick (not divided) to maximize effect
         for a in range(self.k_anc):
             for i in range(self.n_sys):
-                qc.crx(KICK_STRENGTH / self.k_anc, qr_anc[a], qr_sys[i])
+                qc.crx(KICK_STRENGTH, qr_anc[a], qr_sys[i])
         
         qc.save_statevector(label="final")
         
@@ -230,68 +233,111 @@ class KAncillaBandwidthFixed:
 
 def main():
     print("="*70)
-    print("K-ANCILLA BANDWIDTH SCALING TEST (FIXED)")
-    print("Each ancilla senses INDEPENDENT Hamiltonian partitions")
+    print("K-ANCILLA BANDWIDTH SCALING TEST (Multi-Seed Averaging)")
+    print(f"Averaging over {NUM_SEEDS} random seeds per configuration")
     print("="*70)
     
-    results = {}
-    info_bandwidth = {}
+    results_mean = {}
+    results_std = {}
+    info_bandwidth_mean = {}
+    info_bandwidth_std = {}
     
     for k in ANCILLA_COUNTS:
         print(f"\n{'='*70}")
         print(f"ANCILLA COUNT: k = {k} (max info = {k} bits per cycle)")
         print("="*70)
         
-        efficiencies = []
-        bandwidths = []
+        eff_mean_list = []
+        eff_std_list = []
+        bw_mean_list = []
+        bw_std_list = []
         
         for n in SYSTEM_SIZES:
-            print(f"  [N={n}] Running...", end=" ", flush=True)
-            try:
-                exp = KAncillaBandwidthFixed(n, k, 'chaotic')
-                eta, r2, s_a = exp.measure_efficiency()
-                efficiencies.append(eta)
-                bandwidths.append(2 * s_a)  # Max I = 2 * S(A)
-                print(f"η = {eta:.4f} (R² = {r2:.3f}), S(A) = {s_a:.2f}")
-            except Exception as e:
-                print(f"FAILED: {e}")
-                efficiencies.append(0.0)
-                bandwidths.append(0.0)
+            print(f"  [N={n}] Running {NUM_SEEDS} seeds...", end=" ", flush=True)
+            etas_seeds = []
+            bws_seeds = []
+            
+            for seed in range(NUM_SEEDS):
+                try:
+                    exp = KAncillaBandwidthFixed(n, k, 'ordered', seed=seed*100)
+                    eta, r2, s_a = exp.measure_efficiency()
+                    if np.isfinite(eta):
+                        etas_seeds.append(eta)
+                        bws_seeds.append(2 * s_a)
+                except Exception:
+                    pass
+            
+            if len(etas_seeds) >= 2:
+                eff_mean_list.append(np.mean(etas_seeds))
+                eff_std_list.append(np.std(etas_seeds))
+                bw_mean_list.append(np.mean(bws_seeds))
+                bw_std_list.append(np.std(bws_seeds))
+                print(f"η = {np.mean(etas_seeds):.4f} ± {np.std(etas_seeds):.3f}")
+            else:
+                eff_mean_list.append(0.0)
+                eff_std_list.append(0.0)
+                bw_mean_list.append(0.0)
+                bw_std_list.append(0.0)
+                print("FAILED")
         
-        results[k] = efficiencies
-        info_bandwidth[k] = bandwidths
+        results_mean[k] = np.array(eff_mean_list)
+        results_std[k] = np.array(eff_std_list)
+        info_bandwidth_mean[k] = np.array(bw_mean_list)
+        info_bandwidth_std[k] = np.array(bw_std_list)
     
     # --- VISUALIZATION ---
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    colors = ['blue', 'green', 'red']
-    markers = ['o', 's', '^']
+    colors = ['#1f77b4', '#2ca02c']  # Blue, Green
     
     # Plot 1: Efficiency vs N
     ax = axes[0]
     for i, k in enumerate(ANCILLA_COUNTS):
-        ax.plot(SYSTEM_SIZES, results[k], 
-                color=colors[i], marker=markers[i], markersize=10,
-                linewidth=2, label=f'k = {k} ancillae')
+        N = np.array(SYSTEM_SIZES)
+        mean = results_mean[k]
+        std = results_std[k]
+        ax.plot(N, mean, color=colors[i], marker='o', markersize=8,
+                linewidth=2, label=f'k = {k}')
+        ax.fill_between(N, mean - std, mean + std, color=colors[i], alpha=0.2)
     ax.axhline(0, color='gray', linestyle='--', alpha=0.5)
     ax.set_xlabel('System Size N', fontsize=12)
     ax.set_ylabel('Efficiency η = dW/dI', fontsize=12)
-    ax.set_title('Efficiency Scaling (Partitioned Sensing)', fontsize=14)
-    ax.legend()
+    ax.set_title('(a) Efficiency', fontsize=14)
+    ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
     
     # Plot 2: Information Bandwidth vs N
     ax = axes[1]
     for i, k in enumerate(ANCILLA_COUNTS):
-        ax.plot(SYSTEM_SIZES, info_bandwidth[k],
-                color=colors[i], marker=markers[i], markersize=10,
-                linewidth=2, label=f'k = {k} ancillae')
-    ax.axhline(2.0, color='red', linestyle='--', alpha=0.5, label='Max I = 2 (k=1)')
-    ax.axhline(4.0, color='orange', linestyle='--', alpha=0.5, label='Max I = 4 (k=2)')
+        N = np.array(SYSTEM_SIZES)
+        mean = info_bandwidth_mean[k]
+        std = info_bandwidth_std[k]
+        ax.plot(N, mean, color=colors[i], marker='s', markersize=8,
+                linewidth=2, label=f'k = {k}')
+        ax.fill_between(N, mean - std, mean + std, color=colors[i], alpha=0.2)
     ax.set_xlabel('System Size N', fontsize=12)
-    ax.set_ylabel('Information Bandwidth I(S:A)', fontsize=12)
-    ax.set_title('Information Capacity vs System Size', fontsize=14)
-    ax.legend()
+    ax.set_ylabel('Information I(S:A) [bits]', fontsize=12)
+    ax.set_title('(b) Information Bandwidth', fontsize=14)
+    ax.legend(loc='upper left')
+    ax.grid(True, alpha=0.3)
+    
+    # Plot 3: Total Work = η × I (THE KEY RESULT)
+    ax = axes[2]
+    for i, k in enumerate(ANCILLA_COUNTS):
+        N = np.array(SYSTEM_SIZES)
+        eta = results_mean[k]
+        info = info_bandwidth_mean[k]
+        total_work = eta * info  # Key metric: W = η × I
+        ax.plot(N, total_work, color=colors[i], marker='^', markersize=10,
+                linewidth=2.5, label=f'k = {k}')
+        # Highlight positive work region
+        ax.fill_between(N, 0, total_work, where=(total_work > 0), 
+                        color=colors[i], alpha=0.2)
+    ax.axhline(0, color='gray', linestyle='--', alpha=0.5)
+    ax.set_xlabel('System Size N', fontsize=12)
+    ax.set_ylabel('Total Work W = η × I', fontsize=12)
+    ax.set_title('(c) Extracted Work (η × I)', fontsize=14, fontweight='bold')
+    ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
@@ -305,10 +351,10 @@ def main():
     print("="*70)
     
     for k in ANCILLA_COUNTS:
-        etas = results[k]
+        etas = results_mean[k]
         crash_idx = next((i for i, e in enumerate(etas) if e < 0.05), len(etas))
         crash_N = SYSTEM_SIZES[crash_idx] if crash_idx < len(SYSTEM_SIZES) else ">N_max"
-        avg_bw = np.mean(info_bandwidth[k])
+        avg_bw = np.mean(info_bandwidth_mean[k])
         print(f"  k={k}: Crash point Nc ≈ {crash_N}, Avg Bandwidth = {avg_bw:.2f} bits")
     
     print("\n" + "="*70)
@@ -317,7 +363,7 @@ def main():
     
     # Compare bandwidths
     if len(ANCILLA_COUNTS) >= 2:
-        bw_ratio = np.mean(info_bandwidth[ANCILLA_COUNTS[-1]]) / np.mean(info_bandwidth[ANCILLA_COUNTS[0]])
+        bw_ratio = np.mean(info_bandwidth_mean[ANCILLA_COUNTS[-1]]) / np.mean(info_bandwidth_mean[ANCILLA_COUNTS[0]])
         print(f"\n  Bandwidth scaling: k=2/k=1 ratio = {bw_ratio:.2f} (expected: 2.0)")
         
         if bw_ratio > 1.5:
@@ -325,7 +371,7 @@ def main():
         else:
             print("  ? Bandwidth doesn't scale linearly with k.")
     
-    return results
+    return results_mean
 
 
 if __name__ == "__main__":
