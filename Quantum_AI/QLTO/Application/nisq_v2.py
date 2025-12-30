@@ -85,6 +85,7 @@ class RiemannianQLTO:
         shot_budget: int = 4096,
         backend=None,
         fim_full: bool = False,
+        use_fim: bool = True,
     ):
         if not QISKIT_AVAILABLE: raise RuntimeError("Qiskit required.")
         
@@ -106,13 +107,19 @@ class RiemannianQLTO:
         
         if ENGINES_AVAILABLE:
             # Paper 6: Efficient Metric Sensing
-            self.fim_engine = CommutingBlockFIM(ansatz, full=fim_full)
+            self.use_fim = use_fim
+            if use_fim:
+                self.fim_engine = CommutingBlockFIM(ansatz, full=fim_full)
+            else:
+                self.fim_engine = None
             # Paper 2: Efficient Gradient Sensing
             self.grad_engine = CommutingBlockGradient(ansatz, hamiltonian)
             self.has_engines = True
-            print(f"[Init] Riemannian Engines Online. Detected {len(self.fim_engine.layers)} commuting layers.")
+            layers_info = len(self.fim_engine.layers) if self.fim_engine else len(self.grad_engine.layers)
+            print(f"[Init] Riemannian Engines Online. Detected {layers_info} commuting layers. FIM={'ON' if use_fim else 'OFF'}")
         else:
             self.has_engines = False
+            self.use_fim = False
             print("[Init] Engines missing. Reverting to blind heuristic walk.")
 
         # State tracking
@@ -269,15 +276,20 @@ class RiemannianQLTO:
             global_grad = None
         
         # 2. Compute Global FIM ONCE (Cost: L circuits) - REUSE across layers!
-        global_fim = self.fim_engine.compute_fim(self.estimator, center_params)
-        self.nefv += self.fim_engine.get_nefv_cost()
+        if self.use_fim and self.fim_engine is not None:
+            global_fim = self.fim_engine.compute_fim(self.estimator, center_params)
+            self.nefv += self.fim_engine.get_nefv_cost()
+        else:
+            global_fim = None  # Skip FIM - use identity metric
         
         if layer and self.has_engines:
             
             current_params = center_params.copy()
             
             # 2. Loop Layers (Cost: Cheap! FIM and Grad are reused)
-            for i, layer_info in enumerate(self.fim_engine.layers):
+            # Use FIM layers if available, otherwise use gradient layers
+            layers_to_use = self.fim_engine.layers if self.fim_engine else self.grad_engine.layers
+            for i, layer_info in enumerate(layers_to_use):
                 active_indices = layer_info['params']
                 if not active_indices: continue
                 
@@ -389,11 +401,11 @@ class RiemannianQLTO:
         # 1. Metric: Use precomputed if available (CHEAP when reused!)
         if precomputed_fim is not None:
             metric_matrix = precomputed_fim
+            metric_diag = np.diag(metric_matrix)
+            metric_local = metric_diag[active_indices]
         else:
-            metric_matrix = self.fim_engine.compute_fim(self.estimator, center_params)
-            self.nefv += self.fim_engine.get_nefv_cost()
-        metric_diag = np.diag(metric_matrix)
-        metric_local = metric_diag[active_indices]
+            # No FIM - use identity metric (uniform weights)
+            metric_local = np.ones(n_active)
         
         # 2. Gradient: Use precomputed if available, otherwise compute (Expensive!)
         if precomputed_grad is not None:

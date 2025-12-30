@@ -37,6 +37,21 @@ except ImportError as e:
     print(f"WARNING: Efficient Engines not found: {e}")
     ENGINES_AVAILABLE = False
 
+# Import DirectITE
+try:
+    from coherent_ite import DirectITE
+    DIRECT_ITE_AVAILABLE = True
+except ImportError:
+    DIRECT_ITE_AVAILABLE = False
+
+# Import PennyLane for QNG
+try:
+    import pennylane as qml
+    from pennylane import numpy as pnp
+    PENNYLANE_AVAILABLE = True
+except ImportError:
+    PENNYLANE_AVAILABLE = False
+
 # --- Helper Functions ---
 
 def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
@@ -102,8 +117,8 @@ def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
 # --- Optimizers ---
 
 class QLTO_Wrapper:
-    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10):
-        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full)
+    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True):
+        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full, use_fim=use_fim)
         self.estimator = self.optimizer.estimator # Use the one from optimizer
         self.epoch = 0
         self.layer = layer
@@ -260,6 +275,203 @@ class SPSA:
         grad_est = (e_plus - e_minus) / (2 * ck * delta)
         new_params = params - ak * grad_est
         return new_params
+
+
+class DirectITE_Optimizer:
+    """
+    Direct Imaginary Time Evolution Optimizer.
+    
+    Uses exact ITE (e^{-Hτ}) to find ground state.
+    O(1) NEFV (single coherent evolution) but exponential classical cost.
+    For benchmarking purposes - shows theoretical O(1) limit.
+    """
+    def __init__(self, ansatz, hamiltonian, tau_total=3.0, n_steps=30, backend=None):
+        self.ansatz = ansatz
+        self.hamiltonian = hamiltonian
+        self.n_params = ansatz.num_parameters
+        
+        if DIRECT_ITE_AVAILABLE:
+            self.ite = DirectITE(hamiltonian, ansatz.num_qubits, tau_total, n_steps)
+        else:
+            self.ite = None
+        
+        from qiskit.primitives import StatevectorEstimator
+        self.estimator = StatevectorEstimator()
+        
+        self.nefv = 0
+        self._ground_state = None
+        self._ground_energy = None
+        self._initialized = False
+    
+    @property
+    def circuit_depth(self):
+        return self.ansatz.decompose().depth()
+    
+    @property
+    def max_circuit_depth(self):
+        return self.circuit_depth
+    
+    def step(self, params):
+        # First call: run ITE to find ground state
+        if not self._initialized and self.ite is not None:
+            self._ground_energy, self._ground_state = self.ite.find_ground_state()
+            self.nefv += 1  # Count as single coherent evolution
+            self._initialized = True
+        
+        # Project back to variational manifold (find best params)
+        if self._ground_state is not None:
+            # Simple gradient-free optimization to match ground state
+            from qiskit.quantum_info import Statevector
+            best_fidelity = 0
+            best_params = params.copy()
+            
+            # Random search for params that match ground state
+            for _ in range(5):
+                trial_params = params + np.random.normal(0, 0.1, self.n_params)
+                sv = Statevector.from_instruction(self.ansatz.assign_parameters(trial_params))
+                fidelity = np.abs(self._ground_state.conj() @ sv.data)**2
+                if fidelity > best_fidelity:
+                    best_fidelity = fidelity
+                    best_params = trial_params
+            
+            return best_params
+        return params
+
+
+class PennyLaneQNG:
+    """
+    PennyLane Quantum Natural Gradient Optimizer.
+    
+    Uses pennylane.QNGOptimizer with block-diagonal metric tensor.
+    NEFV: 2N (gradient) + L (metric tensor) per step.
+    """
+    def __init__(self, ansatz, hamiltonian, lr=0.01, backend=None):
+        self.ansatz = ansatz
+        self.hamiltonian = hamiltonian
+        self.n_params = ansatz.num_parameters
+        self.n_qubits = ansatz.num_qubits
+        self.lr = lr
+        
+        if not PENNYLANE_AVAILABLE:
+            raise ImportError("PennyLane not available")
+        
+        # Create PennyLane device
+        self.dev = qml.device('default.qubit', wires=self.n_qubits)
+        
+        # Convert Hamiltonian to PennyLane
+        self.pl_hamiltonian = self._convert_hamiltonian()
+        
+        # Build QNode
+        self.qnode = self._build_qnode()
+        
+        # Initialize optimizer
+        self.opt = qml.QNGOptimizer(stepsize=lr, approx="block-diag", lam=1e-3)
+        
+        from qiskit.primitives import StatevectorEstimator
+        self.estimator = StatevectorEstimator()
+        
+        self.nefv = 0
+    
+    def _convert_hamiltonian(self):
+        """Convert Qiskit SparsePauliOp to PennyLane Hamiltonian."""
+        coeffs = []
+        obs = []
+        
+        for pauli, coeff in zip(self.hamiltonian.paulis, self.hamiltonian.coeffs):
+            pauli_str = str(pauli)
+            real_coeff = float(np.real(coeff))
+            if np.abs(real_coeff) < 1e-10:
+                continue
+            coeffs.append(real_coeff)
+            
+            # Build PennyLane observable from Pauli string
+            # Qiskit uses little-endian (rightmost = qubit 0)
+            pauli_ops = []
+            for i, p in enumerate(reversed(pauli_str)):
+                if p == 'X':
+                    pauli_ops.append(qml.X(i))
+                elif p == 'Y':
+                    pauli_ops.append(qml.Y(i))
+                elif p == 'Z':
+                    pauli_ops.append(qml.Z(i))
+            
+            if len(pauli_ops) == 0:
+                obs.append(qml.Identity(0))
+            elif len(pauli_ops) == 1:
+                obs.append(pauli_ops[0])
+            else:
+                # Tensor product of Pauli operators
+                result = pauli_ops[0]
+                for op in pauli_ops[1:]:
+                    result = result @ op
+                obs.append(result)
+        
+        if len(coeffs) == 0:
+            return qml.Hamiltonian([1.0], [qml.Identity(0)])
+        
+        return qml.Hamiltonian(coeffs, obs)
+    
+    def _build_qnode(self):
+        """Build PennyLane QNode matching the ansatz structure."""
+        n_qubits = self.n_qubits
+        n_params = self.n_params
+        ham = self.pl_hamiltonian
+        
+        @qml.qnode(self.dev, diff_method="parameter-shift")
+        def circuit(params):
+            # EfficientSU2-like structure: RY-RZ per qubit, then entangling
+            param_idx = 0
+            n_params_per_layer = 2 * n_qubits  # RY + RZ for each qubit
+            n_layers = n_params // n_params_per_layer if n_params_per_layer > 0 else 1
+            
+            for layer in range(max(1, n_layers)):
+                # Rotation layer
+                for q in range(n_qubits):
+                    if param_idx < len(params):
+                        qml.RY(params[param_idx], wires=q)
+                        param_idx += 1
+                for q in range(n_qubits):
+                    if param_idx < len(params):
+                        qml.RZ(params[param_idx], wires=q)
+                        param_idx += 1
+                
+                # Entangling layer (linear)
+                if layer < n_layers - 1:
+                    for q in range(n_qubits - 1):
+                        qml.CNOT(wires=[q, q+1])
+            
+            return qml.expval(ham)
+        
+        return circuit
+    
+    @property
+    def circuit_depth(self):
+        return self.ansatz.decompose().depth()
+    
+    @property
+    def max_circuit_depth(self):
+        return self.circuit_depth
+    
+    def step(self, params):
+        # Convert to PennyLane numpy with requires_grad=True
+        pl_params = pnp.array(params.copy(), requires_grad=True)
+        
+        try:
+            # Take QNG step
+            new_params = self.opt.step(self.qnode, pl_params)
+            
+            # Count NEFV: gradient (2N) + metric tensor (L blocks)
+            n_layers = max(1, self.n_params // (2 * self.n_qubits)) if self.n_qubits > 0 else 1
+            self.nefv += 2 * self.n_params + n_layers
+            
+            return np.array(new_params)
+        except Exception as e:
+            # Fallback to vanilla gradient descent if QNG fails
+            grad_fn = qml.grad(self.qnode)
+            grad = grad_fn(pl_params)
+            self.nefv += 2 * self.n_params
+            return params - self.lr * np.array(grad)
+
 
 class QAOA:
     """
@@ -552,10 +764,10 @@ def get_maxcut_problem(n_qubits, seed=42):
     
 def run_benchmark(save=True):
     problems = [
-        # generate_frustrated_hamiltonian(4, seed=999),
+        generate_frustrated_hamiltonian(4, seed=999),
         # get_maxcut_problem(4, seed=101),
         # get_maxcut_problem(6, seed=102),
-        get_h2_problem(),
+        # get_h2_problem(),
         # get_lih_problem(),
         # get_heisenberg_problem(4),
         # get_heisenberg_problem(6),
@@ -569,8 +781,10 @@ def run_benchmark(save=True):
     optimizers_def = {
         'QLTO (Layer)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=1, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=False),
         'QLTO (Coherent)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True),
+        'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
         'QAOA (p=3)': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=0.1),
+        'PennyLane QNG': lambda a, h, backend=None: PennyLaneQNG(a, h, lr=0.05) if PENNYLANE_AVAILABLE else None,
         'AdamW': lambda a, h, backend=None: AdamW(a, h, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01),
         'SPSA': lambda a, h, backend=None: SPSA(a, h, lr=0.1)
     }
@@ -592,12 +806,19 @@ def run_benchmark(save=True):
             print(f"  Running {name}...")
             np.random.seed(42)
             
+            # Skip if optimizer not available
+            if opt_factory is None:
+                print(f"    Skipped (not available)")
+                continue
+            
             # QAOA uses its own ansatz with different number of params
             if 'QAOA' in name:
                 try:
                     opt = opt_factory(ansatz, H, backend=sim_backend)
-                    # Better QAOA initialization: γ and β with heuristic values
-                    # Standard practice: γ ∈ [0, π], β ∈ [0, π/2]
+                    if opt is None:
+                        print(f"    Skipped (not available)")
+                        continue
+                    # Better QAOA initialization
                     p = opt.p_layers
                     gammas = np.linspace(0.3, 0.6, p) * np.pi
                     betas = np.linspace(0.2, 0.4, p) * np.pi
@@ -609,6 +830,9 @@ def run_benchmark(save=True):
                 params = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
                 try:
                     opt = opt_factory(ansatz, H, backend=sim_backend)
+                    if opt is None:
+                        print(f"    Skipped (not available)")
+                        continue
                 except Exception as e:
                     print(f"    Failed to init {name}: {e}")
                     continue
@@ -865,4 +1089,4 @@ def run_benchmark_with_stats(n_trials=5):
 
 if __name__ == "__main__":
     run_benchmark()
-    run_benchmark_with_stats()
+    # run_benchmark_with_stats()
