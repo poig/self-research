@@ -989,8 +989,8 @@ def run_benchmark(save=True):
 
 def run_benchmark_with_stats(n_trials=5):
     problems = [
-        # generate_frustrated_hamiltonian(4, seed=999),
-        get_maxcut_problem(4, seed=101),
+        generate_frustrated_hamiltonian(4, seed=999),
+        # get_maxcut_problem(4, seed=101),
         # get_maxcut_problem(6, seed=102),
         # get_h2_problem(),
         # get_lih_problem(),
@@ -1003,7 +1003,7 @@ def run_benchmark_with_stats(n_trials=5):
     optimizers_def = {
         'QLTO (Layer)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=1, layer=True, coherence=False, backend=backend),
         'QLTO (Coherent)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=10, layer=True, coherence=True, backend=backend),
-        'QLTO (Full Coherent)': lambda a, h, backend: FullyCoherentQLTO_Wrapper(a, h, n_iterations=5, k_steps_per_iter=2, backend=backend),
+        'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
         'QAOA (p=3)': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=0.1),
         'AdamW': lambda a, h, backend: AdamW(a, h, lr=0.1),
@@ -1088,5 +1088,5 @@ def run_benchmark_with_stats(n_trials=5):
         print(f"  Saved plot with error bars.")
 
 if __name__ == "__main__":
-    run_benchmark()
-    # run_benchmark_with_stats()
+    # run_benchmark()
+    run_benchmark_with_stats()

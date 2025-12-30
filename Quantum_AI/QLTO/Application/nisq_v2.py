@@ -464,25 +464,30 @@ class RiemannianQLTO:
             beta = (1 - s) * np.pi * delta_t         # Mixing strength
             
             # --- Drift (Phase Kickback based on gradient) ---
-            # This encodes "which direction is downhill" into phases
-            # OPTIMIZATION: Use individual CRZ gates instead of grouped control
-            # This is shallower than drift_qc.control(1) which creates multi-controlled block
-            # Each walker is independent, so individual control is mathematically equivalent
+            # SIGNED-MAGNITUDE ENCODING:
+            # - MSB (highest bit): direction (sign of gradient)
+            # - Lower bits: step magnitude (|gradient|)
             for i in range(n_active):
                 g_ii = metric_local[i]
                 grad_i = grad_local[i]
                 ng_scale = np.clip(1.0 / (np.sqrt(g_ii) + 1e-6), 0.1, 5.0)
+                scaled_grad = grad_i * ng_scale
                 
                 for b in range(self.bits_per_param):
                     q_idx = i * self.bits_per_param + b
-                    drift_weight = (2.0 ** b) / (2.0 ** (self.bits_per_param - 1))
-                    angle = gamma * grad_i * ng_scale * drift_weight
+                    
+                    if b == self.bits_per_param - 1:
+                        # MSB: direction bit - biased by gradient SIGN
+                        direction_angle = np.sign(scaled_grad) * gamma * np.pi / 2
+                    else:
+                        # Lower bits: magnitude - biased by |gradient| with weight
+                        magnitude_weight = (2.0 ** b) / (2.0 ** (self.bits_per_param - 1))
+                        direction_angle = np.abs(scaled_grad) * gamma * magnitude_weight
                     
                     if coherence:
-                        # Individual controlled-RZ: only 2-qubit depth
-                        qc.crz(angle, qr_anc[0], qr_param[q_idx])
+                        qc.crz(direction_angle, qr_anc[0], qr_param[q_idx])
                     else:
-                        qc.rz(angle, qr_param[q_idx])
+                        qc.rz(direction_angle, qr_param[q_idx])
 
             # --- Mixer (Diffusion) ---
             # OPTIMIZATION: Use individual CRX gates instead of grouped control
@@ -623,47 +628,54 @@ class RiemannianQLTO:
     def _decode_result_with_ancilla(self, param_counts, center_params, radius, n_params):
         """
         Decode parameter values from measurement counts.
-        Uses weighted centroid over all outcomes.
-        
-        Args:
-            param_counts: Dict of {bitstring: count} for parameter register only
-            center_params: Current parameter values for this layer
-            radius: Search radius
-            n_params: Number of parameters in this layer
+        SIGNED-MAGNITUDE ENCODING:
+        - MSB (highest bit): direction (1=increase, 0=decrease)
+        - Lower bits: step magnitude (binary value)
         """
         accumulated_params = np.zeros(n_params)
         total_weight = 0.0
-        max_int = (2**self.bits_per_param) - 1
+        max_magnitude = 2 ** (self.bits_per_param - 1) if self.bits_per_param > 1 else 1
         
         for bitstr, count in param_counts.items():
             weight = count
             clean_str = bitstr.replace(" ", "")
             current_val = np.zeros(n_params)
             
-            # Handle case where bitstring might be shorter than expected
             expected_len = n_params * self.bits_per_param
             if len(clean_str) < expected_len:
                 clean_str = clean_str.zfill(expected_len)
             elif len(clean_str) > expected_len:
-                clean_str = clean_str[-expected_len:]  # Take rightmost bits
+                clean_str = clean_str[-expected_len:]
             
-            # Decode each parameter
-            rev_str = clean_str[::-1]  # Reverse for LSB-first
+            # SIGNED-MAGNITUDE DECODE
+            rev_str = clean_str[::-1]
             for i in range(n_params):
                 start = i * self.bits_per_param
                 end = start + self.bits_per_param
                 p_bits = rev_str[start:end] if end <= len(rev_str) else '0' * self.bits_per_param
                 
-                val_int = 0
-                for b_idx, bit in enumerate(p_bits):
-                    if bit == '1':
-                        val_int += 2**b_idx
+                if self.bits_per_param == 1:
+                    # Single bit: just direction
+                    direction = 1 if p_bits[0] == '1' else -1
+                    magnitude = 1.0
+                else:
+                    # MSB is sign, rest is magnitude
+                    sign_bit = p_bits[-1]  # MSB (last in LSB-first order)
+                    magnitude_bits = p_bits[:-1]
+                    
+                    direction = 1 if sign_bit == '1' else -1
+                    
+                    # Compute magnitude from lower bits
+                    magnitude = 0
+                    for b_idx, bit in enumerate(magnitude_bits):
+                        if bit == '1':
+                            magnitude += 2 ** b_idx
+                    
+                    # Normalize magnitude to [0, 1]
+                    magnitude = (magnitude + 1) / max_magnitude  # +1 so minimum step is not 0
                 
-                # Linear mapping: [0, max_int] -> [center-R, center+R]
-                norm = val_int / max_int if max_int > 0 else 0.5
-                p_min = center_params[i] - radius
-                p_max = center_params[i] + radius
-                real_val = p_min + (norm * (p_max - p_min))
+                # Apply signed step
+                real_val = center_params[i] + direction * magnitude * radius
                 current_val[i] = real_val
             
             accumulated_params += current_val * weight
