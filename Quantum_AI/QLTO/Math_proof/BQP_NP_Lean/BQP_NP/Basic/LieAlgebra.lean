@@ -11,6 +11,7 @@
 -/
 
 import Mathlib.Algebra.Lie.Subalgebra
+import Mathlib.Algebra.Lie.Basic
 import Mathlib.Algebra.Lie.Matrix
 import Mathlib.Algebra.Lie.TraceForm  -- Has killingForm with proven symmetry
 import Mathlib.LinearAlgebra.Matrix.Trace
@@ -83,6 +84,13 @@ noncomputable def DLA {n : ℕ} (H H_mixer : Hamiltonian n) :
     Uses Mathlib's finrank for the dimension of the underlying submodule. -/
 noncomputable def DLA.dimension {n : ℕ} (H H_mixer : Hamiltonian n) : ℕ :=
   Module.finrank ℂ (DLA H H_mixer)
+
+/--
+  IsomorphicDLA: Two pairs of (Hamiltonian, Mixer) generate isomorphic Lie algebras.
+  This is the key equivalence relation for "Encoding Invariance".
+-/
+def IsomorphicDLA {n : ℕ} (H1 H_mix1 : Hamiltonian n) (H2 H_mix2 : Hamiltonian n) : Prop :=
+  Nonempty (LieEquiv ℂ (DLA H1 H_mix1) (DLA H2 H_mix2))
 
 /-! ## Spectral Properties -/
 
