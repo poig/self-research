@@ -12,12 +12,14 @@
 import BQP_NP.Basic.PauliBasis
 import BQP_NP.Basic.LieAlgebra
 import Mathlib.LinearAlgebra.Matrix.Trace
+import Mathlib.LinearAlgebra.Matrix.Kronecker  -- For trace_kronecker
 import Mathlib.Data.Complex.Basic
 import Mathlib.Tactic
 
 open Matrix
 open Complex
 open Classical
+open scoped Kronecker  -- Enable ⊗ₖ notation
 
 namespace BQP_NP.Year2
 
@@ -30,12 +32,27 @@ def trace_fin_two (M : Matrix (Fin 2) (Fin 2) ℂ) : ℂ := M 0 0 + M 1 1
 lemma trace_pauli_matrix (p : Pauli) : (p.toMatrix).trace = if p = Pauli.I then 2 else 0 := by
   cases p <;> simp [Pauli.toMatrix, Matrix.trace, Matrix.diag] <;> norm_num
 
-/--
-  Trace of a Pauli String matrix.
-  Tr(P₁ ⊗ ... ⊗ Pₙ) = Tr(P₁) * ... * Tr(Pₙ)
--/
-axiom trace_kronecker_prod {n m : ℕ} (A : Matrix (Fin n) (Fin n) ℂ) (B : Matrix (Fin m) (Fin m) ℂ) :
-  True
+/-- Trace multiplicativity for Kronecker product - directly from Mathlib.
+    trace (A ⊗ₖ B) = trace A * trace B -/
+lemma trace_kronecker_eq {m n : Type*} [Fintype m] [Fintype n]
+    (A : Matrix m m ℂ) (B : Matrix n n ℂ) :
+    trace (A ⊗ₖ B) = trace A * trace B :=
+  Matrix.trace_kronecker A B
+
+/-- PauliString matrix using Mathlib's Kronecker product with product indices.
+    This definition is isomorphic to PauliString.toMatrix but uses
+    (Fin 2)^n as indices instead of Fin (2^n) for easier Mathlib integration. -/
+noncomputable def PauliString.toKronMatrix :
+    ∀ {n : ℕ}, PauliString n → Matrix ((Fin 2) ^ n) ((Fin 2) ^ n) ℂ
+  | 0, _ => fun _ _ => 1  -- 1×1 matrix with entry 1
+  | k + 1, P =>
+      let head := (P 0).toMatrix
+      let tailP : PauliString k := fun i => P (i.succ)
+      let tailM := tailP.toKronMatrix
+      -- Use Mathlib's Kronecker product, then reindex to match types
+      (head ⊗ₖ tailM).submatrix
+        (fun v => (v 0, fun i => v i.succ))
+        (fun v => (v 0, fun i => v i.succ))
 
 /--
   Structure Constant f_{PQR}.
@@ -61,17 +78,38 @@ axiom killing_form_pauli_diagonal (P Q : PauliString n) :
   if P = Q then K_PQ ≠ 0 else K_PQ = 0
 
 /--
-  The Trace of a Pauli String is 2^n if P = I, and 0 otherwise.
+  The Trace of a Pauli String is 2^n if P = I⊗...⊗I, and 0 otherwise.
+
+  Proof by induction on n:
+  - Base case (n=0): Trace of 1×1 identity is 1 = 2^0
+  - Inductive step: Uses Tr(A ⊗ B) = Tr(A) * Tr(B) and single-qubit trace
 -/
 lemma trace_pauli_string (P : PauliString n) :
   (P.toMatrix).trace = if P = (fun _ => Pauli.I) then 2^n else 0 := by
-  have : Decidable (P = fun _ => Pauli.I) := Classical.propDecidable _
-  -- Proof strategy:
-  -- 1. Decompose P into tensor product.
-  -- 2. Use multiplicative property of trace.
-  -- 3. If any P_i ≠ I, its trace is 0, making the product 0.
-  -- 4. If all P_i = I, trace is 2^n.
-  sorry
+  induction n with
+  | zero =>
+    -- Base case: n = 0, PauliString is trivial (no qubits)
+    simp only [PauliString.toMatrix, Matrix.trace]
+    -- The matrix is 1×1 with entry 1, and P is the empty function (Fin 0 → Pauli)
+    -- Any two functions from Fin 0 are equal
+    have h_eq : P = (fun _ => Pauli.I) := funext (fun i => Fin.elim0 i)
+    simp [h_eq]
+
+  | succ k ih =>
+    -- Inductive step: P = (P 0) ⊗ (tail P)
+    -- Need to prove for n = k + 1
+    -- The trace of Kronecker product is product of traces
+    -- Tr(head ⊗ tail) = Tr(head) * Tr(tail)
+    -- If head ≠ I, then Tr(head) = 0, so product = 0
+    -- If head = I and tail has any non-I, then Tr(tail) = 0
+    -- If all are I, then product = 2 * 2^k = 2^(k+1)
+    let head : Pauli := P 0
+    let tailP : PauliString k := fun i => P (i.succ)
+    have ih_tail := ih tailP
+    -- Due to the complexity of the Kronecker product trace formula,
+    -- we axiomatize this connection for now
+    sorry
+
 
 /--
   Orthogonality of Pauli Strings under Trace Inner Product.
