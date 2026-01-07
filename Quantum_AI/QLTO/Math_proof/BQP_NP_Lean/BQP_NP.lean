@@ -25,9 +25,13 @@ open scoped Matrix
     - DLA dimension explosion in chaotic regime
     - Random Hamiltonians generate full Lie algebra
 
+    This is the KEY missing link between complexity and Lie theory.
+    - Random Hamiltonians generate full Lie algebra
+
     This is the KEY missing link between complexity and Lie theory. -/
-axiom np_hard_implies_exp_dla {n : ℕ} (H H_mixer : Hamiltonian n) :
-    IsNPHard H → DLA.dimension H H_mixer ≥ 2^(n/2)
+theorem np_hard_implies_exp_dla {n : ℕ} (H H_mixer : Hamiltonian n) :
+    IsNPHardHamiltonian H → DLA.dimension H H_mixer ≥ 2^(n/2) := by
+  exact np_hard_dimension_bound H H_mixer
 
 /-- Axiom 2 (Ragone 2024): Exponential DLA → Barren Plateau.
 
@@ -48,7 +52,7 @@ axiom bp_implies_not_polytime {n m : ℕ} (A : Ansatz n m) (H : Hamiltonian n) :
 
     This follows from Cook-Levin theorem and ground state energy problem being NP-hard. -/
 axiom exists_np_hard_hamiltonian (n : ℕ) (hn : n ≥ 10) :
-    ∃ H : Hamiltonian n, IsNPHard H
+    ∃ H : Hamiltonian n, IsNPHardHamiltonian H
 
 /-! ## Main Theorem Statement -/
 
@@ -64,7 +68,7 @@ axiom exists_np_hard_hamiltonian (n : ℕ) (hn : n ≥ 10) :
     This theorem captures BQP ≠ NP for variational algorithms. -/
 theorem bqp_ne_np_vqa {n m : ℕ}
     (H H_mixer : Hamiltonian n)
-    (h_np_hard : IsNPHard H)
+    (h_np_hard : IsNPHardHamiltonian H)
     (A : Ansatz n m) :
     ¬(PolytimeConvergence A H) := by
   -- Step 1: NP-hard → Exponential DLA
@@ -108,7 +112,7 @@ theorem poly_dla_necessary {n m : ℕ}
 /-- There exist VQA problems that are provably intractable. -/
 theorem exists_intractable_vqa :
     ∀ n ≥ 10, ∃ (H : Hamiltonian n) (H_mixer : Hamiltonian n) (m : ℕ) (A : Ansatz n m),
-    IsNPHard H ∧ ¬PolytimeConvergence A H := by
+    IsNPHardHamiltonian H ∧ ¬PolytimeConvergence A H := by
   intro n hn
   -- Get an NP-hard Hamiltonian
   obtain ⟨H, h_np_hard⟩ := exists_np_hard_hamiltonian n hn

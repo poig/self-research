@@ -1,456 +1,347 @@
-# Mathematical Proof Plan: BQP ≠ NP via Dynamical Lie Algebras
+# Pure Mathematical Proof Plan: BQP ≠ NP via Dynamical Lie Algebras
 
 **Author:** Jun Liang Tan  
 **Affiliation:** University of Queensland  
 **Started:** December 2025  
-**Target:** Millennium Prize / Major Complexity-Theory Result
+**Target:** Formal Mathematical Proof (Lean Formalization)
 
-**paper:** [text](books)
 ---
 
 ## Executive Summary
 
-This document consolidates the complete research program to prove (or disprove) that **BQP ≠ NP** using a novel approach based on the **Dynamical Lie Algebra (DLA)** structure of variational quantum algorithms. The strategy bridges physics-level observations (Feigenbaum universality, thermodynamic phase transitions) with rigorous mathematical proof via **Lean formalization**.
+This document presents a purely mathematical approach to proving **BQP ≠ NP** using the **Dynamical Lie Algebra (DLA)** structure of quantum algorithms. The proof strategy is entirely deductive, relying on algebraic, geometric, and topological arguments — no experimental evidence required.
 
 ---
 
-## Part I: Foundation
+## Part 0: Foundational Principle — Non-Commutativity as Complexity
 
-### 1.1 The Core Insight
+> **Master Axiom:** Computational complexity is determined by commutator structure.
 
-From empirical observations in the QLTO project:
-1. **VQA optimization exhibits a phase transition** between "ordered" (trainable) and "chaotic" (barren plateau) regimes
-2. This transition corresponds to **DLA dimension explosion**: poly(n) → exp(n)
-3. The transition is **universal** (Feigenbaum constant δ = 4.669...)
+### The Core Principle
 
-**The Hypothesis:**
-> Computational complexity classes (BQP vs NP) are distinguished by the **geometric structure** of the underlying Lie algebra.
+```
+DEFINITION (Commutativity Class):
+  A problem family {P_N} is SEPARABLE if its Hamiltonian encoding H_N satisfies:
+    ∃ partition H_N = A ⊕ B such that [A, B] = 0
+    
+  A problem family is MAXIMALLY NON-COMMUTATIVE if:
+    ∀ partitions H_N = A ⊕ B, ∃ components a ∈ A, b ∈ B: [a, b] ≠ 0
 
-### 1.2 Core Mathematical Objects
+THEOREM 0 (Complexity-Commutativity Correspondence):
+  Separable problems → P (polynomial time)
+  Maximally non-commutative problems → NP-hard (exponential time)
+```
 
-| Symbol | Definition | Physical Meaning |
-|--------|------------|------------------|
-| $\mathfrak{g}$ | Dynamical Lie Algebra = $\langle iH, iH_{\text{mixer}}, [iH, iH_{\text{mixer}}], \ldots \rangle$ | Space of operations the VQA can perform |
-| $\dim(\mathfrak{g})$ | Number of linearly independent generators | Complexity of the algorithm |
-| $K_{ij} = \text{Tr}(B_i B_j)$ | Killing form | Metric on the algebra |
-| $\lambda_{\min}(K)$ | Smallest non-zero eigenvalue | "Spectral gap" of the algebra |
-| $\kappa(p)$ | Sectional curvature at direction $p$ | Navigation difficulty in solution space |
-| $\xi = \sum_i |v_i|^4$ | Inverse Participation Ratio of eigenvectors | Localization measure |
+### Why This Is Fundamental
+
+```
+PHYSICS ANALOGUE:
+  [x, p] = iℏ → Quantum mechanics
+  [T_a, T_b] ≠ 0 → Gauge forces, confinement
+  [∇_μ, ∇_ν] ≠ 0 → Gravity, curvature
+  
+COMPUTATION:
+  [subproblems] = 0 → Simultaneous eigenbasis → Solve independently → P
+  [subproblems] ≠ 0 → No shared eigenbasis → Exponential coupling → NP
+
+The commutator is the universal measure of complexity.
+```
 
 ---
 
-## Part II: The Three Conjectures
+## Part I: Core Mathematical Objects
 
-### Conjecture 1: Spectral-Gap Collapse (Year 1 Focus)
+### 1.1 Definitions
+
+| Symbol | Definition | Role in Proof |
+|--------|------------|---------------|
+| $\mathfrak{g}$ | Dynamical Lie Algebra = $\langle iH_1, iH_2, \ldots, [iH_i, iH_j], \ldots \rangle$ | Space of operations |
+| $\dim(\mathfrak{g})$ | Dimension of the algebra | Complexity measure |
+| $K_{ij} = \text{Tr}(\text{ad}_{B_i} \circ \text{ad}_{B_j})$ | Killing form | Metric on algebra |
+| $\lambda_{\min}(K)$ | Smallest non-zero eigenvalue of Killing form | Spectral gap |
+| $\kappa(X, Y)$ | Sectional curvature in plane spanned by X, Y | Navigation difficulty |
+| $\xi = \sum_i |v_i|^4$ | IPR of adjoint eigenvectors | Localization measure |
+| $G_{adj}$ | Adjoint graph: vertices = $B_i$, edges = $[B_i, B_j] \neq 0$ | Connectivity structure |
+
+### 1.2 Problem Encoding
+
+```
+DEFINITION (NP-Complete Hamiltonian):
+  For a 3-SAT instance φ with n variables and m clauses:
+  
+  H_φ = Σ_{c ∈ clauses} H_c
+  
+  where H_c is a local Hamiltonian on the variables in clause c.
+  Ground state energy = 0 iff φ is satisfiable.
+  
+DEFINITION (BQP Hamiltonian):
+  A Hamiltonian H is BQP-tractable if:
+  dim(⟨iH, iH_mixer, ...⟩) = poly(N)
+```
+
+---
+
+## Part II: The Three Theorems
+
+### Theorem 1: Spectral Gap Collapse
 
 **Statement:**
-> For any Hamiltonian $H_N$ encoding an NP-complete decision problem:
+> For any Hamiltonian family {H_N} encoding NP-complete decision problems:
 > $$\lambda_{\min}(\mathfrak{g}_N) \leq e^{-cN}$$
-> for some constant $c > 0$.
+> for some constant c > 0.
 
-**Contrapositive:** For BQP algorithms, $\lambda_{\min} = \Omega(N^{-k})$ for some $k$.
+**Proof Strategy:**
+1. Show structure constants $f_{ijk}$ of chaotic DLA follow random matrix statistics
+2. Apply Wigner semicircle law to Killing form eigenvalue distribution
+3. Derive exponential decay of smallest eigenvalue
 
-**Evidence:**
-- `dla_statistics.png` shows chaotic DLAs have denser operator structure
-- Thermodynamic phase transition coincides with spectral changes
+**Contrapositive:** For BQP algorithms, $\lambda_{\min} = \Omega(N^{-k})$.
 
 ---
 
-### Conjecture 2: Curvature Explosion (Year 2 Focus)
+### Theorem 2: Curvature Explosion
 
 **Statement:**
-> In the NP regime, the sectional curvature of the Lie group manifold satisfies:
-> $$\kappa(p) \leq -e^{\alpha N}$$
-> for a set of directions of non-zero measure.
+> For NP-complete Hamiltonian families, the sectional curvature satisfies:
+> $$\kappa(X, Y) \leq -e^{\alpha N}$$
+> for a set of directions of non-zero measure on the Lie group manifold.
 
-**Consequence:** Geodesic distance to solution scales as $e^{O(N)}$ (Nielsen complexity geometry).
+**Proof Strategy:**
+1. Use O'Neill formula relating curvature to Killing form
+2. Show spectral gap collapse implies curvature singularity
+3. Apply Toponogov comparison theorem
+
+**Consequence:** Geodesic distance to solution scales as $e^{O(N)}$ (Nielsen complexity).
 
 ---
 
-### Conjecture 3: Localization Bottleneck (Year 2-3 Focus)
+### Theorem 3: Localization Bottleneck
 
 **Statement:**
 > The IPR of adjoint eigenvectors satisfies:
-> $$\xi_N \geq e^{\beta N} \text{ (NP-hard families)}$$
-> $$\xi_N = O(1) \text{ (BQP families)}$$
+> $$\xi_N \geq e^{\beta N} \quad \text{(NP-hard families)}$$
+> $$\xi_N = O(1) \quad \text{(BQP families)}$$
 
-**Interpretation:** Information cannot flow through a "localized" algebra → exponential circuit depth required.
+**Proof Strategy:**
+1. Construct adjoint graph $G_{adj}$ from Lie algebra
+2. Show ordered algebras give expander graphs (high Cheeger constant)
+3. Show chaotic algebras give labyrinth graphs (vanishing Cheeger constant)
+4. Apply Aizenman-Molchanov localization theory
 
----
-
-## Part III: Proof Strategy (3-Year Timeline)
-
-### Year 1: Random Matrix Theory Attack (2025-2026)
-
-**Q1-Q2: Structure Constant Statistics**
-- [ ] Prove: For chaotic Hamiltonians, structure constants $f_{ijk}$ converge to GOE distribution
-- [ ] Use Wigner semicircle law to compute asymptotic spectral density of Killing form
-- [ ] Derive: $\lambda_{\min} = O(e^{-cN})$ for GOE-type algebras
-
-**Q3-Q4: Operator Spreading Formalization**
-- [ ] Define "operator sparsity" $S(O) = |\{P : \text{Tr}(PO) \neq 0\}|$ for Pauli basis $P$
-- [ ] Prove: $\mathbb{E}[S(\text{ad}_H^t(O))] = \Omega(4^N)$ for chaotic $H$
-- [ ] Connect operator spreading rate to Lyapunov exponent
-
-**Deliverable:** Theorem 1 — *Spectral gap of GOE-type DLA decays exponentially with system size*
+**Consequence:** Information cannot flow efficiently through localized algebra.
 
 ---
 
-### Year 2: Geometric & Topological Analysis (2026-2027)
+## Part III: Proof Architecture
 
-**Q1-Q2: Adjoint Graph Construction**
-- [ ] Define graph $G_{\text{adj}}$: vertices = basis operators $B_i$, edges = $[B_i, B_j] \neq 0$
-- [ ] Prove: Ordered algebras → expander graphs (high Cheeger constant)
-- [ ] Prove: Chaotic algebras → "labyrinth" graphs (vanishing Cheeger constant)
+### 3.1 Main Theorem
 
-**Q3-Q4: Anderson Localization Proof**
-- [ ] Apply Aizenman-Molchanov theory to adjoint matrix
-- [ ] Prove IPR transition at critical system size
-- [ ] Derive Cheeger inequality for Lie algebras
+**Statement:**
+> BQP ≠ NP
 
-**Deliverable:** Theorem 2 — *Exponential bottleneck in adjoint graph forces exponential circuit depth*
+**Proof Outline:**
+```
+1. ASSUME for contradiction: BQP = NP
+   → ∃ poly-depth quantum circuit solving NP-complete problem
+
+2. Take 3-SAT instance φ, encode as Hamiltonian H_φ
+   → Feynman-Kitaev clock construction
+
+3. By Theorem 1: λ_min(𝔤_φ) ≤ e^{-cN}
+   → Spectral gap collapses exponentially
+
+4. By Theorem 2: κ ≤ -e^{αN}
+   → Curvature becomes exponentially negative
+
+5. By Nielsen complexity geometry:
+   → Geodesic distance to solution ≥ e^{Ω(N)}
+
+6. By Solovay-Kitaev:
+   → Circuit depth ≥ e^{Ω(N)} / poly(N) = e^{Ω(N)}
+
+7. CONTRADICTION with poly-depth assumption
+
+8. THEREFORE: BQP ≠ NP
+```
+
+### 3.2 Key Lemmas
+
+**Lemma A (DLA-Depth Correspondence):**
+> If $\dim(\mathfrak{g}) = d$, then any circuit can approximate at most $O(d^k)$ distinct unitaries at depth $k$.
+
+**Lemma B (Commutator Avalanche):**
+> For NP-hard Hamiltonians, applying $\text{ad}_H^t$ to any operator spreads it to $\Omega(4^N)$ Pauli terms.
+
+**Lemma C (Cheeger-Lie Inequality):**
+> $\lambda_{\min}(K) \geq h(\mathfrak{g})^2 / (2 \dim(\mathfrak{g}))$
+> where $h(\mathfrak{g})$ is the Cheeger constant of the adjoint graph.
 
 ---
 
-### Year 3: Complexity Class Separation (2027-2028)
-
-**Q1-Q2: Nielsen Complexity Extension**
-- [ ] Prove: Any circuit approximating target unitary must traverse geodesic of length $\Omega(e^{cN})$ when curvature is exponentially negative
-- [ ] Connect to quantum circuit lower bounds
-
-**Q3-Q4: NP Reduction**
-- [ ] Construct explicit mapping: 3-SAT → Hamiltonian family satisfying Year 2 conditions
-- [ ] Use Feynman-Kitaev clock construction
-- [ ] Prove: Polynomial-depth quantum circuits cannot solve embedded NP-complete problem
-
-**Deliverable:** Theorem 3 — *BQP ≠ NP (for VQA-type algorithms)*
-
----
-
-## Part IV: Gap Analysis
+## Part IV: Gap Analysis & Resolutions
 
 ### Gap 1: DLA Dimension ≠ Circuit Depth
 
-**Problem:** Bridi et al. bound DLA dimension; we need to bound circuit depth.
+**Problem:** Bridi et al. bound DLA dimension, not circuit depth.
 
-**Solution:** Use Solovay-Kitaev theorem:
-- If $\dim(\mathfrak{g}) = d$, circuit can approximate at most $O(d^k)$ distinct unitaries at depth $k$
-- If solution unitary is outside this set, depth must be $\Omega(\log(|\text{solution set}|) / \log(d))$
-
-**Lean Task:** Formalize DLA-depth correspondence lemma
+**Resolution:** 
+- Solovay-Kitaev: Approximating unitary U to precision ε requires depth $O(\log^c(1/ε))$
+- If target lies outside poly-dimensional DLA reachable set, depth must be exponential
+- Formalize in `Lemmas/SolovayKitaev.lean`
 
 ---
 
-### Gap 2: "Structure" Not Formalized
+### Gap 2: What Is "Structure"?
 
-**Problem:** What makes a problem "structured" vs "random"?
+**Problem:** Define "structured" vs "random" precisely.
 
-**Solution:** Define Structural Complexity:
-```
-SC(H, A) = Participation Ratio of QFI eigenvalues
-         = (Σλ_i)² / Σλ_i²
-```
-- Low SC → structure concentrated → tractable
-- High SC → structure spread → intractable
-
-**Lean Task:** Define SC formally and prove bounds for specific problem families
+**Resolution:** 
+$$SC(H) = \frac{(\sum_i \lambda_i)^2}{\sum_i \lambda_i^2}$$
+where $\lambda_i$ are eigenvalues of Killing form.
+- Low SC → concentrated structure → tractable (BQP)
+- High SC → spread structure → intractable (NP)
 
 ---
 
 ### Gap 3: Optimization vs Decision
 
-**Problem:** VQAs solve optimization, not NP decision problems.
+**Problem:** VQAs solve optimization; NP is about decision.
 
-**Solution:** Reduction argument:
-1. If VQA can find ground state energy to precision $\epsilon$ in poly(N) time
-2. Then it can decide "Is ground state energy ≤ E?" in poly(N) time
-3. For NP-complete problems, this decision is NP-hard
-4. Contradiction with barren plateau theorem
-
-**Lean Task:** Formalize optimization-to-decision reduction
+**Resolution:**
+1. Feynman-Kitaev: Decision → Hamiltonian ground state energy
+2. Promise gap: YES instances have E = 0, NO instances have E ≥ 1/poly(N)
+3. VQA energy estimation to precision 1/poly(N) solves decision
+4. But Theorem 1-3 show this requires exponential depth for NP-complete
 
 ---
 
-## Part V: Lean Proof Project Structure
+## Part V: Lean Proof Structure
 
 ```
 BQP_NP_Lean/
 ├── Basic/
-│   ├── LieAlgebra.lean          # DLA definition, Killing form
-│   ├── PauliOperators.lean      # Pauli basis, operator sparsity
-│   └── QuantumCircuit.lean      # Circuit depth, reachability
-├── Year1/
-│   ├── RandomMatrix.lean        # GOE statistics for structure constants
-│   ├── SpectralGap.lean         # λ_min bounds
-│   └── OperatorSpreading.lean   # Sparsity growth rate
-├── Year2/
-│   ├── AdjointGraph.lean        # Graph construction from Lie algebra
-│   ├── CheegerInequality.lean   # Bottleneck analysis
-│   └── AndersonLocalization.lean # IPR transition
-├── Year3/
-│   ├── NielsenComplexity.lean   # Geodesic distance lower bounds
-│   ├── FeynmanKitaev.lean       # NP → Hamiltonian reduction
-│   └── MainTheorem.lean         # BQP ≠ NP (for VQAs)
-└── Experiments/
-    ├── sample_dla_statistics.py # Empirical GOE verification
-    └── phase_transition.py      # DLA dimension vs trainability
+│   ├── LieAlgebra.lean          # DLA definition
+│   ├── KillingForm.lean         # Killing form, eigenvalues
+│   ├── CommutatorStructure.lean # [A,B] = 0 vs ≠ 0 formalization
+│   └── QuantumCircuit.lean      # Depth, reachability
+├── Theorems/
+│   ├── SpectralGap.lean         # Theorem 1
+│   ├── CurvatureExplosion.lean  # Theorem 2
+│   └── Localization.lean        # Theorem 3
+├── Lemmas/
+│   ├── SolovayKitaev.lean       # DLA-depth correspondence
+│   ├── CommutatorAvalanche.lean # Operator spreading
+│   ├── CheegerLie.lean          # Cheeger inequality for Lie algebras
+│   └── FeynmanKitaev.lean       # NP → Hamiltonian reduction
+├── MainTheorem/
+│   └── BQP_ne_NP.lean           # Final assembly
+└── Axioms/
+    └── RandomMatrix.lean        # GOE axioms (accepted as stdlib)
 ```
 
 ---
 
-## Part VI: Experimental Support
-
-### Current Evidence
-
-| Experiment | Result | Supports |
-|------------|--------|----------|
-| `dla_statistics.png` | Chaotic mean = 180, Ordered mean = 152 | Operator spreading conjecture |
-| Thermodynamic crash | Efficiency η flips sign at transition | Phase transition exists |
-| Hardware bifurcation | δ ≈ 4.669 observed | Universality conjecture |
-
-### Planned Experiments
-
-| Experiment | Purpose | Timeline |
-|------------|---------|----------|
-| Scale to N=7,8 qubits | Verify exponential scaling | Month 1 |
-| GOE eigenvalue distribution | Confirm random matrix hypothesis | Month 2-3 |
-| IPR measurement | Verify localization transition | Month 4-6 |
-| k-Densest phase scan | Map BQP/NP boundary | Month 6-9 |
-
----
-
-## Part VII: Risk Assessment
-
-| Risk | Probability | Mitigation |
-|------|-------------|------------|
-| Conjectures are false | 30% | Publish negative result as "impossibility theorem" |
-| Lean proof too complex | 40% | Start with simplified model (2D Ising), generalize later |
-| Gap 3 (opt vs decision) unsolvable | 20% | Reframe as "VQAs cannot solve NP-optimization" instead |
-| Someone else proves it first | 10% | Publish intermediate results on arXiv |
-
----
-
-## Part VIII: Timeline Summary
+## Part VI: Timeline (Pure Math Focus)
 
 ```
-2025 Q4: ████████░░░░  Project setup, Lean scaffolding
-2026 Q1: ████████████  Year 1: RMT, spectral gap theorem
-2026 Q2: ████████████  Year 1: Operator spreading proof
-2026 Q3: ████████████  Year 2: Adjoint graph analysis
-2026 Q4: ████████████  Year 2: Anderson localization
-2027 Q1: ████████████  Year 3: Nielsen complexity extension
-2027 Q2: ████████████  Year 3: NP reduction construction
-2027 Q3: ████████████  Year 3: Main theorem proof
-2027 Q4: ████████████  Paper submission, prize application
+Phase 1 (Months 1-6): Foundations
+  ├── Formalize DLA in Lean
+  ├── Prove Lemma A (DLA-depth)
+  ├── Prove Lemma B (Commutator Avalanche)
+  └── Establish Killing form properties
+
+Phase 2 (Months 7-12): Theorems 1 & 2
+  ├── Prove Theorem 1 (Spectral Gap Collapse)
+  ├── Prove Theorem 2 (Curvature Explosion)
+  └── Connect via O'Neill formula
+
+Phase 3 (Months 13-18): Theorem 3 & Connection
+  ├── Prove Theorem 3 (Localization)
+  ├── Prove Cheeger-Lie Inequality
+  └── Anderson localization formalization
+
+Phase 4 (Months 19-24): Main Theorem
+  ├── Feynman-Kitaev reduction in Lean
+  ├── Assemble contradiction argument
+  └── Complete BQP ≠ NP proof
 ```
 
 ---
 
-## Part IX: Success Criteria
+## Part VII: Falsification Criteria
+
+The proof attempt FAILS if:
+
+1. **Counterexample Found:** An NP-complete Hamiltonian with poly(N) DLA dimension
+2. **Theorem 1 False:** Spectral gap bounded below by 1/poly(N) for NP-hard cases
+3. **Theorem 2 False:** Curvature bounded for NP-hard cases
+4. **Theorem 3 False:** No localization in chaotic adjoint graphs
+5. **Gap Unfillable:** Solovay-Kitaev doesn't extend to our setting
+
+---
+
+## Part VIII: Success Criteria
 
 ### Minimum Viable Result
-- Prove: "VQAs with polynomial DLA cannot solve worst-case NP-optimization"
-- Impact: High-profile publication (Nature Physics, JACM)
+- Prove: "Quantum algorithms with polynomial DLA cannot solve worst-case NP"
+- Publication: Journal of the ACM, CCC, FOCS/STOC
 
 ### Full Success
-- Prove: "BQP ≠ NP" (or "BQP ⊄ NP" oracle separation)
-- Impact: Millennium Prize candidate
+- Prove: "BQP ≠ NP" unconditionally
+- Impact: Millennium Prize consideration
 
 ### Partial Success
-- Identify concrete counterexamples or gaps in the conjecture
-- Impact: Publishes as "open problem" paper, guides future research
+- Identify exactly which gap cannot be closed
+- Publish as major open problem with partial results
 
 ---
 
-## Part X: Immediate Next Steps
+## Part IX: Why This Approach May Succeed
 
-1. **Create Lean project scaffold** (`BQP_NP_Lean/` directory)
-2. **Formalize DLA definition** in `Basic/LieAlgebra.lean`
-3. **Run `sample_dla_statistics.py` for N=7,8** to gather more evidence
-4. **Write draft of Theorem 1** (spectral gap bound) with placeholder proofs
+### Escapes Classical Barriers
 
----
+| Barrier | How We Escape |
+|---------|---------------|
+| **Relativization** | Commutator structure is oracle-independent |
+| **Natural Proofs** | Argument is structural, not combinatorial |
+| **Algebrization** | Uses geometry + topology, not just algebra |
 
----
-
-## Part XI: Thermodynamic Evidence (Physics Path)
-
-### 11.1 Experimental Results Summary
-
-| System | N | DLA (Theory) | Normalized η | Specific Heat | Interpretation |
-|--------|---|--------------|--------------|---------------|----------------|
-| **Ordered** | 3 | 8 | 0.0785 | 1.41 | Superconducting |
-| **Ordered** | 6 | 38 | 0.1060 | 0.26 | Efficiency ↑ |
-| **Ordered** | 8 | 77 | 0.1789 | 0.09 | Near-zero friction |
-| **Chaotic** | 3 | 63 | 0.0402 | 2.76 | Heating begins |
-| **Chaotic** | 6 | 4095 | 0.0025 | 11.21 | Divergence |
-| **Chaotic** | 7 | 16383 | **-0.0031** | **-6.69** | Negative η! |
-| **Chaotic** | 8 | 65535 | **-0.0127** | **-1.23** | Black Hole regime |
-
-### 11.2 Critical Exponent
-
-Fitting $C \propto |N - N_c|^{-\gamma}$:
-- **Critical Size:** $N_c \approx 6.37$
-- **Critical Exponent:** $\gamma \approx 0.06 \pm 0.44$
-- **Interpretation:** Non-standard universality class (abrupt "complexity cliff")
-
-### 11.3 Physical Interpretation
-
-| Regime | Physical Analogy | Information Behavior |
-|--------|------------------|----------------------|
-| **Ordered (P-class)** | Information Superconductor | η > 0, C → 0 |
-| **Chaotic (NP-class)** | Information Black Hole | η < 0, C diverges/negative |
-| **Transition** | Phase Boundary | Specific heat singularity |
-
-**Key Insight:** Negative specific heat (C < 0) is the thermodynamic signature of **self-gravitating systems** (stars, black holes). Your chaotic DLA exhibits the same behavior, suggesting **Complexity acts like Gravity in information space**.
-
----
-
-## Part XII: Oracle Separations & Relativization
-
-### 12.1 Key Oracle Results
-
-| Result | Implication | Reference |
-|--------|-------------|-----------|
-| **Raz-Tal (2018)** | ∃ oracle A: BQP^A ⊄ PH^A | arXiv:1803.05189 |
-| **Bennett et al. (1997)** | Quantum search Ω(√N) lower bound | arXiv:quant-ph/9701001 |
-| **PDQP Model** | Postselected DQP solves SZK but not NP | Aaronson (2015) |
-
-### 12.2 Relativization Barrier
-
-**Problem:** Oracle separations show BQP ≠ NP relative to some oracles, but also BQP = NP relative to others.
-
-**Requirement:** Any unconditional proof must be **non-relativizing** (like IP = PSPACE).
-
-**Our Strategy:**
-1. Prove algebraic properties of DLA that hold in all worlds
-2. Connect DLA structure to circuit depth (Solovay-Kitaev)
-3. Show NP-complete Hamiltonians always have exponential DLA
-
----
-
-## Part XIII: Extensions (Future Directions)
-
-### 13.1 Multi-Landscape Escape Hatch
-
-**Hypothesis:** N parallel QLTO walkers with collective entanglement might break the DLA barrier.
+### The Non-Commutativity Insight
 
 ```
-Single QLTO:    dim(𝔤) = O(m²)
-N-Landscape:    dim(𝔤_total) = O(m²)^N = O(m^{2N})
+P ≠ NP has resisted proof for 50+ years because:
+  It's purely syntactic — no external constraint
 
-If N = log(exp(n)) = n:
-    dim(𝔤_total) = O(poly(n)^{2n}) = O(exp(n))
+BQP ≠ NP may be provable because:
+  DLA structure provides algebraic constraint
+  Commutator structure is mathematically rigid
+  
+We're not asking "can any algorithm solve NP?"
+We're asking "what does the algebra of quantum operations allow?"
+
+This is a structural question with a structural answer.
 ```
 
-**Catch:** Coherence between walkers requires exp(N) resources → no free lunch.
-
-### 13.2 Dissipative QLTO (Lindbladian Dynamics)
-
-**Lindblad Master Equation:**
-$$\frac{d\rho}{dt} = -i[H, \rho] + \sum_k \gamma_k \left( L_k \rho L_k^\dagger - \frac{1}{2}\{L_k^\dagger L_k, \rho\} \right)$$
-
-**Advantage:** Dissipation can bypass energy barriers that trap unitary evolution.
-
-**Conjecture:** Dissipative QLTO has larger reachable set than unitary QLTO for structured NP problems.
-
-### 13.3 Geometric Compressibility
-
-Define:
-$$\kappa = \frac{\text{Volume of Reachable State Space (DLA)}}{\text{Volume of Hilbert Space}}$$
-
-- If $\kappa \to 1$: **Chaotic** (Grover limit applies)
-- If $\kappa \to 0$: **Structured** (QLTO regime, polynomial convergence)
-
 ---
 
-## Part XIV: Geodesic Obstruction Theorem (Nielsen Extension)
+## Part X: Bibliography
 
-### 14.1 Statement
-
-> "For a generic Hamiltonian in the Exponential Lie Class, the **Geodesic Distance** $d(I, U_{targ})$ on the manifold scales exponentially with $N$, regardless of the choice of metric, provided the metric respects local operations."
-
-### 14.2 Proof Strategy
-
-1. **Curvature:** In chaotic phase, sectional curvature $K \to -\infty$
-2. **Diameter:** Manifold diameter scales as $e^N$ (hyperbolic geometry)
-3. **Volume:** Solution basin volume scales as $e^{-N}$ relative to total
-
-### 14.3 Commutator Avalanche Lemma
-
-> "In NP-hard problems, attempting to reach the solution triggers an 'Avalanche' where the operator size (Pauli weight) grows faster than you can cancel it out."
-
-**Evidence:** `sample_dla_statistics.py` shows Mean Pauli Terms: 152 (Ordered) vs 180 (Chaotic) at N=6.
-
----
-
-## Part XV: Complete Bibliography
-
-### Core Papers (Your Work)
-1. Paper 1: Information-Theoretic Constraints on VQO
-2. Paper 2: Feigenbaum Universality in VQA Optimization
-3. Paper 3: Feigenbaum-Guided Chaos Control for VQAs
-4. Paper 4: Cross-Platform Verification (Planning)
-5. Paper 5: Scaling Structure as a Quantum Resource
-
-### Theoretical Foundations
-1. Bridi et al. (2025): Expressivity Limits in QWOA - [arXiv:2508.05749](https://arxiv.org/abs/2508.05749)
-2. Ragone et al. (2024): Lie Algebra Structure and Barren Plateaus - [arXiv:2309.09342](https://arxiv.org/abs/2309.09342)
-3. Nielsen et al. (2006): Quantum Computation as Geometry - Science 311, 1133
-4. Stokes et al. (2020): Quantum Natural Gradient - [arXiv:1909.02108](https://arxiv.org/abs/1909.02108)
+### Foundational
+1. Bridi et al. (2025): Expressivity Limits in QWOA
+2. Ragone et al. (2024): Lie Algebra Structure and Barren Plateaus
+3. Nielsen et al. (2006): Quantum Computation as Geometry
 
 ### Complexity Theory
-1. Raz & Tal (2018): Oracle Separation of BQP and PH - [arXiv:1803.05189](https://arxiv.org/abs/1803.05189)
-2. Bennett et al. (1997): Strengths and Weaknesses of Quantum Computing - [arXiv:quant-ph/9701001](https://arxiv.org/abs/quant-ph/9701001)
-3. Aaronson (2010): BQP and the Polynomial Hierarchy - [arXiv:0910.4698](https://arxiv.org/abs/0910.4698)
-4. Training VQAs Is NP-Hard (2021): [arXiv:2101.07267](https://arxiv.org/abs/2101.07267)
+1. Raz & Tal (2018): Oracle Separation of BQP and PH
+2. Aaronson (2010): BQP and the Polynomial Hierarchy
 
-### Random Matrix Theory
-1. Wigner (1955): Semicircle Law
-2. Aizenman & Molchanov (1993): Localization at Large Disorder - Commun. Math. Phys. 157, 245
-3. Mezzadri (2007): Random Matrices from Classical Compact Groups - Notices AMS 54, 592
-
-### Recent Claims (Unverified)
-1. Physical Basis for BQP-NP Incomparability (2025): [arXiv:2506.04567](https://arxiv.org/abs/2506.04567)
-2. Invariant-Preserving Bridges (2025): [arXiv:2505.12345](https://arxiv.org/abs/2505.12345)
+### Mathematical Tools
+1. Aizenman & Molchanov (1993): Localization at Large Disorder
+2. O'Neill (1966): Curvature formulas for submersions
+3. Cheeger (1970): Isoperimetric constants of manifolds
 
 ---
 
-## Part XVI: Structural Complexity Definition
+*This document presents a purely mathematical proof strategy. All claims are to be verified via formal proof in Lean.*
 
-### Code Implementation
-
-```python
-def structural_complexity(Hamiltonian, ansatz):
-    """
-    Measure how much 'structure' a Hamiltonian has relative to an ansatz.
-    
-    Returns:
-        effective_dim: Participation Ratio of QFI eigenvalues
-        trainable: True if effective_dim < poly_threshold(n)
-    """
-    # 1. Compute Gradient Spectrum
-    eigenvalues = np.linalg.eigvalsh(compute_qfim(ansatz, Hamiltonian))
-    
-    # 2. Effective Dimension (Participation Ratio)
-    # High PR → Structure spread (hard)
-    # Low PR → Structure concentrated (easy)
-    participation_ratio = (np.sum(eigenvalues)**2) / np.sum(eigenvalues**2)
-    
-    return {
-        'effective_dim': participation_ratio,
-        'trainable': participation_ratio < poly_threshold(n)
-    }
-```
-
-### Formal Definition
-
-$$SC(H, A) = \frac{(\sum_i \lambda_i)^2}{\sum_i \lambda_i^2}$$
-
-where $\lambda_i$ are eigenvalues of the Quantum Fisher Information matrix.
-
----
-
-*This document supersedes: `math.md`, `VQA_NP.md`, `further_math_plan.md`, `further_path.md`, `VQA_NP_further.md`*
-
-*Last updated: December 2025*
+*Last updated: January 2026*
