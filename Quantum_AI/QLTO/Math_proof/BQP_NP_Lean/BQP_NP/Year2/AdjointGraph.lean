@@ -5,9 +5,10 @@ import BQP_NP.Basic.PauliBasis
 import BQP_NP.Basic.LieAlgebra
 import Mathlib.Combinatorics.SimpleGraph.Basic
 import Mathlib.Combinatorics.SimpleGraph.AdjMatrix
+import Mathlib.Analysis.Complex.Basic
 
 open Matrix
-open BQP_NP.Basic
+open Classical
 
 namespace BQP_NP.Year2
 
@@ -18,7 +19,7 @@ namespace BQP_NP.Year2
 def nonCommuting {n : ℕ} (P Q : PauliString n) : Prop :=
   matrixCommutator P.toMatrix Q.toMatrix ≠ 0
 
-instance {n : ℕ} (P Q : PauliString n) : Decidable (nonCommuting P Q) :=
+noncomputable instance {n : ℕ} (P Q : PauliString n) : Decidable (nonCommuting P Q) :=
   Classical.dec _
 
 /--
@@ -37,7 +38,7 @@ def adjointGraph (n : ℕ) : SimpleGraph (PauliString n) where
       rw [← neg_sub] at h_zero
       rw [neg_eq_zero] at h_zero
       exact h_zero
-    · exact h.2.symm
+    · exact Ne.symm h.2
   loopless P := by
     simp [nonCommuting, matrixCommutator]
 
@@ -57,8 +58,8 @@ noncomputable def adjointAdjacencyMatrix (n : ℕ) :
   Measures the degree of localization.
 -/
 noncomputable def IPR {ι : Type*} [Fintype ι] (v : ι → ℂ) : ℝ :=
-  let norm4 := ∑ i, (Complex.abs (v i))^4
-  let norm2 := ∑ i, (Complex.abs (v i))^2
+  let norm4 := ∑ i, (Complex.normSq (v i))^2
+  let norm2 := ∑ i, Complex.normSq (v i)
   norm4 / (norm2^2)
 
 /--

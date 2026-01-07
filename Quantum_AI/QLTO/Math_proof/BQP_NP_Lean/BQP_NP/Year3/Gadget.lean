@@ -17,7 +17,6 @@
 import BQP_NP.Year3.Reduction
 import BQP_NP.Basic.PauliOperators
 
-open BQP_NP.Basic
 open BQP_NP.Year3
 open Matrix
 open Complex

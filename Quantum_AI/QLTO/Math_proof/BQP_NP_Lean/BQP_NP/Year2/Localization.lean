@@ -7,7 +7,6 @@ import Mathlib.Analysis.SpecialFunctions.Exp
 import Mathlib.Data.Real.Basic
 
 open Matrix
-open BQP_NP.Basic
 open BQP_NP.Year2
 
 namespace BQP_NP.Year2

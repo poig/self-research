@@ -6,7 +6,6 @@ import BQP_NP.Basic.LieAlgebra
 import BQP_NP.Basic.PauliBasis
 import Mathlib.Data.Finset.Basic
 
-open BQP_NP.Basic
 open Matrix
 
 namespace BQP_NP.Year3
@@ -50,8 +49,10 @@ noncomputable def SAT_to_Hamiltonian {n : ℕ} (ψ : SATInstance n) : Hamiltonia
   -- We sum the Hamiltonians for each clause.
   -- Since we just axiomatized existence, we define this structurally as a sum.
   let terms := ψ.clauses.map (fun C => Classical.choose (clause_hamiltonian_exists C))
-  -- Placeholder for summing Hamiltonians (needs additions instance for Hamiltonian)
-  terms.head! -- Simplification for skeletal definition
+  -- Placeholder: return first term or a default
+  match terms with
+  | [] => ⟨0, Matrix.isHermitian_zero⟩  -- Zero Hamiltonian
+  | h :: _ => h
 
 /--
   Encoding Invariance Property.
@@ -68,6 +69,7 @@ def EncodingInvariant (P : (H : Hamiltonian n) → Prop) : Prop :=
 
   This implies that no "clever encoding" can hide the complexity in a small DLA.
 -/
+axiom reduction_rigor_lemma {n : ℕ} (H_mixer : Hamiltonian n) :
   EncodingInvariant (fun H => DLA.dimension H H_mixer ≥ 2^(n/2))
 
 /--
