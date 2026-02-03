@@ -74,6 +74,50 @@ class BaseSampler:
         """
         return self._sampler.run(pubs, **kwargs)
 
+# --- Criticality Sensor (The Stomach) ---
+class CriticalitySensor:
+    def __init__(self, target_dim=1.5, reaction_rate=0.05):
+        self.target = target_dim
+        self.rate = reaction_rate
+        self.history = []
+
+    def measure_dimension(self, diag):
+        """
+        Maps Normalized Entropy (0..1) to Fractal Dimension (1..3).
+        S=0 (Crystal) -> D=1
+        S=0.5 (Edge)  -> D=2
+        S=1 (Gas)     -> D=3
+        """
+        if not diag or 'mean_entropy' not in diag:
+            return 1.5 # Neutral expectation
+            
+        S = diag['mean_entropy'] # Normalized Entropy [0,1]
+        D = 1.0 + 2.0 * S 
+        return D
+
+    def update(self, current_temp, diag):
+        D = self.measure_dimension(diag)
+        self.history.append(D)
+        
+        # Homeostasis Logic
+        # If D < Target (Too Ordered/Ice) -> Heat Up (Increase T)
+        # If D > Target (Too Chaotic/Gas) -> Cool Down (Decrease T)
+        error = self.target - D
+        
+        # Feedback Scaling
+        factor = 1.0 + self.rate * error
+        
+        # Safety Clamps to prevent explosion/collapse
+        factor = np.clip(factor, 0.8, 1.2) 
+        
+        new_temp = current_temp * factor
+        new_temp = np.clip(new_temp, 1e-4, 2.0)
+        
+        status = "COOLING" if factor < 1.0 else "HEATING"
+        print(f"  [Stomach] {status}: D={D:.2f} (Err {error:.2f}). Temp: {current_temp:.4f} -> {new_temp:.4f}")
+        
+        return new_temp
+
 # --- Core Logic ---
 
 class RiemannianQLTO:
@@ -148,6 +192,15 @@ class RiemannianQLTO:
         decomp = self.ansatz.decompose()
         param_order = list(self.ansatz.parameters)
 
+        # Standard Linear Mapping: [Center-R, Center+R]
+        # range = 2*R
+        # step = range / (2^bits - 1)
+        # val = min_val + integer * step
+        full_range = 2 * search_radius
+        max_int = (2**self.bits_per_param) - 1
+        if max_int == 0: step_size = 0
+        else: step_size = full_range / max_int
+
         # === OPTIMIZATION: FAST PATH (Global Mode) ===
         if active_indices is None:
             # Original fast loop (No dictionary lookups, no 'if' checks)
@@ -162,15 +215,15 @@ class RiemannianQLTO:
                     sys_q_idx = decomp.find_bit(instr.qubits[0]).index
                     target_qubit = sys_reg[sys_q_idx]
                     
-                    # Direct Quantum Encoding
-                    start_bit = p_idx * self.bits_per_param
+                    # 1. Apply Base (Min Value)
                     min_val = center_params[p_idx] - search_radius
                     self._apply_gate(qc, op, min_val, target_qubit) 
                     
-                    full_range = 2 * search_radius
+                    # 2. Apply Increments (Bit-Weighted)
+                    start_bit = p_idx * self.bits_per_param
                     for b in range(self.bits_per_param):
                         ctrl_qubit = param_reg[start_bit + b]
-                        angle = full_range / (2**self.bits_per_param) * (2**b)
+                        angle = step_size * (2**b)
                         self._apply_controlled_gate(qc, op, angle, ctrl_qubit, target_qubit)
                         
                 elif isinstance(op, CXGate):
@@ -212,21 +265,17 @@ class RiemannianQLTO:
                     self._apply_gate(qc, op, min_val, target_qubit) 
                     
                     # 2. Apply Controlled Increments
-                    full_range = 2 * search_radius
                     for b in range(self.bits_per_param):
                         ctrl_qubit = param_reg[start_bit + b]
-                        angle = full_range / (2**self.bits_per_param) * (2**b)
+                        angle = step_size * (2**b)
                         self._apply_controlled_gate(qc, op, angle, ctrl_qubit, target_qubit)
 
                 else:
                     # === FROZEN (CLASSICAL CONSTANT) ===
-                    # Just apply the gate with its current fixed value
-                    # No parameter qubits required!
                     fixed_val = center_params[p_idx]
                     self._apply_gate(qc, op, fixed_val, target_qubit)
             
             elif isinstance(op, CXGate):
-                # Standard Entanglement (Unchanged)
                 q1 = decomp.find_bit(instr.qubits[0]).index
                 q2 = decomp.find_bit(instr.qubits[1]).index
                 qc.cx(sys_reg[q1], sys_reg[q2])
@@ -300,7 +349,8 @@ class RiemannianQLTO:
                     active_indices=active_indices,
                     precomputed_grad=global_grad,
                     precomputed_fim=global_fim,
-                    coherence=coherence
+                    coherence=coherence,
+                    drift_gain=1.0/np.sqrt(search_radius) # Inverse-Temp Scaling
                 )
             return current_params
         else:
@@ -311,7 +361,8 @@ class RiemannianQLTO:
                 active_indices=None,
                 precomputed_grad=global_grad,
                 precomputed_fim=global_fim,
-                coherence=coherence
+                coherence=coherence,
+                drift_gain=1.0/np.sqrt(search_radius)
             )
     
     def get_sensing_diagnostics(self) -> Dict[str, Any]:
@@ -350,10 +401,9 @@ class RiemannianQLTO:
         Assess training quality based on sensing diagnostics.
         
         Paper 1 Interpretation:
-        - High activation (>40%): Oracle sensing low-energy states → "excellent"
-        - Moderate activation (20-40%): Learning in progress → "good"
-        - Low activation (<20%) + High entropy: Stuck/exploring → "exploring"
-        - Low activation (<20%) + Low entropy: Converging to minimum → "converging"
+        - Activation ~ 50%: Maximum entropy sensing (Best) → "excellent"
+        - Activation > 60% or < 40%: Biased → "good"
+        - Activation < 20% + High Entropy: Stuck → "exploring"
         
         Returns a qualitative assessment string.
         """
@@ -363,7 +413,7 @@ class RiemannianQLTO:
         mean_act = np.mean(activation_rates)
         mean_ent = np.mean(entropies)
         
-        if mean_act > 0.4:
+        if 0.4 <= mean_act <= 0.6:
             return "excellent"
         elif mean_act > 0.2:
             return "good"
@@ -371,22 +421,11 @@ class RiemannianQLTO:
             # Low activation + low entropy = converging to solution
             return "converging"
         else:
-            # Low activation + high entropy = stuck or random walk
             return "exploring"
     
-    def _execute_walk(self, center_params, k_steps, delta_t, radius, active_indices=None, precomputed_grad=None, precomputed_fim=None, coherence=False):
+    def _execute_walk(self, center_params, k_steps, delta_t, radius, active_indices=None, precomputed_grad=None, precomputed_fim=None, coherence=False, drift_gain=1.5):
         """
         Internal worker that builds and runs the circuit for a specific subset.
-        
-        Implements FULL SENSING PROTOCOL (Paper 1):
-        1. Sensing: Ancilla in |+⟩, controlled-U(τ) accumulates phase
-        2. Correlation: Hadamard converts phase → Z-population  
-        3. Feedback: Controlled mixer based on ancilla state
-        4. Measurement: Both ancilla (activation) and params (new values)
-        
-        Returns:
-            new_params: Updated parameter vector
-            Also updates self.layer_diagnostics with sensing info
         """
         
         # 1. Determine Dimensions
@@ -463,10 +502,10 @@ class RiemannianQLTO:
             gamma = s * np.pi * delta_t * res_scale  # Phase accumulation rate
             beta = (1 - s) * np.pi * delta_t         # Mixing strength
             
-            # --- Drift (Phase Kickback based on gradient) ---
-            # SIGNED-MAGNITUDE ENCODING:
-            # - MSB (highest bit): direction (sign of gradient)
-            # - Lower bits: step magnitude (|gradient|)
+            # --- Drift (Linear/Bit-Weighted) ---
+            # We want to increase the probability of '1' states if Gradient is positive (Phase Kickback)
+            # Since High Bits have High Impact, they get High Kick.
+            # Angle ~ Gradient * Weight * Gamma
             for i in range(n_active):
                 g_ii = metric_local[i]
                 grad_i = grad_local[i]
@@ -476,13 +515,11 @@ class RiemannianQLTO:
                 for b in range(self.bits_per_param):
                     q_idx = i * self.bits_per_param + b
                     
-                    if b == self.bits_per_param - 1:
-                        # MSB: direction bit - biased by gradient SIGN
-                        direction_angle = np.sign(scaled_grad) * gamma * np.pi / 2
-                    else:
-                        # Lower bits: magnitude - biased by |gradient| with weight
-                        magnitude_weight = (2.0 ** b) / (2.0 ** (self.bits_per_param - 1))
-                        direction_angle = np.abs(scaled_grad) * gamma * magnitude_weight
+                    # Weight proportional to bit significance (2^b)
+                    # We normalize so max kick is reasonable
+                    # DYNAMIC GAIN: Passed from run_walk
+                    weight = (2.0 ** b) / (2.0 ** self.bits_per_param)
+                    direction_angle = scaled_grad * gamma * weight * np.pi * drift_gain
                     
                     if coherence:
                         qc.crz(direction_angle, qr_anc[0], qr_param[q_idx])
@@ -627,14 +664,11 @@ class RiemannianQLTO:
     
     def _decode_result_with_ancilla(self, param_counts, center_params, radius, n_params):
         """
-        Decode parameter values from measurement counts.
-        SIGNED-MAGNITUDE ENCODING:
-        - MSB (highest bit): direction (1=increase, 0=decrease)
-        - Lower bits: step magnitude (binary value)
+        Decode parameter values from measurement counts using Linear Mapping.
         """
         accumulated_params = np.zeros(n_params)
         total_weight = 0.0
-        max_magnitude = 2 ** (self.bits_per_param - 1) if self.bits_per_param > 1 else 1
+        max_int = (2**self.bits_per_param) - 1
         
         for bitstr, count in param_counts.items():
             weight = count
@@ -647,35 +681,28 @@ class RiemannianQLTO:
             elif len(clean_str) > expected_len:
                 clean_str = clean_str[-expected_len:]
             
-            # SIGNED-MAGNITUDE DECODE
+            # Linear Decode (Matches build_w_gate)
+            # Qiskit Bitstring is Little Endian: [qn ... q0]
+            # rev_str gives [q0, q1 ...] so p_bits matches range(bits) loop
             rev_str = clean_str[::-1]
+            
             for i in range(n_params):
                 start = i * self.bits_per_param
                 end = start + self.bits_per_param
                 p_bits = rev_str[start:end] if end <= len(rev_str) else '0' * self.bits_per_param
                 
-                if self.bits_per_param == 1:
-                    # Single bit: just direction
-                    direction = 1 if p_bits[0] == '1' else -1
-                    magnitude = 1.0
-                else:
-                    # MSB is sign, rest is magnitude
-                    sign_bit = p_bits[-1]  # MSB (last in LSB-first order)
-                    magnitude_bits = p_bits[:-1]
+                val_int = 0
+                for b_idx, bit in enumerate(p_bits):
+                    if bit == '1': val_int += 2**b_idx
                     
-                    direction = 1 if sign_bit == '1' else -1
-                    
-                    # Compute magnitude from lower bits
-                    magnitude = 0
-                    for b_idx, bit in enumerate(magnitude_bits):
-                        if bit == '1':
-                            magnitude += 2 ** b_idx
-                    
-                    # Normalize magnitude to [0, 1]
-                    magnitude = (magnitude + 1) / max_magnitude  # +1 so minimum step is not 0
+                # Map [0, MaxInt] -> [Center-R, Center+R]
+                if max_int > 0: norm = val_int / max_int
+                else: norm = 0.5
                 
-                # Apply signed step
-                real_val = center_params[i] + direction * magnitude * radius
+                p_min = center_params[i] - radius
+                p_max = center_params[i] + radius
+                real_val = p_min + norm * (p_max - p_min)
+                
                 current_val[i] = real_val
             
             accumulated_params += current_val * weight
@@ -800,16 +827,17 @@ if __name__ == "__main__":
     
     # 1. Setup Problem
     N = 4
-    H = generate_frustrated_hamiltonian(N, seed=42)
+    # H = generate_frustrated_hamiltonian(N, seed=42)
+    H = force_heisenberg_hamiltonian(N)
     # EfficientSU2 is naturally structured into commuting blocks (Rotation layers)
     # Decompose to ensure it's compatible with Aer primitives
-    ansatz = EfficientSU2(N, reps=1, entanglement='linear').decompose()
+    ansatz = EfficientSU2(N, reps=1, entanglement='linear', su2_gates=['u3']).decompose()
     print(f"Ansatz Ops: {ansatz.count_ops()}")
     
     print(f"Problem: {N} Qubits, {ansatz.num_parameters} Parameters.")
     
     # 2. Initialize Optimizer (Using 1 bit per param to keep simulation fast)
-    qlto = RiemannianQLTO(ansatz, H, bits_per_param=1, shot_budget=8192)
+    qlto = RiemannianQLTO(ansatz, H, bits_per_param=1, shot_budget=8192, use_fim=False)
     print(f"{qlto.bits_per_param} bits per param")
     
     # 3. Run Loop
@@ -826,7 +854,12 @@ if __name__ == "__main__":
         visualizer = AncillaVisualizer(output_dir="./figures")
         print("[Viz] Ancilla visualizer enabled. Will generate fractal at end.")
     
-    print("\nStarting Optimization with Full Sensing Protocol...")
+    # Initialize Criticality Sensor
+    sensor = CriticalitySensor(target_dim=1.5)
+    current_radius = 0.95 # Initial Temp
+    last_diag = None
+
+    print("\nStarting Optimization with Homeostatic Loop...")
     print("=" * 70)
     start_time = time.time()
     
@@ -842,18 +875,55 @@ if __name__ == "__main__":
             print(f"Energy Eval Failed: {e}")
             E = 0.0
         
-        # Step
-        r = max(search_radius * (0.8 ** epoch), 1e-4)
-        dt = max(0.5 * (0.85 ** epoch), 0.01)
+        # Homeostatic Update
+        # If we have diagnostics from previous step, adjust Temp
+        if last_diag:
+            current_radius = sensor.update(current_radius, last_diag)
+            
+        # Physics: Time step dt should scale with Radius (smaller box = finer time)
+        # But if dt gets too small, we lose signal (Zeno Effect). Kept above 0.05.
+        dt = max(current_radius * 1.5, 0.05)
+        r = current_radius
         
         params = qlto.run_walk(params, k_steps=2, delta_t=dt, search_radius=r, layer=False, gradient_reuse=True, coherence=True)
         
         # Get sensing diagnostics (Paper 1: "monitor if layer is trained well")
         diag = qlto.get_sensing_diagnostics()
+        last_diag = diag
         
         # Record for visualization
         if visualizer:
             visualizer.record(
+                epoch=epoch,
+                activation_rate=diag['mean_activation'],
+                energy=E,
+                entropy=diag['mean_entropy']
+            )
+        
+        print(f"Epoch {epoch+1:02d} | E: {E:+.4f} | Act: {diag['mean_activation']:.1%} | "
+              f"H: {diag['mean_entropy']:.2f} | Quality: {diag['training_quality']:10s} | NEFV: {qlto.nefv}")
+        
+        # if E < -5.5:
+        #     print(">>> Converged!")
+        #     break
+    
+    print("=" * 70)
+    print(f"Total Time: {time.time() - start_time:.2f}s")
+    
+    # Print final diagnostics summary
+    print("\nFinal Sensing Diagnostics:")
+    final_diag = qlto.get_sensing_diagnostics()
+    print(f"  Mean Activation Rate: {final_diag['mean_activation']:.1%}")
+    print(f"  Activation Range: [{final_diag['min_activation']:.1%}, {final_diag['max_activation']:.1%}]")
+    print(f"  Mean Entropy: {final_diag['mean_entropy']:.3f}")
+    print(f"  Training Quality: {final_diag['training_quality']}")
+    
+    # Generate visualizations
+    if visualizer:
+        print("\nGenerating visualizations...")
+        visualizer.generate_2d_summary(filename="qlto_sensing_summary.png")
+        visualizer.generate_3d_fractal(filename="qlto_fractal_3d.html")
+        visualizer.record(
                 epoch=epoch,
                 activation_rate=diag['mean_activation'],
                 energy=E,
