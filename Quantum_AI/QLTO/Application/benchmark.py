@@ -117,8 +117,8 @@ def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
 # --- Optimizers ---
 
 class QLTO_Wrapper:
-    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True):
-        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full, use_fim=use_fim)
+    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4):
+        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full, use_fim=use_fim, num_ancillas=num_ancillas)
         self.estimator = self.optimizer.estimator # Use the one from optimizer
         self.epoch = 0
         self.layer = layer
@@ -779,8 +779,8 @@ def run_benchmark(save=True):
     # Using p=3 layers for better QAOA performance (p=2 is often insufficient)
     # QLTO Coherent uses k_step=20 for better convergence (depth scales with k, NOT NEFV)
     optimizers_def = {
-        'QLTO (Layer)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=1, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=False),
-        'QLTO (Coherent)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True),
+        # 'QLTO (Layer)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=1, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=False),
+        # 'QLTO (Coherent)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True),
         'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
         'QAOA (p=3)': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=0.1),
@@ -1001,8 +1001,8 @@ def run_benchmark_with_stats(n_trials=5):
     ]
     
     optimizers_def = {
-        'QLTO (Layer)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=1, layer=True, coherence=False, backend=backend),
-        'QLTO (Coherent)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=10, layer=True, coherence=True, backend=backend),
+        # 'QLTO (Layer)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=1, layer=True, coherence=False, backend=backend),
+        # 'QLTO (Coherent)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=10, layer=True, coherence=True, backend=backend),
         'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
         'QAOA (p=3)': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=0.1),
@@ -1088,5 +1088,5 @@ def run_benchmark_with_stats(n_trials=5):
         print(f"  Saved plot with error bars.")
 
 if __name__ == "__main__":
-    # run_benchmark()
+    run_benchmark()
     run_benchmark_with_stats()

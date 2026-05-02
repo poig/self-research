@@ -126,7 +126,7 @@ class ComplexityExperiment:
             rho_anc = partial_trace(rho, range(1, n+1))
             
             # Mutual Information
-            mi = entropy(rho_sys) + entropy(rho_anc) - entropy(rho)
+            mi = entropy(rho_sys, base=2) + entropy(rho_anc, base=2) - entropy(rho, base=2)
             data_info.append(mi)
             
             # --- Calc Work ---

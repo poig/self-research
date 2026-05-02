@@ -153,14 +153,14 @@ class MaxwellDemonExperiment:
         # Note: qiskit.quantum_info.entropy returns Von Neumann entropy (base e or 2?)
         # Default is base 2.
         
-        S_SA = entropy(rho_sensing)
+        S_SA = entropy(rho_sensing, base=2)
         
         # Partial Traces
         rho_S = partial_trace(rho_sensing, [0]) # Trace out Ancilla (index 0)
         rho_A = partial_trace(rho_sensing, range(1, 3)) # Trace out System
         
-        S_S = entropy(rho_S)
-        S_A = entropy(rho_A)
+        S_S = entropy(rho_S, base=2)
+        S_A = entropy(rho_A, base=2)
         
         mutual_info = S_S + S_A - S_SA
         
@@ -251,14 +251,14 @@ class MaxwellDemonExperiment:
         # Note: qiskit.quantum_info.entropy returns Von Neumann entropy (base e or 2?)
         # Default is base 2.
         
-        S_SA = entropy(rho_sensing)
+        S_SA = entropy(rho_sensing, base=2)
         
         # Partial Traces
         rho_S = partial_trace(rho_sensing, [0]) # Trace out Ancilla (index 0)
         rho_A = partial_trace(rho_sensing, range(1, self.n+1)) # Trace out System
         
-        S_S = entropy(rho_S)
-        S_A = entropy(rho_A)
+        S_S = entropy(rho_S, base=2)
+        S_A = entropy(rho_A, base=2)
         
         mutual_info = S_S + S_A - S_SA
         

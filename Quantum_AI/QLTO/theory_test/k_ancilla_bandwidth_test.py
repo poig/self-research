@@ -188,9 +188,9 @@ class KAncillaBandwidthFixed:
         rho_S = partial_trace(rho_sensing, ancilla_indices)
         rho_A = partial_trace(rho_sensing, system_indices)
         
-        S_SA = entropy(rho_sensing)
-        S_S = entropy(rho_S)
-        S_A = entropy(rho_A)
+        S_SA = entropy(rho_sensing, base=2)
+        S_S = entropy(rho_S, base=2)
+        S_A = entropy(rho_A, base=2)
         
         # Total mutual information with all ancillae
         mutual_info = S_S + S_A - S_SA
