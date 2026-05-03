@@ -254,4 +254,8 @@ class CommutingBlockGradient:
 
     def get_nefv_cost(self):
         """Returns theoretical cost: 2 circuits per layer (Real+Imag)."""
-        return 2 * len(self.layers)
+        # return 2 * len(self.layers)
+        actual = 2 * len(self.layers)
+        return {
+            'actual_with_cnot': actual,
+        }

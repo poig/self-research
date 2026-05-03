@@ -7,7 +7,7 @@ rigorous Commuting-Block Geometry. It has been patched to support:
 2. Robust V2 Primitive Wrappers that correctly handle parameter binding.
 3. Fixed interaction with geometry engines.
 
-Author: QLTO Synthesis Team
+Author: Tan Jun Liang
 """
 
 import numpy as np
@@ -316,7 +316,8 @@ class RiemannianQLTO:
         if gradient_reuse:
             # 1. Compute Global Gradient ONCE (Cost: 2N or 2L circuits)
             global_grad = self.grad_engine.compute_gradient(self.estimator, center_params)
-            self.nefv += self.grad_engine.get_nefv_cost()
+            # self.nefv += self.grad_engine.get_nefv_cost()
+            self.nefv += self.grad_engine.get_nefv_cost()['actual_with_cnot']
         else:
             global_grad = None
         
@@ -451,7 +452,7 @@ class RiemannianQLTO:
             grad_full = precomputed_grad
         else:
             grad_full = self.grad_engine.compute_gradient(self.estimator, center_params)
-            self.nefv += self.grad_engine.get_nefv_cost()
+            self.nefv += self.grad_engine.get_nefv_cost()['actual_with_cnot']
             
         grad_local = grad_full[active_indices]
         
