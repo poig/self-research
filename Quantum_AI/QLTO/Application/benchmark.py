@@ -145,7 +145,9 @@ class QLTO_Wrapper:
         # Annealing schedule from nisq_v2.py main
         r = max(0.6 * (0.9 ** (self.epoch - 1)), 1e-4)
         dt = max(0.5 * (0.95 ** self.epoch), 0.01)
-        return self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
+        result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
+        params_new = result[0] if isinstance(result, (tuple, list)) else result
+        return params_new
 
 class CorrectQNG:
     """
@@ -172,6 +174,8 @@ class CorrectQNG:
         # FIX: Use param shift for values, but count cost as efficient (O(L))
         grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
         grad_nefv = self.grad_engine.get_nefv_cost()
+        if isinstance(grad_nefv, dict):
+            grad_nefv = grad_nefv.get('actual_with_cnot', 0)
         self.nefv += grad_nefv
         
         # 2. FIM (L)
@@ -191,6 +195,8 @@ class CorrectQNG:
         # Returns correct gradient values but O(L) cost
         grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
         grad_nefv = self.grad_engine.get_nefv_cost()
+        if isinstance(grad_nefv, dict):
+            grad_nefv = grad_nefv.get('actual_with_cnot', 0)
         self.nefv += grad_nefv
         
         # 2. FIM (L)
@@ -765,14 +771,14 @@ def get_maxcut_problem(n_qubits, seed=42):
 def run_benchmark(save=True):
     problems = [
         generate_frustrated_hamiltonian(4, seed=999),
-        # get_maxcut_problem(4, seed=101),
-        # get_maxcut_problem(6, seed=102),
-        # get_h2_problem(),
-        # get_lih_problem(),
-        # get_heisenberg_problem(4),
-        # get_heisenberg_problem(6),
-        # get_heisenberg_problem(8),
-        # get_heisenberg_problem(12),
+        get_maxcut_problem(4, seed=101),
+        get_maxcut_problem(6, seed=102),
+        get_h2_problem(),
+        get_lih_problem(),
+        get_heisenberg_problem(4),
+        get_heisenberg_problem(6),
+        get_heisenberg_problem(8),
+        get_heisenberg_problem(12),
     ]
     
     # Note: QAOA needs n_qubits, so we pass ansatz.num_qubits
@@ -791,6 +797,11 @@ def run_benchmark(save=True):
     
     for ansatz, H, prob_name in problems:
         print(f"\n{'='*40}\nBenchmarking: {prob_name}\n{'='*40}")
+        
+        # Exact ground state (for reference)
+        H_mat = H.to_matrix()
+        exact_gs = float(np.min(np.linalg.eigvalsh(H_mat)))
+        print(f"Exact GS energy: {exact_gs:.6f}")
         
         # Use MPS for large problems (N >= 4)
         if ansatz.num_qubits >= 4:
@@ -896,6 +907,8 @@ def run_benchmark(save=True):
             if data['energy']:
                 plt.plot(data['nefv'], data['energy'], label=f"{name} (Final: {data['energy'][-1]:.3f})", linewidth=2)
         
+        plt.axhline(exact_gs, color='black', linestyle='--', label=f'Exact GS ({exact_gs:.3f})')
+        
         plt.xlabel('Total NEFV (Circuit Executions)', fontsize=12)
         plt.ylabel('Energy', fontsize=12)
         plt.title(f'Optimizer Benchmark: {prob_name}', fontsize=14)
@@ -990,14 +1003,14 @@ def run_benchmark(save=True):
 def run_benchmark_with_stats(n_trials=5):
     problems = [
         generate_frustrated_hamiltonian(4, seed=999),
-        # get_maxcut_problem(4, seed=101),
-        # get_maxcut_problem(6, seed=102),
-        # get_h2_problem(),
-        # get_lih_problem(),
-        # get_heisenberg_problem(4),
-        # get_heisenberg_problem(6),
-        # get_heisenberg_problem(8),
-        # get_heisenberg_problem(12)
+        get_maxcut_problem(4, seed=101),
+        get_maxcut_problem(6, seed=102),
+        get_h2_problem(),
+        get_lih_problem(),
+        get_heisenberg_problem(4),
+        get_heisenberg_problem(6),
+        get_heisenberg_problem(8),
+        get_heisenberg_problem(12)
     ]
     
     optimizers_def = {
@@ -1012,6 +1025,12 @@ def run_benchmark_with_stats(n_trials=5):
     
     for ansatz, H, prob_name in problems:
         print(f"\n{'='*40}\nBenchmarking: {prob_name} ({n_trials} trials)\n{'='*40}")
+        
+        # Exact ground state (for reference)
+        H_mat = H.to_matrix()
+        exact_gs = float(np.min(np.linalg.eigvalsh(H_mat)))
+        print(f"Exact GS energy: {exact_gs:.6f}")
+
         sim_backend = AerSimulator(method='matrix_product_state') #if ansatz.num_qubits >= 4 else AerSimulator()
         
         stats = {}
@@ -1079,6 +1098,8 @@ def run_benchmark_with_stats(n_trials=5):
             plt.plot(x, y, label=f"{name}")
             plt.fill_between(x, y - err, y + err, alpha=0.2)
             
+        plt.axhline(exact_gs, color='black', linestyle='--', label=f'Exact GS ({exact_gs:.3f})')
+        
         plt.xlabel('Total NEFV')
         plt.ylabel('Energy')
         plt.title(f'{prob_name} (Mean ± Std over {n_trials} trials)')

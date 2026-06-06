@@ -121,13 +121,15 @@ class CriticalitySensor:
 # --- Core Logic ---
 
 class RiemannianQLTO:
-    def __init__(self, ansatz, hamiltonian, bits_per_param=1, shot_budget=8192, use_fim=False, num_ancillas=2, backend=None, fim_full = False):
+    def __init__(self, ansatz, hamiltonian, bits_per_param=1, shot_budget=8192, use_fim=False, num_ancillas=2, backend=None, fim_full = False, use_qpe_sensing=False):
         if not QISKIT_AVAILABLE: raise RuntimeError("Qiskit required.")
         
         self.ansatz = ansatz
         self.hamiltonian = hamiltonian
         self.bits_per_param = bits_per_param
-        self.num_ancillas = num_ancillas
+        self.requested_num_ancillas = num_ancillas
+        self.use_qpe_sensing = use_qpe_sensing
+        self.num_ancillas = max(1, num_ancillas) if use_qpe_sensing else 1
         self.shot_budget = shot_budget
         
         # MPS Backend Setup
@@ -175,6 +177,16 @@ class RiemannianQLTO:
         # QPE energy estimate (read directly from ancilla, no separate circuit needed)
         self.last_qpe_energy = None
         self._last_sensing_time = None  # Store for phase→energy conversion
+
+        H_mat = hamiltonian.to_matrix()
+        self.H_norm = float(np.linalg.norm(H_mat, ord=2))   # spectral norm
+        msb_scale  = 2 ** max(num_ancillas - 1, 0)
+        self.tau_0 = np.pi / (msb_scale * self.H_norm + 1e-12)
+        if self.use_qpe_sensing:
+            print(f"[Init] ‖H‖_2 = {self.H_norm:.4f}  →  τ₀ = {self.tau_0:.4f} rad "
+                  f"(alias-free range ±{np.pi/self.tau_0:.2f})")
+        else:
+            print(f"[Init] Legacy single-ancilla sensing active. ‖H‖_2 = {self.H_norm:.4f}")
 
     def build_w_gate(
         self, 
@@ -311,6 +323,8 @@ class RiemannianQLTO:
         """
         # Clear diagnostics from previous run
         self.layer_diagnostics = {}
+        self.last_qpe_energy = None
+        self._last_sensing_time = None
         
         # Precompute expensive terms ONCE per epoch
         if gradient_reuse:
@@ -331,27 +345,24 @@ class RiemannianQLTO:
         if layer and self.has_engines:
             
             current_params = center_params.copy()
+            last_energy = float('nan')
             
-            # 2. Loop Layers (Cost: Cheap! FIM and Grad are reused)
-            # Use FIM layers if available, otherwise use gradient layers
             layers_to_use = self.fim_engine.layers if self.fim_engine else self.grad_engine.layers
             for i, layer_info in enumerate(layers_to_use):
                 active_indices = layer_info['params']
                 if not active_indices: continue
                 
-                # Pass the precomputed grad AND fim to the worker
-                current_params = self._execute_walk(
+                current_params, last_energy = self._execute_walk(
                     current_params, 
                     k_steps, delta_t, search_radius, 
                     active_indices=active_indices,
                     precomputed_grad=global_grad,
                     precomputed_fim=global_fim,
                     coherence=coherence,
-                    drift_gain=1.0/np.sqrt(search_radius) # Inverse-Temp Scaling
+                    drift_gain=1.0/np.sqrt(search_radius)
                 )
-            return current_params
+            return current_params, last_energy
         else:
-            # Global mode: Just run normally
             return self._execute_walk(
                 center_params, 
                 k_steps, delta_t, search_radius, 
@@ -428,6 +439,8 @@ class RiemannianQLTO:
         """
         Internal worker that builds and runs the circuit for a specific subset.
         """
+        self.last_qpe_energy = None
+        self._last_sensing_time = None
         
         # 1. Determine Dimensions
         if active_indices is None:
@@ -436,6 +449,8 @@ class RiemannianQLTO:
         n_active = len(active_indices)
         n_p_qubits = n_active * self.bits_per_param
         layer_id = hash(tuple(active_indices)) % 1000  # Simple layer identifier
+        qpe_mode = self.use_qpe_sensing
+        sensing_ancillas = self.num_ancillas
         
         # --- OPTIMIZATION: FIM AND GRADIENT REUSE ---
         # 1. Metric: Use precomputed if available (CHEAP when reused!)
@@ -458,17 +473,17 @@ class RiemannianQLTO:
         
         # 3. Build Registers
         # Notice: param register is sized ONLY for active parameters!
-        # FULL SENSING: Add ancilla measurement register (k ancillas)
-        qr_anc = AncillaRegister(self.num_ancillas, 'anc')
+        # FULL SENSING: Add ancilla measurement register
+        qr_anc = AncillaRegister(sensing_ancillas, 'anc')
         qr_param = QuantumRegister(n_p_qubits, 'param')
         qr_sys = QuantumRegister(self.ansatz.num_qubits, 'sys')
         cr_param = ClassicalRegister(n_p_qubits, 'cr_param')
-        cr_anc = ClassicalRegister(self.num_ancillas, 'cr_anc')  # Paper 1: Measure k ancillas
+        cr_anc = ClassicalRegister(sensing_ancillas, 'cr_anc')
         
         qc = QuantumCircuit(qr_anc, qr_param, qr_sys, cr_param, cr_anc)
         
         # 4. Initialization (Paper 1 Phase 1: Prepare |+⟩_A)
-        qc.h(qr_anc)  # All Ancillas in superposition
+        qc.h(qr_anc)  # All ancillas in superposition
         qc.h(qr_param)  # Parameter register in superposition
         
         # 5. Hybrid W-Gate (Mixes Quantum Active + Classical Frozen)
@@ -481,39 +496,50 @@ class RiemannianQLTO:
         # "The sensing phase entangles the ancilla state with the 
         # system energy" - must happen AFTER parameter encoding
         # so we sense E(θ) not just E(initial state).
-        # MULTI-ANCILLA STRATEGY: Multi-Scale Sensing
-        # Each ancilla probes a different time scale to resolve different energy gaps.
         # =====================================================
-        base_sensing_time = delta_t * np.pi
-        self._last_sensing_time = base_sensing_time  # Store for QPE energy decoding
-        
-        for a in range(self.num_ancillas):
-            # Scale time exponentially for QPE: 2^a
-            # This provides the necessary phase wraps for Inverse QFT
-            time_scale = 2 ** a
-            t_a = base_sensing_time * time_scale
-            
-            # CRITICAL FIX: Trotter error scales as O(t^2/r). 
-            # Because time_scale is exponential, a single Trotter step (reps=1) 
-            # for the MSB destroys the unitary. We must scale reps with time!
-            reps = max(1, int(time_scale * 2))
-            trotter = LieTrotter(reps=reps)
-            
-            evo_sense = PauliEvolutionGate(self.hamiltonian, time=t_a, synthesis=trotter)
-            
+        if qpe_mode:
+            # QPE mode: alias-free multi-ancilla sensing.
+            base_sensing_time = min(self.tau_0, delta_t * np.pi)
+            self._last_sensing_time = base_sensing_time
+
+            for a in range(sensing_ancillas):
+                # Scale time exponentially for QPE: 2^a
+                # This provides the necessary phase wraps for Inverse QFT
+                time_scale = 2 ** a
+                t_a = base_sensing_time * time_scale
+
+                # CRITICAL FIX: Trotter error scales as O(t^2/r).
+                # Because time_scale is exponential, a single Trotter step (reps=1)
+                # for the MSB destroys the unitary. We must scale reps with time!
+                reps = max(1, int(time_scale * 2))
+                trotter = LieTrotter(reps=reps)
+
+                evo_sense = PauliEvolutionGate(self.hamiltonian, time=t_a, synthesis=trotter)
+
+                if coherence:
+                    # Controlled sensing: ancilla a accumulates phase ⟨cos(E(θ) * t_a)⟩
+                    qc.append(evo_sense.control(1), [qr_anc[a]] + list(qr_sys))
+                else:
+                    # Non-coherent: just evolve system (less sensing power)
+                    qc.append(evo_sense, qr_sys)
+
+            # =====================================================
+            # PHASE 1.5: DECODING (Inverse QFT)
+            # Convert phase to binary representation of energy
+            # =====================================================
+            qft_inv = QFT(num_qubits=sensing_ancillas, inverse=True, do_swaps=True)
+            qc.append(qft_inv, qr_anc)
+        else:
+            # Legacy mode: single-ancilla Hadamard-test sensing.
+            sensing_time = delta_t * np.pi
+            self._last_sensing_time = sensing_time
+            trotter = LieTrotter(reps=1)
+            evo_sense = PauliEvolutionGate(self.hamiltonian, time=sensing_time, synthesis=trotter)
+
             if coherence:
-                # Controlled sensing: ancilla a accumulates phase ⟨cos(E(θ) * t_a)⟩
-                qc.append(evo_sense.control(1), [qr_anc[a]] + list(qr_sys))
+                qc.append(evo_sense.control(1), [qr_anc[0]] + list(qr_sys))
             else:
-                # Non-coherent: just evolve system (less sensing power)
                 qc.append(evo_sense, qr_sys)
-        
-        # =====================================================
-        # PHASE 1.5: DECODING (Inverse QFT)
-        # Convert phase to binary representation of energy
-        # =====================================================
-        qft_inv = QFT(num_qubits=self.num_ancillas, inverse=True, do_swaps=True)
-        qc.append(qft_inv, qr_anc)
 
         # 6. Walk Loop - Parameter space exploration
         # NOTE: No more Hamiltonian evolution here! 
@@ -545,12 +571,15 @@ class RiemannianQLTO:
                     direction_angle = scaled_grad * gamma * weight * np.pi * drift_gain
                     
                     if coherence:
-                        # QPE Coherent Control: Weight kicks by binary significance
-                        # qr_anc[0] is the MSB, so it gets the highest weight
-                        anc_norm = 2 ** self.num_ancillas
-                        for a in range(self.num_ancillas):
-                            bit_weight = (2 ** (self.num_ancillas - 1 - a)) / anc_norm
-                            qc.crz(direction_angle * bit_weight, qr_anc[a], qr_param[q_idx])
+                        if qpe_mode:
+                            # QPE Coherent Control: Weight kicks by binary significance
+                            # qr_anc[0] is the MSB, so it gets the highest weight
+                            anc_norm = 2 ** sensing_ancillas
+                            for a in range(sensing_ancillas):
+                                bit_weight = (2 ** (sensing_ancillas - 1 - a)) / anc_norm
+                                qc.crz(direction_angle * bit_weight, qr_anc[a], qr_param[q_idx])
+                        else:
+                            qc.crz(direction_angle, qr_anc[0], qr_param[q_idx])
                     else:
                         qc.rz(direction_angle, qr_param[q_idx])
 
@@ -566,11 +595,14 @@ class RiemannianQLTO:
                     angle = beta * scale * mix_weight
                     
                     if coherence:
-                        # QPE Coherent Control: Weight mixer by binary significance
-                        anc_norm = 2 ** self.num_ancillas
-                        for a in range(self.num_ancillas):
-                            bit_weight = (2 ** (self.num_ancillas - 1 - a)) / anc_norm
-                            qc.crx(angle * bit_weight, qr_anc[a], qr_param[q_idx])
+                        if qpe_mode:
+                            # QPE Coherent Control: Weight mixer by binary significance
+                            anc_norm = 2 ** sensing_ancillas
+                            for a in range(sensing_ancillas):
+                                bit_weight = (2 ** (sensing_ancillas - 1 - a)) / anc_norm
+                                qc.crx(angle * bit_weight, qr_anc[a], qr_param[q_idx])
+                        else:
+                            qc.crx(angle, qr_anc[0], qr_param[q_idx])
                     else:
                         qc.rx(angle, qr_param[q_idx])
             
@@ -578,6 +610,9 @@ class RiemannianQLTO:
             # The ancilla remains entangled, accumulating phase information
             # across all K steps. This matches paper claim:
             # "coherent integration (no intermediate reset)"
+        
+        if not qpe_mode:
+            qc.h(qr_anc)  # Phase -> Population conversion
         
         # =====================================================
         # PHASE 2: INVERSE-W
@@ -607,129 +642,180 @@ class RiemannianQLTO:
         # if len(counts) > 0 and n_active <= 4:
         #     sample_keys = list(counts.keys())[:3]
         #     print(f"  [DEBUG] Sample bitstrings: {sample_keys}, n_p_qubits={n_p_qubits}")
-        
-        # =====================================================
-        # SENSING DIAGNOSTICS (Paper 1: "monitor if layer is trained well")
-        # =====================================================
-        total_shots = sum(counts.values())
-        ancilla_one_count = 0  # Count |1⟩_anc outcomes (low energy sensing)
-        
-        # Parse counts to separate ancilla and param outcomes
-        param_counts_weighted = {}   # Counts weighted by activation (Multi-Ancilla)
-        
-        for bitstr, count in counts.items():
-            # Qiskit format with multiple classical registers: "cr_anc cr_param"
-            # cr_anc is measured AFTER cr_param, so it appears FIRST in the string
-            parts = bitstr.split(' ')
-            
-            if len(parts) == 2:
-                # Format: "anc_bits param_bits"
-                anc_bits_str = parts[0]
-                param_bits = parts[1]
-                
-                # Calculate Activation (QPE Energy Readout)
-                # Parse the binary string (reversed due to Qiskit endianness)
-                try:
-                    val = int(anc_bits_str[::-1], 2)
-                except ValueError:
-                    val = 0
-                    
-                norm_factor = 2 ** self.num_ancillas
-                if norm_factor == 0:
-                    activation = 0.5
-                else:
-                    activation = val / norm_factor
-                
-                ancilla_one_count += activation * count
-                
-                # For decoding parameters, we just weight by count (Implicitly weighted by probability)
-                # Ideally we only take params where activation > threshold, but for now linear averaging
-                # Linear decode handles the rest
-                # New Weighted Logic
-                param_counts_weighted[param_bits] = param_counts_weighted.get(param_bits, 0) + (count * activation)
 
-            # NOTE: We ignore cases where ancilla bits are missing or malformed
-            # Legacy code removed (`anc_bit` checks)
+        decoded_block, diagnostics = self._postprocess_walk_counts(
+            counts,
+            center_params,
+            active_indices,
+            radius,
+            n_active,
+            n_p_qubits,
+        )
+        self.layer_diagnostics[layer_id] = diagnostics
+        self.last_activation_rate = diagnostics['activation_rate']
+        self.last_entropy = diagnostics['normalized_entropy']
+        self.last_qpe_energy = diagnostics.get('landscape_avg_energy')
         
-        # Activation Rate: P(ancilla = |1⟩) = "probability of sensing low energy"
-        activation_rate = ancilla_one_count / total_shots if total_shots > 0 else 0.0
-        
-        # =====================================================
-        # QPE ENERGY ESTIMATE (read directly from ancilla)
-        # The ancilla measurement statistics are invariant under
-        # the walk (controlled ops preserve control qubit marginals).
-        # P(E_j) = |α_j|² is unchanged by U(E_j) acting on targets.
-        # =====================================================
-        qpe_energy_accum = 0.0
-        qpe_weight = 0.0
+        # Update the full vector
+        new_params = center_params.copy()
+        new_params[active_indices] = decoded_block
+
+        # ── INLINE POINT ENERGY ──────────────────────────────────────────────
+        # ⟨ψ(θ_decoded)|H|ψ(θ_decoded)⟩ computed on the decoded parameter point
+        # using the statevector estimator already in self.estimator.
+        # This replaces the separate ref_est call in main() and gives the true
+        # variational energy without a second circuit submission.
+        try:
+            _pub = (self.ansatz, self.hamiltonian, new_params)
+            point_energy = float(self.estimator.run([_pub]).result()[0].data.evs)
+        except Exception as _e:
+            # Graceful fallback: keep landscape average if statevector fails
+            point_energy = self.last_qpe_energy if self.last_qpe_energy is not None else float('nan')
+
+        return new_params, point_energy
+
+    def _postprocess_walk_counts(self, counts, center_params, active_indices, radius, n_active, n_p_qubits):
+        """
+        Convert raw measurement counts into a parameter update and diagnostics.
+
+        Legacy mode uses the original single-ancilla Trap-Diffusion decode.
+        QPE mode uses the newer multi-ancilla weighted decode.
+        """
+        total_shots = sum(counts.values())
+        ancilla_one_count = 0
+
+        if self.use_qpe_sensing:
+            param_counts_weighted = {}
+
+            for bitstr, count in counts.items():
+                parts = bitstr.split(' ')
+
+                if len(parts) == 2:
+                    anc_bits_str = parts[0]
+                    param_bits = parts[1]
+
+                    try:
+                        val = int(anc_bits_str[::-1], 2)
+                    except ValueError:
+                        val = 0
+
+                    norm_factor = 2 ** self.num_ancillas
+                    activation = 0.5 if norm_factor == 0 else val / norm_factor
+
+                    ancilla_one_count += activation * count
+                    param_counts_weighted[param_bits] = param_counts_weighted.get(param_bits, 0) + (count * activation)
+
+            activation_rate = ancilla_one_count / total_shots if total_shots > 0 else 0.0
+
+            qpe_energy_accum = 0.0
+            qpe_weight = 0.0
+            for bitstr, count in counts.items():
+                parts = bitstr.split(' ')
+                if len(parts) == 2:
+                    anc_str = parts[0]
+                    try:
+                        anc_val = int(anc_str[::-1], 2)
+                    except ValueError:
+                        continue
+
+                    n_anc = len(anc_str)
+                    phase_fraction = anc_val / (2 ** n_anc)
+                    if phase_fraction > 0.5:
+                        phase_fraction -= 1.0
+
+                    if self._last_sensing_time and self._last_sensing_time > 1e-10:
+                        energy_est = 2 * np.pi * phase_fraction / self._last_sensing_time
+                    else:
+                        energy_est = phase_fraction
+
+                    qpe_energy_accum += energy_est * count
+                    qpe_weight += count
+
+            landscape_avg_energy = qpe_energy_accum / qpe_weight if qpe_weight > 0 else None
+
+            all_probs = np.array(list(counts.values())) / total_shots if total_shots > 0 else np.array([])
+            entropy = -np.sum(all_probs * np.log2(all_probs + 1e-12)) if total_shots > 0 else 0.0
+            max_entropy = np.log2(len(counts)) if len(counts) > 1 else 1.0
+            normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+
+            diagnostics = {
+                'activation_rate': activation_rate,
+                'entropy': entropy,
+                'normalized_entropy': normalized_entropy,
+                'move_count': ancilla_one_count,
+                'stay_count': total_shots - ancilla_one_count,
+                'n_params': n_active,
+                # NOTE: This is NOT the variational energy at θ_current.
+                # It is the QPE-weighted landscape average over the full 2^(n*k)
+                # parameter superposition in the search window. Kept for research
+                # purposes only — do not use for convergence tracking.
+                'landscape_avg_energy': landscape_avg_energy,
+            }
+
+            if len(param_counts_weighted) > 0 and activation_rate > 0.05:
+                decoded_block = self._decode_result_with_ancilla(
+                    param_counts_weighted, center_params[active_indices], radius, n_active
+                )
+            else:
+                decoded_block = self._decode_result_with_ancilla(
+                    {k[1:] if len(k) > n_p_qubits else k: v for k, v in counts.items()},
+                    center_params[active_indices], radius, n_active
+                )
+                decoded_block = center_params[active_indices] + 0.3 * (decoded_block - center_params[active_indices])
+
+            return decoded_block, diagnostics
+
+        param_counts_move = {}
+        param_counts_stay = {}
+
         for bitstr, count in counts.items():
             parts = bitstr.split(' ')
+
             if len(parts) == 2:
-                anc_str = parts[0]
-                try:
-                    anc_val = int(anc_str[::-1], 2)
-                except ValueError:
-                    continue
-                # QPE phase: φ = anc_val / 2^k
-                # Energy: E = 2π·φ / τ₀  (from e^{-iEτ} → phase = Eτ/2π)
-                n_anc = len(anc_str)
-                phase_fraction = anc_val / (2 ** n_anc)
-                if self._last_sensing_time and self._last_sensing_time > 1e-10:
-                    energy_est = 2 * np.pi * phase_fraction / self._last_sensing_time
-                else:
-                    energy_est = phase_fraction
-                qpe_energy_accum += energy_est * count
-                qpe_weight += count
-        
-        self.last_qpe_energy = qpe_energy_accum / qpe_weight if qpe_weight > 0 else None
-        
-        # Shannon Entropy of parameter distribution (diversity of solutions)
-        all_probs = np.array(list(counts.values())) / total_shots
-        entropy = -np.sum(all_probs * np.log2(all_probs + 1e-12))
+                anc_bit = parts[0][-1]
+                param_bits = parts[1]
+            elif len(parts) == 1:
+                clean = parts[0]
+                anc_bit = clean[0]
+                param_bits = clean[1:]
+            else:
+                anc_bit = '0'
+                param_bits = bitstr.replace(' ', '')
+
+            if anc_bit == '1':
+                ancilla_one_count += count
+                param_counts_move[param_bits] = param_counts_move.get(param_bits, 0) + count
+            else:
+                param_counts_stay[param_bits] = param_counts_stay.get(param_bits, 0) + count
+
+        activation_rate = ancilla_one_count / total_shots if total_shots > 0 else 0.0
+        all_probs = np.array(list(counts.values())) / total_shots if total_shots > 0 else np.array([])
+        entropy = -np.sum(all_probs * np.log2(all_probs + 1e-12)) if total_shots > 0 else 0.0
         max_entropy = np.log2(len(counts)) if len(counts) > 1 else 1.0
         normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
-        
-        # Store diagnostics
-        self.layer_diagnostics[layer_id] = {
+
+        diagnostics = {
             'activation_rate': activation_rate,
             'entropy': entropy,
             'normalized_entropy': normalized_entropy,
             'move_count': ancilla_one_count,
             'stay_count': total_shots - ancilla_one_count,
             'n_params': n_active,
-            # NOTE: This is NOT the variational energy at θ_current.
-            # It is the QPE-weighted landscape average over the full 2^(n*k)
-            # parameter superposition in the search window. Kept for research
-            # purposes only — do not use for convergence tracking.
-            'landscape_avg_energy': self.last_qpe_energy,
+            'landscape_avg_energy': None,
         }
-        self.last_activation_rate = activation_rate
-        self.last_entropy = normalized_entropy
-        
-        # =====================================================
-        # ACTIVATION-WEIGHTED DECODE (Paper 1: Trap-Diffusion)
-        # Weight samples by their Multi-Ancilla activation score.
-        # =====================================================
-        if len(param_counts_weighted) > 0 and activation_rate > 0.05:
-            # Decode using weighted counts
+
+        if len(param_counts_move) > 0 and activation_rate > 0.05:
             decoded_block = self._decode_result_with_ancilla(
-                param_counts_weighted, center_params[active_indices], radius, n_active
+                param_counts_move, center_params[active_indices], radius, n_active
             )
         else:
-            # Fallback: If activation too low, use all samples but stay conservative
-            # This prevents getting stuck when oracle isn't sensing well
             decoded_block = self._decode_result_with_ancilla(
                 {k[1:] if len(k) > n_p_qubits else k: v for k, v in counts.items()},
                 center_params[active_indices], radius, n_active
             )
-            # Scale down the update when activation is low (conservative)
             decoded_block = center_params[active_indices] + 0.3 * (decoded_block - center_params[active_indices])
-        
-        # Update the full vector
-        new_params = center_params.copy()
-        new_params[active_indices] = decoded_block
-        
-        return new_params
+
+        return decoded_block, diagnostics
     
     def _decode_result_with_ancilla(self, param_counts, center_params, radius, n_params):
         """
@@ -913,13 +999,13 @@ if __name__ == "__main__":
     qlto = RiemannianQLTO(ansatz, H, bits_per_param=1, shot_budget=8192, use_fim=False, num_ancillas=4)
     print(f"{qlto.bits_per_param} bits per param | {qlto.num_ancillas} Sensing Ancillas")
     
-    # 3. Reference estimator: statevector for exact ⟨ψ(θ)|H|ψ(θ)⟩ on the decoded params.
-    # This is separate from the QPE sensing — the ancilla encodes the landscape average
-    # over the search superposition, not the variational energy at the decoded point.
-    ref_est = AerEstimator(options={'backend_options': {'method': 'statevector'}})
+    # 3. No separate ref_est needed — run_walk now returns (params, E) directly.
+    # ⟨ψ(θ)|H|ψ(θ)⟩ is computed inline after each decode step using the
+    # calibrated statevector estimator, aligned with the alias-free τ₀.
     
     # 4. Run Loop
     params = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
+    E = float('nan')  # will be overwritten each epoch
     
     # Initialize visualizer if enabled
     visualizer = None
@@ -948,25 +1034,15 @@ if __name__ == "__main__":
         # Internally, the QPE sensing circuit evaluates 2^(n * bits_per_param)
         # configurations simultaneously via superposition, then the walk
         # amplifies the lower-energy vertex — genuine quantum parallel search.
-        params = qlto.run_walk(
+        params, E = qlto.run_walk(
             params, k_steps=2, delta_t=dt, search_radius=r,
             layer=False, gradient_reuse=True, coherence=True
         )
         
-        # True variational energy at the decoded parameter point.
-        # Must be evaluated separately — the QPE ancilla encodes the landscape
-        # average over the search window, not ⟨ψ(θ_decoded)|H|ψ(θ_decoded)⟩.
-        try:
-            E = float(ref_est.run([(ansatz, H, params)]).result()[0].data.evs)
-        except Exception as e:
-            print(f"  [Warning] Energy eval failed: {e}")
-            E = 0.0
-        
-        # Sensing diagnostics: activation rate and entropy from the QPE ancilla.
-        # landscape_avg_energy is available in diag but intentionally not displayed —
-        # it tracks the search window average, which is a research metric only.
         diag = qlto.get_sensing_diagnostics()
         last_diag = diag
+        landscape_E = diag.get('landscape_avg_energy')
+        qpe_str = f"{landscape_E:+.4f}" if landscape_E is not None else "  n/a  "
         
         # Record for visualization
         if visualizer:
@@ -977,7 +1053,8 @@ if __name__ == "__main__":
                 entropy=diag['mean_entropy']
             )
         
-        print(f"Epoch {epoch+1:02d} | E: {E:+.4f} | Act: {diag['mean_activation']:.1%} | "
+        print(f"Epoch {epoch+1:02d} | E_var: {E:+.6f} | E_qpe: {qpe_str} | "
+              f"Act: {diag['mean_activation']:.1%} | "
               f"H: {diag['mean_entropy']:.2f} | Quality: {diag['training_quality']:10s} | NEFV: {qlto.nefv}")
     
     print("=" * 70)
@@ -990,8 +1067,11 @@ if __name__ == "__main__":
     print(f"  Activation Range: [{final_diag['min_activation']:.1%}, {final_diag['max_activation']:.1%}]")
     print(f"  Mean Entropy: {final_diag['mean_entropy']:.3f}")
     print(f"  Training Quality: {final_diag['training_quality']}")
-    print(f"  Final Energy (variational): {E:+.4f}")
-    print(f"  Landscape Avg Energy (QPE, research only): {final_diag.get('landscape_avg_energy', 'N/A')}")
+    print(f"  ‖H‖_2 (spectral norm): {qlto.H_norm:.4f}")
+    print(f"  τ₀ (alias-free sensing time): {qlto.tau_0:.4f} rad")
+    print(f"  Final E_var  (decoded point ⟨ψ(θ)|H|ψ(θ)⟩): {E:+.6f}")
+    lqpe = final_diag.get('landscape_avg_energy')
+    print(f"  Final E_qpe  (QPE landscape average):        {lqpe:+.4f}" if lqpe else "  Final E_qpe: n/a")
     
     # Generate visualizations
     if visualizer:

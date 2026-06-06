@@ -1141,3 +1141,54 @@ This requires finding a Hamiltonian $H$ such that $e^{-iH\tau}$ implements modul
 | Future proper control gate design could find Shor-like operations | **True in principle for group-structured problems** — but requires encoding group structure as a Hamiltonian, which is a separate hard problem |
 
 The amplification framework connection is the strongest theoretical result you have. The paper's core theorem should be: **CVQSP implements Topographical Amplitude Amplification with a continuous QPE oracle, achieving $O(1/\sqrt{\Delta})$ amplification for gapped Hamiltonians, which subsumes standard Grover search as the special case $\Delta = 1/N$**. That theorem is provable and genuinely novel.
+
+
+
+
+
+do you think it's possible to walk two direction because now we know cx given only walk infront while cz is like direction 360 degree, if it can explore multiple direction would means we doesn't need commute_gradient at all , let's mathematically think if we can drop, the problem is it won't learn without a gradient as cz direction, how can we make the process automatically 
+
+
+I can reason this through, but to be precise I want to look at how your current “walk” is implemented (what gates encode direction, what gets measured, and how the update rule picks the next center). I’m going to inspect the key parts of nisq_v2.py around `run_walk()` / `_execute_walk()` / decoding.
+
+Searched for regex `def run_walk|def _execute_walk|def _decode_result` (`**/self-research/Quantum_AI/QLTO/Application/nisq_v2.py`), 4 results
+
+Read [](file:///home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v2.py#260-260), lines 260 to 520
+
+Read [](file:///home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v2.py#520-520), lines 520 to 860
+
+Ran terminal command:  python -m py_compile /home/poig/project/self-research/Quantum_AI/QLTO/theory_test/thermo_constitutive_law.py /home/poig/project/self-research/Quantum_AI/QLTO/theory_test/thermo_scrambling_crash.py /home/poig/project/self-research/Quantum_AI/QLTO/theory_test/supplementary/carnot_bound_test.py
+
+Searched for text `self.has_engines|self.grad_engine|heuristic` (`**/self-research/Quantum_AI/QLTO/Application/nisq_v2.py`), 13 results
+
+Read [](file:///home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v2.py#110-110), lines 110 to 210
+
+Ran terminal command:  nl -ba /home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v2.py | sed -n '420,620p'
+
+Read [](file:///home/poig/.vscode-server/data/User/workspaceStorage/538af78c35cecb3403eda6c23ca1d8eb/GitHub.copilot-chat/chat-session-resources/6b8ca653-d614-4fae-9f9b-6547d6c673f3/call_FrMVPy5pcOzLTR9mIFWuD8A4__vscode-1777808270226/content.txt#1-1), lines 1 to 200
+
+Searched for text `energy|estimate|cost|ref_est|expectation` (`**/self-research/Quantum_AI/QLTO/Application/nisq_v2.py`), 50 results
+
+Read [](file:///home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v2.py#900-900), lines 900 to 1000
+
+Yes — but not just by swapping “CX vs CZ”. In your current walk, the *only* thing that makes the distribution move (break symmetry) is the gradient-driven phase drift: you compute `grad_local` from `commute_gradient`, then turn it into `direction_angle` and apply `RZ/CRZ` kicks (nisq_v2.py). If you drop that, what’s left is basically a symmetric mixer (diffusion), so the decoded mean tends to stay near the center (no learning).
+
+To drop `commute_gradient` **and still “walk both directions” automatically**, you need to replace that drift with a signal derived from the landscape itself:
+
+- **Two-direction (SPSA / line-search) update (practical NISQ)**: pick a random direction \(\delta\in\{\pm1\}^d\), evaluate energy at \(\theta^{+}=\theta+\epsilon\delta\) and \(\theta^{-}=\theta-\epsilon\delta\), then update  
+  \[
+  \hat g \approx \frac{E(\theta^{+})-E(\theta^{-})}{2\epsilon}\,\delta,\quad
+  \theta \leftarrow \theta - \alpha \hat g
+  \]
+  This is literally “walk two directions, choose the better one”, and it needs **2 energy evals per epoch** (independent of parameter count), so it can fully replace `commute_gradient`.
+
+- **Fully gradient-free “cost-phase” walk (QAOA-style, heavier)**: instead of using \(\nabla E\), you need a coherent oracle that applies \(U_C(\gamma):|x\rangle\mapsto e^{-i\gamma E(x)}|x\rangle\) and alternate it with the mixer. You can build this from your QPE/ancilla machinery, but it typically requires re-sensing (or uncomputing) per step and careful Hamiltonian scaling to avoid phase wrap; otherwise the ancilla “energy bits” won’t be a monotone guide.
+
+If you want, I can implement an SPSA mode in the walk so nisq_v2.py can run with `commute_gradient` completely disabled (and still get a usable direction signal).
+
+
+
+
+then what if I parameterize the system trotterization with another QLTO circuit based on the QFT output, so its like QLTO + QLTO parallel, let's mathematically verify if we can get trained a operation we want, like learn arbitary operation like inverse function, or shor's trotterization
+
+
