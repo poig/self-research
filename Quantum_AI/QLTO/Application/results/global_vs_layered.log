@@ -1,0 +1,22 @@
+20 epochs, 8192 shots, seed 42
+
+problem         mode        E_final    E_best  circuits  per ep     time
+------------------------------------------------------------------------
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+H2              layered     -1.7929   -1.8073       180     9.0    33.2s
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+H2              global      -1.8360   -1.8460        60     3.0     8.7s
+                exact       -1.8573
+
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+Heisenberg N=4  layered     -5.7632   -5.9280       180     9.0    33.3s
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+Heisenberg N=4  global      -5.6599   -5.7596        60     3.0   191.2s
+                exact       -6.4641
+
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+LiH             layered     -8.8889   -8.8889       180     9.0    48.0s
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+LiH             global      -8.8368   -8.8406        60     3.0   243.7s
+                exact       -8.9497
+

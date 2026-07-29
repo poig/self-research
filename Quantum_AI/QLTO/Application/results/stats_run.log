@@ -1,0 +1,338 @@
+
+========================================
+Benchmarking: Frustrated Ising N=4 (5 trials)
+========================================
+Exact GS energy: -1.549051
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 2.9576
+/home/poig/anaconda3/lib/python3.13/site-packages/qiskit/compiler/transpiler.py:269: UserWarning: Providing `coupling_map` and/or `basis_gates` along with `backend` is not recommended, as this will invalidate the backend's gate durations and error rates.
+  pm = generate_preset_pass_manager(
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 2.9576
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 2.9576
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 2.9576
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 2.9576
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Frustrated_Ising_N4_stats.png
+
+  === Frustrated Ising N=4 over 5 trials (exact -1.5491) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V2 (engine-grad)       -1.3706    0.0596   0.0266    -1.3578    720    419
+  AdamW                       -1.3464    0.0356   0.0159    -1.3405    640      0
+  QLTO V3 (walk-grad)         -1.2724    0.0607   0.0271    -1.2453    180    149
+  Correct QNG                 -0.9506    0.1396   0.0624    -0.9488    720      0
+  QAOA (p=3)                  -0.8446    0.2122   0.0949    -0.8137    400     43
+  SPSA                        -0.6978    0.2501   0.1118    -0.6743    200      0
+
+========================================
+Benchmarking: MaxCut N=4 (Opt=4.0) (5 trials)
+========================================
+Exact GS energy: -0.000000
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 3.9600
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 3.9600
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 3.9600
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 3.9600
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 3.9600
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_MaxCut_N4_Opt4.0_stats.png
+
+  === MaxCut N=4 (Opt=4.0) over 5 trials (exact -0.0000) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V2 (engine-grad)        0.0267    0.0224   0.0100     0.0988    640    389
+  AdamW                        0.0686    0.0274   0.0123     0.0764    640      0
+  QLTO V3 (walk-grad)          0.0931    0.0530   0.0237     0.1403    180    136
+  QAOA (p=3)                   0.6006    0.1894   0.0847     0.6070    400     22
+  Correct QNG                  0.7759    0.3867   0.1729     0.7760    720      0
+  SPSA                         1.1102    0.3676   0.1644     1.1209    200      0
+
+========================================
+Benchmarking: MaxCut N=6 (Opt=12.0) (5 trials)
+========================================
+Exact GS energy: -0.000000
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 11.9900
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 11.9900
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 11.9900
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 11.9900
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 11.9900
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_MaxCut_N6_Opt12.0_stats.png
+
+  === MaxCut N=6 (Opt=12.0) over 5 trials (exact -0.0000) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  Correct QNG                  0.4202    0.4815   0.2153     0.4209   1040      0
+  QLTO V2 (engine-grad)        0.4760    0.7028   0.3143     0.4924    880    626
+  AdamW                        0.6653    0.4970   0.2223     0.7068    960      0
+  QLTO V3 (walk-grad)          1.3089    1.4147   0.6327     1.3490    180    224
+  SPSA                         2.6464    1.7104   0.7649     2.6478    200      0
+  QAOA (p=3)                   7.0835    0.2796   0.1250     7.0905    400     67
+
+========================================
+Benchmarking: H2 Molecule (5 trials)
+========================================
+Exact GS energy: -1.857275
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 5q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 1.8573
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 5q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 1.8573
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 5q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 1.8573
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 5q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 1.8573
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 5q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 1.8573
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_H2_Molecule_stats.png
+
+  === H2 Molecule over 5 trials (exact -1.8573) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QAOA (p=3)                  -1.8597    0.0046   0.0021    -1.8331    400     16
+  AdamW                       -1.8540    0.0081   0.0036    -1.8250    320      0
+  QLTO V3 (walk-grad)         -1.8441    0.0146   0.0065    -1.8299    180     77
+  QLTO V2 (engine-grad)       -1.8265    0.0286   0.0128    -1.6146    440    212
+  Correct QNG                 -1.6094    0.2117   0.0947    -1.5982    400      0
+  SPSA                        -1.5379    0.2088   0.0934    -1.5227    200      0
+
+========================================
+Benchmarking: LiH Molecule (5 trials)
+========================================
+Exact GS energy: -8.949737
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 8.9497
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 8.9497
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 8.9497
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 8.9497
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 8.9497
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_LiH_Molecule_stats.png
+
+  === LiH Molecule over 5 trials (exact -8.9497) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V3 (walk-grad)         -8.7976    0.1007   0.0450    -8.7905    180    170
+  QLTO V2 (engine-grad)       -8.7452    0.1197   0.0535    -8.5983    720    451
+  AdamW                       -8.7359    0.1808   0.0809    -8.7359    640      0
+  QAOA (p=3)                  -8.5790    0.2203   0.0985    -8.5569    400     46
+  Correct QNG                 -8.1380    0.3377   0.1510    -8.1380    720      0
+  SPSA                        -8.0277    0.2789   0.1247    -8.0148    200      0
+
+========================================
+Benchmarking: Heisenberg N=4 (5 trials)
+========================================
+Exact GS energy: -6.464102
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 6.4641
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 6.4641
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 6.4641
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 6.4641
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 9q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 6.4641
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N4_stats.png
+
+  === Heisenberg N=4 over 5 trials (exact -6.4641) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V2 (engine-grad)       -6.0429    0.0359   0.0161    -6.0321    720    436
+  QLTO V3 (walk-grad)         -5.8805    0.1006   0.0450    -5.8306    180    164
+  AdamW                       -5.7244    0.1226   0.0548    -5.7234    640      0
+  Correct QNG                 -5.5793    0.5866   0.2623    -5.5691    720      0
+  SPSA                        -4.8992    0.9013   0.4031    -4.8791    200      0
+  QAOA (p=3)                  -4.6496    0.9271   0.4146    -4.6358    400     25
+
+========================================
+Benchmarking: Heisenberg N=6 (5 trials)
+========================================
+Exact GS energy: -9.974309
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 9.9743
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 9.9743
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 9.9743
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 9.9743
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 13q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 9.9743
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N6_stats.png
+
+  === Heisenberg N=6 over 5 trials (exact -9.9743) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V2 (engine-grad)       -9.0775    0.1047   0.0468    -9.0747   1000    658
+  Correct QNG                 -8.6908    0.6084   0.2721    -8.6890   1040      0
+  QLTO V3 (walk-grad)         -8.5434    0.3560   0.1592    -8.4409    180    248
+  AdamW                       -8.2868    0.7297   0.3263    -8.2868    960      0
+  SPSA                        -7.5826    1.7735   0.7931    -7.5793    200      0
+  QAOA (p=3)                  -4.2122    1.0010   0.4476    -4.1925    400     31
+
+========================================
+Benchmarking: Heisenberg N=8 (5 trials)
+========================================
+Exact GS energy: -13.499730
+  Running QLTO V3 (walk-grad)...
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+  Running QLTO V2 (engine-grad)...
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 17q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 13.4997
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 17q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 13.4997
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 17q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 13.4997
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 17q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 13.4997
+[Init] Riemannian Engines Online. Detected 4 commuting layers. FIM=OFF
+[Init] widest walk circuit 17q -> AerSimulator(statevector)
+[Init] Legacy single-ancilla sensing active. ‖H‖_2 = 13.4997
+  Running QAOA (p=3)...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N8_stats.png
+
+  === Heisenberg N=8 over 5 trials (exact -13.4997) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V2 (engine-grad)      -12.0945    0.0780   0.0349   -12.0945   1280    880
+  Correct QNG                -11.0749    0.9294   0.4156   -11.0749   1360      0
+  AdamW                      -10.9556    0.8943   0.3999   -10.9556   1280      0
+  QLTO V3 (walk-grad)        -10.7420    0.8418   0.3764   -10.6585    180    332
+  SPSA                        -8.7998    1.0898   0.4874    -8.7983    200      0
+  QAOA (p=3)                  -5.2937    0.6972   0.3118    -5.2780    400     37

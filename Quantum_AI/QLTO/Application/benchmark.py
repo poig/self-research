@@ -27,6 +27,75 @@ from qiskit.primitives import StatevectorEstimator as Estimator
 # Import Efficient Engines
 import sys
 import os
+import gc
+
+# All figures and the results CSV land here rather than beside the script.
+RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
+
+# Shot budget shared by EVERY optimizer.
+#
+# Without this the comparison is rigged: QLTO V3 samples its sensing circuit at
+# `SHOTS`, while AdamW / QNG / QAOA / V2 ran through estimators with no precision
+# set, which return exact statevector expectations - verified reproducible to
+# 5.6e-17 over repeated runs. That is a noiseless gradient no hardware can
+# supply, and it flattered every shot-free method on accuracy for free.
+#
+# Estimator precision is the standard error of the returned expectation value,
+# so 1/sqrt(SHOTS) is the matching setting. Set SHOTS = None to restore exact
+# expectations (useful for isolating optimizer behaviour from sampling noise).
+SHOTS = 8192
+PRECISION = (1.0 / np.sqrt(SHOTS)) if SHOTS else 0.0
+
+
+def make_estimator():
+    """StatevectorEstimator honouring the shared shot budget."""
+    if SHOTS:
+        return Estimator(default_precision=PRECISION)
+    return Estimator()
+
+
+# One tuned hyperparameter per optimizer, shared by every problem.
+#
+# Fairness note: QLTO's k_step=15 was chosen from a sweep over two problems,
+# i.e. tuned GLOBALLY and not per-problem. The classical baselines were left at
+# whatever lr the original file shipped with (0.1 across the board, never
+# swept), while this session tuned QLTO's k_steps, tau, simulator, shots and
+# ancilla count. That asymmetry silently favours QLTO, and it is the least
+# visible of the benchmark's problems because - unlike the QAOA cost-layer bug -
+# it produces plausible-looking numbers.
+#
+# `python benchmark.py --tune` re-derives this table by sweeping each grid on a
+# representative subset, symmetric across all methods: one global value each,
+# selected the same way.
+TUNED = {
+    'QLTO V3 QPE (k=4)': 15,      # k_step
+    'QLTO V3 (Hadamard)': 15,     # k_step
+    'QLTO V2 (engine-grad)': 15,  # k_step
+    'QAOA': 3,                    # p_layers
+    'Correct QNG': 0.1,           # lr
+    'AdamW': 0.1,                 # lr
+    'SPSA': 0.1,                  # lr
+}
+
+TUNE_GRID = {
+    'QLTO V3 QPE (k=4)': [10, 15, 20],
+    'QLTO V3 (Hadamard)': [10, 15, 20],
+    'QLTO V2 (engine-grad)': [10, 15, 20],
+    'QAOA': [2, 3, 4],
+    'Correct QNG': [0.01, 0.05, 0.1],
+    'AdamW': [0.01, 0.05, 0.1],
+    'SPSA': [0.05, 0.1, 0.5],
+}
+
+
+def result_path(*parts):
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    return os.path.join(RESULTS_DIR, *parts)
+
+
+def safe(name):
+    """Filesystem-safe problem name."""
+    return name.replace(" ", "_").replace("=", "").replace("(", "").replace(")", "")
 
 try:
     from commute_fim import CommutingBlockFIM
@@ -117,14 +186,31 @@ def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
 # --- Optimizers ---
 
 class QLTO_Wrapper:
-    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4):
-        self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=shot_budget, backend=backend, fim_full=fim_full, use_fim=use_fim, num_ancillas=num_ancillas)
+    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4, walk_gradient=False, v3_ancillas=1):
+        if walk_gradient:
+            # V3 is standalone - it shares no code with V2 and takes its own args.
+            # backend is deliberately NOT forwarded: V3 picks statevector vs MPS
+            # by circuit width, and the suite's MPS default is ~300x slower for
+            # its narrow-but-entangled circuits.
+            # v3_ancillas=1 -> Hadamard-test sensing; >1 -> QPE sensing, which
+            # measured 0.94 Hartree better with 10x lower variance at identical
+            # shots and circuits on Heisenberg N=6.
+            from nisq_v3 import QLTOv3
+            self.optimizer = QLTOv3(ansatz, hamiltonian, shot_budget=SHOTS or shot_budget,
+                                    num_ancillas=v3_ancillas)
+        else:
+            # backend deliberately NOT forwarded, same as V3: V2's walk circuits
+            # are the same narrow-but-entangled shape, so the suite's MPS default
+            # was costing it hundreds of seconds per problem. Let it pick by width.
+            self.optimizer = RiemannianQLTO(ansatz, hamiltonian, bits_per_param=bits_per_param, shot_budget=SHOTS or shot_budget, fim_full=fim_full, use_fim=use_fim, num_ancillas=num_ancillas, precision=PRECISION)
         self.estimator = self.optimizer.estimator # Use the one from optimizer
         self.epoch = 0
         self.layer = layer
         self.gradient_reuse=gradient_reuse
         self.coherence=coherence
         self.k_step=k_step
+        self.walk_gradient=walk_gradient
+        self.gradient_reuse=gradient_reuse   # forced False above when walk_gradient
 
     @property
     def nefv(self):
@@ -145,7 +231,10 @@ class QLTO_Wrapper:
         # Annealing schedule from nisq_v2.py main
         r = max(0.6 * (0.9 ** (self.epoch - 1)), 1e-4)
         dt = max(0.5 * (0.95 ** self.epoch), 0.01)
-        result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
+        if self.walk_gradient:
+            result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer)
+        else:
+            result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
         params_new = result[0] if isinstance(result, (tuple, list)) else result
         return params_new
 
@@ -165,7 +254,7 @@ class CorrectQNG:
         self.grad_engine = CommutingBlockGradient(ansatz, hamiltonian)
         self.fim_engine = CommutingBlockFIM(ansatz)
         self.lr = lr
-        self.estimator = Estimator()
+        self.estimator = make_estimator()
         self.nefv = 0
         
     def step(self, params):
@@ -222,7 +311,7 @@ class AdamW:
         self.betas = betas
         self.eps = eps
         self.weight_decay = weight_decay
-        self.estimator = Estimator()
+        self.estimator = make_estimator()
         self.nefv = 0
         
         self.m = np.zeros(ansatz.num_parameters)
@@ -258,7 +347,7 @@ class SPSA:
         self.alpha = alpha
         self.gamma = gamma
         self.c = c
-        self.estimator = Estimator()
+        self.estimator = make_estimator()
         self.nefv = 0
         self.t = 0
         
@@ -302,7 +391,7 @@ class DirectITE_Optimizer:
             self.ite = None
         
         from qiskit.primitives import StatevectorEstimator
-        self.estimator = StatevectorEstimator()
+        self.estimator = make_estimator()
         
         self.nefv = 0
         self._ground_state = None
@@ -374,7 +463,7 @@ class PennyLaneQNG:
         self.opt = qml.QNGOptimizer(stepsize=lr, approx="block-diag", lam=1e-3)
         
         from qiskit.primitives import StatevectorEstimator
-        self.estimator = StatevectorEstimator()
+        self.estimator = make_estimator()
         
         self.nefv = 0
     
@@ -500,7 +589,7 @@ class QAOA:
         self.n_qubits = n_qubits
         self.p_layers = p_layers
         self.maxiter_per_step = maxiter_per_step
-        self.estimator = Estimator()
+        self.estimator = make_estimator()
         self.nefv = 0
         self._total_maxiter = 0  # Track total iterations for proper optimization
         
@@ -543,38 +632,39 @@ class QAOA:
         gammas = [Parameter(f'γ_{i}') for i in range(p_layers)]
         betas = [Parameter(f'β_{i}') for i in range(p_layers)]
         
-        # Extract ZZ and Z terms from Hamiltonian
-        zz_terms = []  # List of (i, j, coeff)
-        z_terms = []   # List of (i, coeff)
-        
-        for pauli_str, coeff in hamiltonian.to_list():
-            # Find Z positions
-            z_positions = [i for i, p in enumerate(reversed(pauli_str)) if p == 'Z']
-            
-            if len(z_positions) == 2:
-                i, j = z_positions
-                zz_terms.append((i, j, float(coeff.real)))
-            elif len(z_positions) == 1:
-                z_terms.append((z_positions[0], float(coeff.real)))
-        
+        # Cost unitary exp(-i gamma H) for a GENERAL Hamiltonian.
+        #
+        # The previous version extracted only terms with exactly one or two Z's
+        # and SILENTLY DROPPED everything else - so on Heisenberg it kept ZZ and
+        # discarded XX and YY, two thirds of the operator; on H2 it dropped the
+        # XX coupling; on LiH it dropped IXIX/IYIY/XXXX/YYYY; on the frustrated
+        # Ising it dropped the entire transverse field. QAOA then optimised that
+        # truncated cost and was scored on the full Hamiltonian, which is why it
+        # returned -4.21 against an exact -9.97 on Heisenberg N=6. Those were not
+        # QAOA losses, they were a broken cost layer.
+        #
+        # PauliEvolutionGate is exact for commuting (diagonal) Hamiltonians, so
+        # this reduces to textbook QAOA on MaxCut/Ising, and is the standard
+        # Hamiltonian-Variational generalisation otherwise.
+        from qiskit.circuit.library import PauliEvolutionGate
+        from qiskit.synthesis import LieTrotter
+
+        ident = sum(complex(c).real for p, c in zip(hamiltonian.paulis, hamiltonian.coeffs)
+                    if set(p.to_label()) == {"I"})
+        keep = [(p.to_label(), c) for p, c in zip(hamiltonian.paulis, hamiltonian.coeffs)
+                if set(p.to_label()) != {"I"}]
+        H_cost = (SparsePauliOp([p for p, _ in keep], [c for _, c in keep]).simplify()
+                  if keep else SparsePauliOp("I" * n_qubits, [0.0]))
+        self.h_offset = ident
+
         for layer in range(p_layers):
-            # Cost unitary: e^{-i γ C} where C contains ZZ terms
-            # RZZ(θ) = e^{-i θ/2 Z⊗Z}
-            # We need e^{-i γ w Z_i Z_j} = RZZ(2γw)
-            for i, j, coeff in zz_terms:
-                qc.cx(i, j)
-                qc.rz(2 * gammas[layer] * coeff, j)
-                qc.cx(i, j)
-            
-            # Single Z terms (bias)
-            for i, coeff in z_terms:
-                qc.rz(2 * gammas[layer] * coeff, i)
-            
-            # Mixer unitary: e^{-i β B} where B = Σ X_i
-            # RX(2β) implements e^{-i β X}
+            qc.append(PauliEvolutionGate(H_cost, time=gammas[layer],
+                                         synthesis=LieTrotter(reps=1)),
+                      range(n_qubits))
+            # Mixer unitary: e^{-i β B} where B = Σ X_i; RX(2β) = e^{-i β X}
             for i in range(n_qubits):
                 qc.rx(2 * betas[layer], i)
-        
+
         return qc
     
     def _cost_function(self, params):
@@ -784,15 +874,34 @@ def run_benchmark(save=True):
     # Note: QAOA needs n_qubits, so we pass ansatz.num_qubits
     # Using p=3 layers for better QAOA performance (p=2 is often insufficient)
     # QLTO Coherent uses k_step=20 for better convergence (depth scales with k, NOT NEFV)
+    # k_step=15 rather than the previous arbitrary 20. Swept over k in
+    # {1,3,5,10,15,20,30} x 3 seeds (results/k_sweep.log): the walk needs a
+    # minimum number of steps to concentrate the corner distribution, and that
+    # minimum scales with parameters-per-walk, not with problem size --
+    #   2 params/block  -> k ~ 3     (H2 layered)
+    #   4 params/block  -> k ~ 10    (Heisenberg N=4; k=1 gives POSITIVE energy)
+    #   8 params        -> k ~ 10-20 (H2 global)
+    # Above threshold it plateaus, so 15 is the cheapest setting that clears it
+    # for these block sizes. A fixed constant is still the wrong shape: for
+    # Heisenberg N=12 (12 params/block) the rule predicts k ~ 36, and for global
+    # mode k must scale with M. Worth replacing with k = 3 * params_per_walk
+    # once the scaling is confirmed at N=6/N=8.
     optimizers_def = {
-        # 'QLTO (Layer)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=1, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=False),
-        # 'QLTO (Coherent)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True),
-        'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
-        'QAOA (p=3)': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
-        'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=0.1),
-        'PennyLane QNG': lambda a, h, backend=None: PennyLaneQNG(a, h, lr=0.05) if PENNYLANE_AVAILABLE else None,
-        'AdamW': lambda a, h, backend=None: AdamW(a, h, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01),
-        'SPSA': lambda a, h, backend=None: SPSA(a, h, lr=0.1)
+        # V3: gradient read off the sensing circuit. No CommutingBlockGradient
+        # circuits at all - see nisq_v3.py.
+        'QLTO V3 (walk-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=15, bits_per_param=1, layer=True, backend=backend, walk_gradient=True),
+        # V2: same walk, gradient from the commuting-block engine (2M-N circuits).
+        'QLTO V2 (engine-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=15, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
+        'QAOA': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
+        'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
+        # PennyLane QNG removed: it optimises its own qml circuit but the harness
+        # scores it on the Qiskit ansatz, so any gate/parameter-order mismatch
+        # makes the result meaningless - and it was, returning POSITIVE energies
+        # (+1.6562 Heisenberg N=4, +0.0705 N=8) for traceless Hamiltonians, i.e.
+        # worse than random initialisation. Correct QNG already provides a
+        # proper QNG baseline on the actual ansatz.
+        'AdamW': lambda a, h, backend=None: AdamW(a, h, lr=TUNED['AdamW'], betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01),
+        'SPSA': lambda a, h, backend=None: SPSA(a, h, lr=TUNED['SPSA'])
     }
     
     for ansatz, H, prob_name in problems:
@@ -804,12 +913,12 @@ def run_benchmark(save=True):
         print(f"Exact GS energy: {exact_gs:.6f}")
         
         # Use MPS for large problems (N >= 4)
-        if ansatz.num_qubits >= 4:
-            print("  Using Matrix Product State (MPS) Simulator due to size.")
-            # FIX: Ensure no coupling map limit
-            sim_backend = AerSimulator(method='matrix_product_state', coupling_map=None)
-        else:
-            sim_backend = AerSimulator() # Default statevector
+        # if ansatz.num_qubits >= 4:
+        #     print("  Using Matrix Product State (MPS) Simulator due to size.")
+        #     # FIX: Ensure no coupling map limit
+        #     sim_backend = AerSimulator(method='matrix_product_state', coupling_map=None)
+        # else:
+        sim_backend = AerSimulator() # Default statevector
             
         results = {}
         
@@ -915,9 +1024,9 @@ def run_benchmark(save=True):
         plt.legend(loc='upper right')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        safe_name = prob_name.replace(" ", "_").replace("=", "")
-        plt.savefig(f'benchmark_{safe_name}_convergence.png', dpi=150)
-        print(f"  Saved plot: benchmark_{safe_name}_convergence.png")
+        safe_name = safe(prob_name)
+        plt.savefig(result_path(f'benchmark_{safe_name}_convergence.png'), dpi=150)
+        print(f"  Saved plot: results/benchmark_{safe_name}_convergence.png")
         plt.close()
         
         # Plot 2: Circuit Depth Comparison (separate bar chart)
@@ -940,8 +1049,8 @@ def run_benchmark(save=True):
                         f'E={e:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
             
             plt.tight_layout()
-            plt.savefig(f'benchmark_{safe_name}_depth.png', dpi=150)
-            print(f"  Saved plot: benchmark_{safe_name}_depth.png")
+            plt.savefig(result_path(f'benchmark_{safe_name}_depth.png'), dpi=150)
+            print(f"  Saved plot: results/benchmark_{safe_name}_depth.png")
             plt.close()
         
         # Plot 3: NEFV Comparison (separate bar chart)
@@ -963,15 +1072,16 @@ def run_benchmark(save=True):
                     f'E={e:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
         
         plt.tight_layout()
-        plt.savefig(f'benchmark_{safe_name}_nefv.png', dpi=150)
-        print(f"  Saved plot: benchmark_{safe_name}_nefv.png")
+        plt.savefig(result_path(f'benchmark_{safe_name}_nefv.png'), dpi=150)
+        print(f"  Saved plot: results/benchmark_{safe_name}_nefv.png")
         plt.close()
 
         if save:
-            # Save results to CSV
+            # Fresh CSV under results/. output/qlto_benchmark_results.csv is left
+            # untouched: every row in it predates the W-gate and NEFV fixes, so
+            # appending valid rows to it would mix the two.
             import csv
-            os.makedirs('output', exist_ok=True)
-            csv_file = 'output/qlto_benchmark_results.csv'
+            csv_file = result_path('qlto_benchmark_results.csv')
             file_exists = os.path.isfile(csv_file)
 
             with open(csv_file, mode='a', newline='') as file:
@@ -1000,7 +1110,19 @@ def run_benchmark(save=True):
                 depth_str = f"{depth:>8}" if depth > 0 else "     N/A"
                 print(f"  {name:<20} {final_e:>10.4f} {nefv:>8} {depth_str} {t:>7.1f}s")
 
-def run_benchmark_with_stats(n_trials=5):
+def run_benchmark_with_stats(n_trials=5, include_n12=False):
+    """Multi-seed run. This is the one that settles anything.
+
+    Single-run differences have repeatedly failed to reproduce in this project:
+    run-to-run optimiser variance is ~0.05 Hartree (Heisenberg N=4 gave V3
+    -6.0124 then -5.9569 with nothing changed but RNG state), and at low tau it
+    is far worse (Heisenberg N=6 gave V3 -8.66 then -7.23). Measurement noise at
+    8192 shots is only ~0.011, so the variance is in the optimisation, not the
+    readout. Nothing below ~0.1 should be believed from a single trial.
+
+    Heisenberg N=12 is excluded by default - it is minutes per epoch per trial,
+    which at n_trials x 6 optimizers dominates the whole run for one data point.
+    """
     problems = [
         generate_frustrated_hamiltonian(4, seed=999),
         get_maxcut_problem(4, seed=101),
@@ -1010,17 +1132,18 @@ def run_benchmark_with_stats(n_trials=5):
         get_heisenberg_problem(4),
         get_heisenberg_problem(6),
         get_heisenberg_problem(8),
-        get_heisenberg_problem(12)
     ]
+    if include_n12:
+        problems.append(get_heisenberg_problem(12))
     
     optimizers_def = {
-        # 'QLTO (Layer)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=1, layer=True, coherence=False, backend=backend),
-        # 'QLTO (Coherent)': lambda a, h, backend: QLTO_Wrapper(a, h, k_step=10, layer=True, coherence=True, backend=backend),
-        'QLTO (No FIM)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=20, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
-        'QAOA (p=3)': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=3, maxiter_per_step=20),
-        'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=0.1),
-        'AdamW': lambda a, h, backend: AdamW(a, h, lr=0.1),
-        'SPSA': lambda a, h, backend: SPSA(a, h, lr=0.1)
+        'QLTO V3 QPE (k=4)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=4),
+        'QLTO V3 (Hadamard)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=1),
+        'QLTO V2 (engine-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
+        'QAOA': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
+        'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
+        'AdamW': lambda a, h, backend: AdamW(a, h, lr=TUNED['AdamW']),
+        'SPSA': lambda a, h, backend: SPSA(a, h, lr=TUNED['SPSA'])
     }
     
     for ansatz, H, prob_name in problems:
@@ -1036,10 +1159,11 @@ def run_benchmark_with_stats(n_trials=5):
         stats = {}
         
         for name, opt_factory in optimizers_def.items():
-            print(f"  Running {name}...")
+            print(f"  Running {name}...", flush=True)
             energy_matrix = [] # Shape: (trials, epochs)
             nefv_matrix = []
-            
+            max_depth = 0
+
             for t in range(n_trials):
                 # New random seed for every trial
                 seed = 42 + t
@@ -1074,6 +1198,13 @@ def run_benchmark_with_stats(n_trials=5):
                 if trial_energies:
                     energy_matrix.append(trial_energies)
                     nefv_matrix.append(trial_nefv)
+                    max_depth = max(max_depth, getattr(opt, 'max_circuit_depth', 0) or 0)
+
+                # Each optimizer owns an AerSimulator; on a small-memory box
+                # n_trials x n_optimizers x n_problems of them held live is
+                # enough to get the process OOM-killed.
+                del opt
+                gc.collect()
             
             # Aggregate stats
             if energy_matrix:
@@ -1082,10 +1213,21 @@ def run_benchmark_with_stats(n_trials=5):
                 clean_energy = np.array([run[:min_len] for run in energy_matrix])
                 clean_nefv = np.array([run[:min_len] for run in nefv_matrix])
                 
+                finals = clean_energy[:, -1]
+                bests = np.min(clean_energy, axis=1)
                 stats[name] = {
                     'mean_E': np.mean(clean_energy, axis=0),
                     'std_E': np.std(clean_energy, axis=0),
-                    'mean_nefv': np.mean(clean_nefv, axis=0)
+                    'mean_nefv': np.mean(clean_nefv, axis=0),
+                    # per-trial endpoints: the numbers that actually settle things
+                    'final_mean': float(np.mean(finals)),
+                    'final_std': float(np.std(finals)),
+                    'best_mean': float(np.mean(bests)),
+                    'best_std': float(np.std(bests)),
+                    'sem': float(np.std(bests) / max(np.sqrt(len(bests)), 1)),
+                    'n': int(len(bests)),
+                    'nefv': float(clean_nefv[0, -1]),
+                    'depth': int(max_depth),
                 }
 
         # Plot with Error Bars
@@ -1105,9 +1247,121 @@ def run_benchmark_with_stats(n_trials=5):
         plt.title(f'{prob_name} (Mean ± Std over {n_trials} trials)')
         plt.legend()
         plt.grid(True)
-        plt.savefig(f'benchmark_{prob_name.replace(" ", "_")}_stats.png')
-        print(f"  Saved plot with error bars.")
+        plt.savefig(result_path(f'benchmark_{safe(prob_name)}_stats.png'), dpi=150)
+        plt.close()
+        print(f"  Saved plot with error bars: results/benchmark_{safe(prob_name)}_stats.png")
+
+        # Numbers, not just pictures.
+        import csv
+        csv_file = result_path('qlto_stats_results.csv')
+        file_exists = os.path.isfile(csv_file)
+        with open(csv_file, mode='a', newline='') as fh:
+            w = csv.writer(fh)
+            if not file_exists:
+                w.writerow(['Problem', 'Exact GS', 'Optimizer', 'Trials',
+                            'Best mean', 'Best std', 'Best SEM',
+                            'Final mean', 'Final std', 'NEFV', 'Depth'])
+            for name, d in stats.items():
+                w.writerow([prob_name, f"{exact_gs:.6f}", name, d['n'],
+                            f"{d['best_mean']:.6f}", f"{d['best_std']:.6f}",
+                            f"{d['sem']:.6f}", f"{d['final_mean']:.6f}",
+                            f"{d['final_std']:.6f}", int(d['nefv']), d['depth']])
+
+        print(f"\n  === {prob_name} over {n_trials} trials (exact {exact_gs:.4f}) ===")
+        print(f"  {'Optimizer':<22}{'E_best mean':>13}{'+/- std':>10}{'SEM':>9}"
+              f"{'E_final':>11}{'NEFV':>7}{'Depth':>7}")
+        print(f"  {'-'*79}")
+        for name, d in sorted(stats.items(), key=lambda kv: kv[1]['best_mean']):
+            print(f"  {name:<22}{d['best_mean']:>13.4f}{d['best_std']:>10.4f}"
+                  f"{d['sem']:>9.4f}{d['final_mean']:>11.4f}"
+                  f"{int(d['nefv']):>7}{d['depth']:>7}", flush=True)
+
+def tune_all(trials=2, epochs=20):
+    """Sweep every optimizer's grid on a representative subset, symmetrically.
+
+    Selection metric is the mean normalised gap to the exact ground state,
+    (E - exact)/|exact|, averaged over the tuning problems - so no single
+    problem's energy scale dominates. Every method gets one global value chosen
+    the same way, matching how QLTO's k_step was picked.
+    """
+    probs = [get_h2_problem(), get_maxcut_problem(4, seed=101),
+             get_heisenberg_problem(4), get_heisenberg_problem(6)]
+    exact = {}
+    for ansatz, H, name in probs:
+        exact[name] = float(np.min(np.linalg.eigvalsh(H.to_matrix())))
+
+    est = make_estimator()
+    for opt_name, grid in TUNE_GRID.items():
+        scores = {}
+        for val in grid:
+            TUNED[opt_name] = val
+            gaps = []
+            for ansatz, H, pname in probs:
+                factory = _optimizer_factories()[opt_name]
+                for t in range(trials):
+                    np.random.seed(42 + t)
+                    try:
+                        opt = factory(ansatz, H, None)
+                        if 'QAOA' in opt_name:
+                            p = np.random.uniform(0, 2 * np.pi, opt.n_params)
+                            ev = opt.qaoa_ansatz
+                        else:
+                            p = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
+                            ev = ansatz
+                        n_ep = epochs * 5 if opt_name == 'SPSA' else epochs
+                        best = float('inf')
+                        for _ in range(n_ep):
+                            p = opt.step(p)
+                            E = float(est.run([(ev.assign_parameters(p), H)])
+                                      .result()[0].data.evs)
+                            best = min(best, E)
+                        gaps.append((best - exact[pname]) / abs(exact[pname] or 1.0))
+                    except Exception as e:
+                        print(f"      {opt_name}={val} on {pname} failed: {e}")
+                    finally:
+                        gc.collect()
+            scores[val] = float(np.mean(gaps)) if gaps else float('inf')
+            print(f"  {opt_name:<22} = {val:<6} mean normalised gap {scores[val]:.4f}",
+                  flush=True)
+        best_val = min(scores, key=scores.get)
+        TUNED[opt_name] = best_val
+        print(f"  -> {opt_name}: {best_val}\n", flush=True)
+
+    print("TUNED = {")
+    for k, v in TUNED.items():
+        print(f"    {k!r}: {v},")
+    print("}")
+
+
+def _optimizer_factories():
+    return {
+        'QLTO V3 QPE (k=4)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=4),
+        'QLTO V3 (Hadamard)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1),
+        'QLTO V2 (engine-grad)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False),
+        'QAOA': lambda a, h, b: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
+        'Correct QNG': lambda a, h, b: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
+        'AdamW': lambda a, h, b: AdamW(a, h, lr=TUNED['AdamW']),
+        'SPSA': lambda a, h, b: SPSA(a, h, lr=TUNED['SPSA']),
+    }
+
 
 if __name__ == "__main__":
-    run_benchmark()
-    run_benchmark_with_stats()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--stats-only', action='store_true',
+                    help='skip the single-run pass; go straight to the multi-seed run')
+    ap.add_argument('--trials', type=int, default=5)
+    ap.add_argument('--include-n12', action='store_true',
+                    help='Heisenberg N=12 is minutes per epoch per trial')
+    ap.add_argument('--tune', action='store_true',
+                    help='sweep every grid symmetrically, print the TUNED table, exit')
+    ap.add_argument('--tune-trials', type=int, default=2)
+    a = ap.parse_args()
+
+    if a.tune:
+        tune_all(trials=a.tune_trials)
+        sys.exit(0)
+
+    if not a.stats_only:
+        run_benchmark()
+    run_benchmark_with_stats(n_trials=a.trials, include_n12=a.include_n12)

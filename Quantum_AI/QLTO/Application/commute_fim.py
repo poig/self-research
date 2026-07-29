@@ -14,6 +14,8 @@ import numpy as np
 from qiskit.circuit import QuantumCircuit, ParameterExpression, Parameter, QuantumRegister, AncillaRegister
 from qiskit.quantum_info import SparsePauliOp
 
+from commute_gradient import rotation_generator, canonical_order
+
 class CommutingBlockFIM:
     def __init__(self, ansatz, full=False):
         """
@@ -27,26 +29,31 @@ class CommutingBlockFIM:
         self.num_params = ansatz.num_parameters
         self.param_map = {p: i for i, p in enumerate(ansatz.parameters)}
         self.full = full
+        self.order, self.order_exact = canonical_order(ansatz.decompose())
         self.layers = self._detect_layers()
+        self.last_nefv = 0
+
+    def canonical_data(self, circuit):
+        """Instructions of `circuit` in the canonical (block-grouped) order."""
+        data = circuit.data
+        return [data[i] for i in self.order if i < len(data)]
 
     def get_nefv_cost(self):
+        """Circuits actually submitted by the last compute_fim call.
+
+        The block-diagonal protocol genuinely costs one circuit per layer: every
+        observable inside a block is a product of that block's mutually commuting
+        generators, so they share a single measurement setting.
         """
-        Returns the number of circuit executions (NEFV) required.
-        Block-Diagonal: L
-        Full: L + L(L-1)/2 = L(L+1)/2
-        """
-        L = len(self.layers)
-        if self.full:
-            return L + (L * (L - 1)) // 2
-        return L
+        return self.last_nefv
 
     def _detect_layers(self):
         """Parses ansatz into commuting layers."""
         layers = []
         current_layer = {'params': [], 'generators': [], 'type': None, 'end_index': -1}
-        decomposed = self.ansatz.decompose()
-        
-        for idx, instr in enumerate(decomposed.data):
+        data = self.canonical_data(self.ansatz.decompose())
+
+        for idx, instr in enumerate(data):
             p_idx = -1
             if len(instr.operation.params) > 0:
                 param = instr.operation.params[0]
@@ -56,22 +63,20 @@ class CommutingBlockFIM:
                     if params_in_expr: target_param = params_in_expr[0]
                 elif isinstance(param, Parameter):
                     target_param = param
-                
+
                 if target_param in self.param_map:
                     p_idx = self.param_map[target_param]
 
+            gen_type, generator = (None, None)
             if p_idx != -1:
-                name = instr.operation.name.lower()
-                gen_type = 'X' if 'rx' in name else ('Y' if 'ry' in name else 'Z')
-                
-                op_list = ['I'] * self.num_qubits
-                op_list[self.num_qubits - 1 - instr.qubits[0]._index] = gen_type
-                generator = SparsePauliOp("".join(op_list))
+                gen_type, generator = rotation_generator(
+                    instr.operation, instr.qubits[0]._index, self.num_qubits)
 
+            if p_idx != -1 and generator is not None:
                 if current_layer['type'] is not None and current_layer['type'] != gen_type:
                     layers.append(current_layer)
                     current_layer = {'params': [], 'generators': [], 'type': None, 'end_index': -1}
-                
+
                 current_layer['type'] = gen_type
                 current_layer['params'].append(p_idx)
                 current_layer['generators'].append(generator)
@@ -86,20 +91,21 @@ class CommutingBlockFIM:
 
     def compute_fim(self, estimator, params_values):
         """
-        Computes the QFIM. 
+        Computes the QFIM.
         """
         fim = np.zeros((self.num_params, self.num_params))
+        self.last_nefv = 0
         bound_ansatz = self.ansatz.assign_parameters(params_values)
         decomposed = bound_ansatz.decompose()
-        
+
         # 1. Block-Diagonal Terms (O(L) circuits)
         for layer in self.layers:
             self._compute_block_diagonal(estimator, layer, decomposed, fim)
-            
+
         # 2. Off-Block-Diagonal Terms (O(L^2) circuits)
         if self.full:
             self._compute_off_diagonal(estimator, params_values, decomposed, fim)
-            
+
         return fim
 
     def _compute_block_diagonal(self, estimator, layer, full_circuit, fim_matrix):
@@ -110,10 +116,11 @@ class CommutingBlockFIM:
         
         if not indices: return
 
-        # Truncate circuit to end of layer
+        # Truncate circuit to end of layer (canonical order)
+        data = self.canonical_data(full_circuit)
         sub_qc = QuantumCircuit(*full_circuit.qregs, *full_circuit.cregs)
         for i in range(end_idx + 1):
-            inst = full_circuit.data[i]
+            inst = data[i]
             sub_qc.append(inst.operation, inst.qubits, inst.clbits)
             
         observables = []
@@ -129,6 +136,7 @@ class CommutingBlockFIM:
                 obs_map.append(('pair', i, j))
                 
         try:
+            self.last_nefv += 1
             job = estimator.run([(sub_qc, observables)])
             result = job.result()[0]
             if hasattr(result.data, 'evs'):
@@ -167,7 +175,8 @@ class CommutingBlockFIM:
         Scaling: O(L^2) circuits.
         """
         n_layers = len(self.layers)
-        
+        data = self.canonical_data(full_circuit)
+
         for l1_idx in range(n_layers):
             for l2_idx in range(l1_idx + 1, n_layers):
                 layer1 = self.layers[l1_idx]
@@ -183,7 +192,7 @@ class CommutingBlockFIM:
                 # 2. Prepare |psi_l1>
                 end_l1 = layer1['end_index']
                 for i in range(end_l1 + 1):
-                    inst = full_circuit.data[i]
+                    inst = data[i]
                     q_indices = [full_circuit.find_bit(q).index for q in inst.qubits]
                     qc.append(inst.operation, [qr_sys[k] for k in q_indices])
                 
@@ -195,7 +204,7 @@ class CommutingBlockFIM:
                 l1_type = layer1['type']
                 
                 for i in range(start_w, end_w + 1):
-                    inst = full_circuit.data[i]
+                    inst = data[i]
                     op = inst.operation
                     q_indices = [full_circuit.find_bit(q).index for q in inst.qubits]
                     
@@ -251,6 +260,7 @@ class CommutingBlockFIM:
                         obs_indices.append((i, j))
                 
                 try:
+                    self.last_nefv += 1
                     job = estimator.run([(qc, observables)])
                     result = job.result()[0]
                     if hasattr(result.data, 'evs'):

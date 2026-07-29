@@ -15,6 +15,96 @@ from qiskit import QuantumCircuit, QuantumRegister, AncillaRegister, ClassicalRe
 from qiskit.circuit import Parameter, ParameterExpression
 from qiskit.quantum_info import SparsePauliOp
 
+# Rank used to group same-generator rotations into a contiguous block.
+_TYPE_RANK = {'X': 0, 'Y': 1, 'Z': 2}
+
+
+def rotation_generator(op, qubit, num_qubits):
+    """(type_key, SparsePauliOp G) for a parameterised single-qubit rotation.
+
+    Matching on the gate *name* alone is not enough: `efficient_su2().decompose()`
+    lowers RY/RZ to `r(theta, phi)` and `p(theta)`, so a name test for 'ry'/'rz'
+    silently labels every generator 'Z'. Convention: U = exp(-i*theta*G/2).
+    """
+    name = op.name.lower()
+    pos = num_qubits - 1 - qubit  # little-endian Pauli string position
+
+    def pauli(letter):
+        s = ['I'] * num_qubits
+        s[pos] = letter
+        return SparsePauliOp("".join(s))
+
+    if name == 'rx':
+        return 'X', pauli('X')
+    if name == 'ry':
+        return 'Y', pauli('Y')
+    if name in ('rz', 'p', 'u1', 'phase'):
+        # P(theta) = e^{i*theta/2} RZ(theta): same generator up to global phase.
+        return 'Z', pauli('Z')
+    if name == 'r':
+        # R(theta, phi) = exp(-i*theta/2 (cos(phi) X + sin(phi) Y))
+        try:
+            phi = float(op.params[1])
+        except (TypeError, ValueError):
+            return None, None
+        c, s = np.cos(phi), np.sin(phi)
+        if abs(s) < 1e-9:
+            return 'X', pauli('X')
+        if abs(c) < 1e-9:
+            return 'Y', pauli('Y')
+        return f'R{phi:.6f}', (c * pauli('X') + s * pauli('Y')).simplify()
+    return None, None
+
+
+def canonical_order(decomposed):
+    """Index permutation grouping same-generator rotations into contiguous blocks.
+
+    Qiskit emits the rotation layer interleaved per qubit (RY(q0), RZ(q0), RY(q1),
+    ...), so a contiguous scan sees the generator type alternate on every gate and
+    splits the circuit into singleton "blocks". Rotations on *different* qubits
+    always commute, so regrouping by generator type inside each entangler-free
+    segment is an exact circuit identity - provided each qubit's own gate order is
+    untouched, which is verified below.
+
+    Returns (order, ok). If the permutation would reorder two gates on the same
+    qubit, the original order is returned with ok=False.
+    """
+    n = decomposed.num_qubits
+    order, segment, ok = [], [], True
+
+    def per_qubit(seq):
+        out = {}
+        for idx, _, q in seq:
+            out.setdefault(q, []).append(idx)
+        return out
+
+    def flush():
+        nonlocal ok
+        if not segment:
+            return
+        regrouped = sorted(segment, key=lambda e: _TYPE_RANK.get(e[1], 3))  # stable
+        if per_qubit(regrouped) != per_qubit(segment):
+            ok = False                      # would swap two gates on one qubit
+            regrouped = list(segment)
+        order.extend(idx for idx, _, _ in regrouped)
+        segment.clear()
+
+    for idx, instr in enumerate(decomposed.data):
+        q = decomposed.find_bit(instr.qubits[0]).index if instr.qubits else 0
+        key = None
+        if instr.operation.params:
+            first = instr.operation.params[0]
+            if isinstance(first, ParameterExpression) and first.parameters:
+                key, _ = rotation_generator(instr.operation, q, n)
+        if key is not None and len(instr.qubits) == 1:
+            segment.append((idx, key, q))
+        else:
+            flush()
+            order.append(idx)
+    flush()
+    return order, ok
+
+
 class CommutingBlockGradient:
     def __init__(self, ansatz, cost_op):
         self.ansatz = ansatz
@@ -22,6 +112,13 @@ class CommutingBlockGradient:
         self.num_params = ansatz.num_parameters
         self.param_map = {p: i for i, p in enumerate(ansatz.parameters)}
         
+        # Canonical instruction order: all index-based slicing below refers to it.
+        self.order, self.order_exact = canonical_order(self.ansatz.decompose())
+        if not self.order_exact:
+            print("WARNING [CommutingBlockGradient]: could not regroup rotations into "
+                  "commuting blocks without reordering gates on a shared qubit; "
+                  "falling back to circuit order (layers will be finer than optimal).")
+
         # Map parameters to the layer they belong to
         self.layers = self._detect_layers()
         self.param_to_layer = {}
@@ -29,13 +126,19 @@ class CommutingBlockGradient:
             for p_idx in layer['params']:
                 self.param_to_layer[p_idx] = l_idx
 
+    def canonical_data(self, circuit):
+        """Instructions of `circuit` in the canonical (block-grouped) order."""
+        data = circuit.data
+        return [data[i] for i in self.order if i < len(data)]
+
     def _detect_layers(self):
         """Groups ansatz gates into Commuting Blocks."""
         layers = []
         current_layer = {'params': [], 'generators': [], 'end_index': -1, 'type': None}
-        decomposed = self.ansatz.decompose()
-        
-        for idx, instr in enumerate(decomposed.data):
+        data = self.canonical_data(self.ansatz.decompose())
+        nq = self.ansatz.num_qubits
+
+        for idx, instr in enumerate(data):
             p_idx = -1
             if len(instr.operation.params) > 0:
                 param = instr.operation.params[0]
@@ -45,23 +148,20 @@ class CommutingBlockGradient:
                     if params_in_expr: target_param = params_in_expr[0]
                 elif isinstance(param, Parameter):
                     target_param = param
-                
+
                 if target_param in self.param_map:
                     p_idx = self.param_map[target_param]
 
+            gen_type, gen_op = (None, None)
             if p_idx != -1:
-                name = instr.operation.name.lower()
-                gen_type = 'X' if 'rx' in name else ('Y' if 'ry' in name else 'Z')
-                
-                # Generator Pauli String
-                op_list = ['I'] * self.ansatz.num_qubits
-                op_list[self.ansatz.num_qubits - 1 - instr.qubits[0]._index] = gen_type
-                gen_op = SparsePauliOp("".join(op_list))
+                q = instr.qubits[0]._index
+                gen_type, gen_op = rotation_generator(instr.operation, q, nq)
 
+            if p_idx != -1 and gen_op is not None:
                 if current_layer['type'] is not None and current_layer['type'] != gen_type:
                     layers.append(current_layer)
                     current_layer = {'params': [], 'generators': [], 'end_index': -1, 'type': None}
-                
+
                 current_layer['type'] = gen_type
                 current_layer['params'].append(p_idx)
                 current_layer['generators'].append(gen_op)
@@ -78,16 +178,16 @@ class CommutingBlockGradient:
     def _slice_ansatz(self, start_idx, end_idx, bound_params):
         """Creates a sub-circuit for a specific range of instructions."""
         full_bound = self.ansatz.assign_parameters(bound_params)
-        decomposed = full_bound.decompose()
-        
+        data = self.canonical_data(full_bound.decompose())
+
         sub_qc = QuantumCircuit(*full_bound.qregs)
         # Ensure we add all classical registers if present
-        for reg in full_bound.cregs: 
+        for reg in full_bound.cregs:
             sub_qc.add_register(reg)
-            
+
         for i in range(start_idx, end_idx + 1):
-            if i < len(decomposed.data):
-                inst = decomposed.data[i]
+            if i < len(data):
+                inst = data[i]
                 # FIX: Skip barriers as they cause to_gate() to fail
                 if inst.operation.name == 'barrier':
                     continue
@@ -96,151 +196,90 @@ class CommutingBlockGradient:
 
     def compute_gradient(self, estimator, params_values):
         """
-        Computes gradients using O(L) circuits via Hadamard Test logic.
-        Returns the gradient vector.
+        Gradient of <H> w.r.t. every ansatz parameter.
+
+        The final commuting block is free of any subsequent unitary, so its
+        derivatives are direct expectation values of the commutator,
+
+            dC/dtheta_j = <psi| (i/2) [G_j, H] |psi>,
+
+        costing one circuit per parameter instead of the two a shift rule needs.
+        Every earlier block uses the parameter-shift rule.
+
+        NOT the O(B) protocol of Bowles et al. A previous version of this method
+        claimed that scaling via a single controlled-U_future Hadamard test, but
+        that circuit measures Im<phi|U_f^dag M|phi>, whereas the gradient needs
+        Im<phi|G U_f^dag H U_f|phi>. One controlled-U_future cannot produce the
+        U_f^dag H U_f conjugation - Bowles requires controlled-W' *and*
+        controlled-W~ for precisely this reason (Appendix B). The old path also
+        built the non-Hermitian observable Z (x) (H@G), so the estimator rejected
+        every batch and a bare `except` silently re-ran full parameter-shift while
+        `get_nefv_cost()` kept reporting the theoretical 2L. Both are gone.
+
+        `self.last_nefv` records the circuits actually submitted.
         """
         gradients = np.zeros(self.num_params)
-        full_bound = self.ansatz.assign_parameters(params_values)
-        decomposed = full_bound.decompose()
-        total_instructions = len(decomposed.data)
-        
+        n_layers = len(self.layers)
         pubs = []
-        meta_data = [] 
-        
+        meta_data = []
+        shift = np.pi / 2.0
+
         for l_idx, layer in enumerate(self.layers):
             idxs = layer['params']
             if not idxs: continue
-            
-            end_of_layer = layer['end_index']
-            is_last_layer = (end_of_layer >= total_instructions - 1) or (l_idx == len(self.layers)-1)
-            
-            if is_last_layer:
-                # 1. Simple Case: Direct Measurement
-                # For the last layer, U_future is Identity.
-                # Gradient = < psi | i [G, H] | psi >
-                qc_simple = self._slice_ansatz(0, end_of_layer, params_values)
-                
+
+            if l_idx == n_layers - 1:
+                # Direct commutator: U_future is the identity here.
+                qc_simple = self._slice_ansatz(0, layer['end_index'], params_values)
+
                 for p_local_idx, p_global_idx in enumerate(idxs):
                     gen = layer['generators'][p_local_idx]
-                    # Commutator observable: i [G, H]
-                    comm_op = 1j * (gen @ self.cost_op - self.cost_op @ gen)
-                    comm_op = comm_op.simplify()
-                    
-                    # Sanitization: Remove residual imaginary parts from coefficients
-                    # This fixes the "Non-Hermitian input observable" error
-                    
-                    real_coeffs = np.real(comm_op.coeffs)
-                    if not np.allclose(np.imag(comm_op.coeffs), 0, atol=1e-5):
-                         # If there's significant imaginary part, something is wrong with the math logic
-                         # For [G, H] where G,H Hermitian, i[G,H] should be Hermitian (Real coeffs for Pauli basis)
-                         pass
-                    
-                    # Reconstruct with real coefficients
-                    comm_op = SparsePauliOp(comm_op.paulis, real_coeffs)
-                    
+                    # i[G, H] is Hermitian for Hermitian G, H; the 1/2 comes from
+                    # the exp(-i*theta*G/2) convention.
+                    comm_op = (0.5j * (gen @ self.cost_op - self.cost_op @ gen)).simplify()
+                    comm_op = SparsePauliOp(comm_op.paulis, np.real(comm_op.coeffs))
+
                     if not np.isclose(np.sum(np.abs(comm_op.coeffs)), 0):
                         pubs.append((qc_simple, comm_op))
                         meta_data.append(('direct', p_global_idx))
-                    
             else:
-                # 2. Complex Case: Hadamard Test / Auxiliary Qubit (O(L) Scaling)
-                # Circuit: H(anc) -> Controlled-U_future -> H(anc) -> Measure
-                # Measures the interference between "past" state and "future" evolution
-                
-                # Construct U_future (W_b)
-                # This uses _slice_ansatz which now strips barriers
-                u_future = self._slice_ansatz(end_of_layer + 1, total_instructions - 1, params_values)
-                
-                # Setup Hadamard Circuit
-                qr_anc = AncillaRegister(1, 'anc')
-                qr_sys = QuantumRegister(self.ansatz.num_qubits, 'sys')
-                # No classical register needed for Estimator primitive
-                qc_had = QuantumCircuit(qr_anc, qr_sys)
-                
-                # A. Prepare State |psi_l> (U_past)
-                u_past = self._slice_ansatz(0, end_of_layer, params_values)
-                qc_had.compose(u_past, qubits=qr_sys, inplace=True)
-                
-                # B. Hadamard on Ancilla
-                qc_had.h(qr_anc)
-                
-                # C. Controlled-U_future
-                # This is the expensive step in compilation, but gives O(L) circuits
-                # to_gate() now works because barriers are gone
-                c_u_future = u_future.to_gate().control(1)
-                qc_had.append(c_u_future, [qr_anc[0]] + list(qr_sys))
-                
-                # D. Measure Basis (Y basis for Imaginary part)
-                # We need Imag( <psi | W_dag H W G | psi> )
-                # Standard Hadamard test for Im part uses S-gate then H
-                qc_had.sdg(qr_anc)
-                qc_had.h(qr_anc)
-                
-                # E. Define Observables
-                # We need to measure: Z_anc * (G_sys * H_sys)?? 
-                # Actually, from Bowles Eq (28) and Fig 2b:
-                # We measure Z on ancilla and O_j on system.
-                # Here O_j corresponds to the generator G_j and cost H.
-                
-                # Simplified for prototype: We assume we want < Z_anc * (H_sys * G_sys) >
-                # This is approximate for general non-commuting H/G but captures the scaling.
-                
-                for p_local_idx, p_global_idx in enumerate(idxs):
-                    gen = layer['generators'][p_local_idx]
-                    
-                    # Construct operator Z \otimes (H @ G)
-                    # Note: The cost_op H must be measured on system
-                    # The generator G must be applied (logically)
-                    
-                    # Z on ancilla
-                    op_str_anc = "Z" + "I" * self.ansatz.num_qubits
-                    op_anc = SparsePauliOp(op_str_anc)
-                    
-                    # System operator (H * G)
-                    # We simplify H @ G to a Pauli sum
-                    sys_op_raw = self.cost_op @ gen
-                    sys_op = sys_op_raw.simplify()
-                    
-                    # Expand system operator to include Identity on ancilla
-                    # SparsePauliOp.expand is (Right, Left) -> (Ancilla, System)
-                    # We need I_anc ^ sys_op
-                    op_combined = op_anc.tensor(sys_op)
-                    
-                    # Add to batch
-                    pubs.append((qc_had, op_combined))
-                    meta_data.append(('hadamard', p_global_idx))
+                for p_global_idx in idxs:
+                    p_p = np.array(params_values); p_p[p_global_idx] += shift
+                    p_m = np.array(params_values); p_m[p_global_idx] -= shift
+                    pubs.append((self.ansatz, self.cost_op, p_p))
+                    pubs.append((self.ansatz, self.cost_op, p_m))
+                    meta_data.append(('shift+', p_global_idx))
+                    meta_data.append(('shift-', p_global_idx))
 
-        # Execute
-        if pubs:
-            try:
-                # Batch execution
-                results = estimator.run(pubs).result()
-                for i, (m_type, p_idx) in enumerate(meta_data):
-                    # The result corresponds to the gradient component
-                    # Scale by 2.0 because Hadamard test measures Re/Im part * 0.5 typically
-                    gradients[p_idx] = results[i].data.evs
-            except Exception as e:
-                # Fallback to Parameter Shift if controlled gates fail
-                return self.compute_gradient_param_shift(estimator, params_values)
-        
-        # Final check for zeros (dead gradients)
-        if np.allclose(gradients, 0.0):
-             return self.compute_gradient_param_shift(estimator, params_values)
+        self.last_nefv = len(pubs)
+        if not pubs:
+            return gradients
+
+        results = estimator.run(pubs).result()
+        for i, (m_type, p_idx) in enumerate(meta_data):
+            val = float(results[i].data.evs)
+            if m_type == 'direct':
+                gradients[p_idx] = val
+            elif m_type == 'shift+':
+                gradients[p_idx] += 0.5 * val
+            else:
+                gradients[p_idx] -= 0.5 * val
 
         return gradients
 
     def compute_gradient_param_shift(self, estimator, params_values):
-        """Standard Parameter Shift (Robust Fallback)."""
+        """Standard Parameter Shift. Costs 2 circuits per parameter."""
         gradients = np.zeros(self.num_params)
         shift = np.pi / 2.0
         pubs = []
-        
+
         for i in range(self.num_params):
             p_p = np.array(params_values); p_p[i] += shift
             p_m = np.array(params_values); p_m[i] -= shift
             pubs.append((self.ansatz, self.cost_op, p_p))
             pubs.append((self.ansatz, self.cost_op, p_m))
 
+        self.last_nefv = len(pubs)
         try:
             results = estimator.run(pubs).result()
             for i in range(self.num_params):
@@ -249,13 +288,11 @@ class CommutingBlockGradient:
                 gradients[i] = 0.5 * (val_p - val_m)
         except Exception:
             pass
-            
+
         return gradients
 
     def get_nefv_cost(self):
-        """Returns theoretical cost: 2 circuits per layer (Real+Imag)."""
-        # return 2 * len(self.layers)
-        actual = 2 * len(self.layers)
+        """Circuits actually submitted by the last gradient call - not a formula."""
         return {
-            'actual_with_cnot': actual,
+            'actual_with_cnot': getattr(self, 'last_nefv', 0),
         }

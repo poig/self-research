@@ -17,8 +17,8 @@ from typing import List, Tuple, Dict, Any, Optional
 # Qiskit Imports
 try:
     from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, AncillaRegister, transpile
-    from qiskit.circuit import Parameter
-    from qiskit.circuit.library import EfficientSU2, RXGate, RYGate, RZGate, CXGate, PauliEvolutionGate, PhaseGate, QFT
+    from qiskit.circuit import Parameter, ParameterExpression
+    from qiskit.circuit.library import EfficientSU2, RXGate, RYGate, RZGate, RGate, CXGate, PauliEvolutionGate, PhaseGate, QFT
     from qiskit.synthesis import LieTrotter
     from qiskit.quantum_info import SparsePauliOp
     from qiskit_aer import AerSimulator
@@ -47,16 +47,21 @@ except ImportError:
     VIZ_AVAILABLE = False
 
 # --- Primitive Wrappers (Fixed for V2) ---
-class BaseEstimator: 
-    def __init__(self, backend=None): 
+class BaseEstimator:
+    def __init__(self, backend=None, precision=0.0):
         # Configure options for AerEstimatorV2
         method = 'automatic'
         if backend and hasattr(backend, 'options'):
             method = getattr(backend.options, 'method', 'automatic')
-            
-        # V2 takes 'options' dict
-        # We set backend_options inside it
-        self._estimator = AerEstimator(options={'backend_options': {'method': method}})
+
+        # precision is the standard error of the returned expectation value;
+        # 0.0 means exact statevector expectations (no sampling noise at all,
+        # reproducible to ~5e-17). Pass 1/sqrt(shots) to make the gradient cost
+        # precision the way hardware would.
+        opts = {'backend_options': {'method': method}}
+        if precision:
+            opts['default_precision'] = float(precision)
+        self._estimator = AerEstimator(options=opts)
         
     def run(self, pubs, **kwargs): 
         """
@@ -121,7 +126,7 @@ class CriticalitySensor:
 # --- Core Logic ---
 
 class RiemannianQLTO:
-    def __init__(self, ansatz, hamiltonian, bits_per_param=1, shot_budget=8192, use_fim=False, num_ancillas=2, backend=None, fim_full = False, use_qpe_sensing=False):
+    def __init__(self, ansatz, hamiltonian, bits_per_param=1, shot_budget=8192, use_fim=False, num_ancillas=2, backend=None, fim_full = False, use_qpe_sensing=False, precision=0.0, sv_max_qubits=26):
         if not QISKIT_AVAILABLE: raise RuntimeError("Qiskit required.")
         
         self.ansatz = ansatz
@@ -132,17 +137,7 @@ class RiemannianQLTO:
         self.num_ancillas = max(1, num_ancillas) if use_qpe_sensing else 1
         self.shot_budget = shot_budget
         
-        # MPS Backend Setup
-        if backend is None:
-            print("[Init] Configuring AerSimulator with method='matrix_product_state'")
-            self.backend = AerSimulator(method='matrix_product_state')
-        else:
-            self.backend = backend
-        
-        # Initialize Engines
-        self.estimator = BaseEstimator(self.backend)
-        self.sampler = BaseSampler(self.backend)
-        
+        # Engines first: the backend choice below needs the block sizes.
         if ENGINES_AVAILABLE:
             # Paper 6: Efficient Metric Sensing
             self.use_fim = use_fim
@@ -158,7 +153,40 @@ class RiemannianQLTO:
         else:
             self.has_engines = False
             self.use_fim = False
+            self.fim_engine = None
+            self.grad_engine = None
             print("[Init] Engines missing. Reverting to blind heuristic walk.")
+
+        # Backend by circuit width, not by system size.
+        #
+        # The walk circuit is 1 + param_qubits + N wide and maximally entangled
+        # across the param<->sys cut, which is the worst case for MPS. Measured
+        # on the equivalent V3 circuit at 13 qubits: 82s under
+        # matrix_product_state against 0.26s under statevector, a 316x
+        # difference. Defaulting to MPS "because the system is big" was costing
+        # V2 hundreds of seconds per problem (Heisenberg N=6: 418s; MaxCut N=6:
+        # 493s) for circuits a statevector handles in memory.
+        #
+        # Statevector cost is 2^n * 16 bytes: 21q = 34 MB, 26q = 1.1 GB.
+        if backend is not None:
+            self.backend = backend
+        else:
+            blocks = (self.fim_engine.layers if self.fim_engine
+                      else (self.grad_engine.layers if self.grad_engine else []))
+            max_block = max((len(l['params']) for l in blocks), default=ansatz.num_parameters)
+            width = self.num_ancillas + max_block * bits_per_param + ansatz.num_qubits
+            method = 'statevector' if width <= sv_max_qubits else 'matrix_product_state'
+            self.backend = AerSimulator(method=method)
+            print(f"[Init] widest walk circuit {width}q -> AerSimulator({method})")
+        self.sim_width = (self.num_ancillas
+                          + max((len(l['params']) for l in
+                                 (self.fim_engine.layers if self.fim_engine
+                                  else (self.grad_engine.layers if self.grad_engine else []))),
+                                default=ansatz.num_parameters) * bits_per_param
+                          + ansatz.num_qubits)
+
+        self.estimator = BaseEstimator(self.backend, precision=precision)
+        self.sampler = BaseSampler(self.backend)
 
         # State tracking
         self.metric_diag = None
@@ -177,6 +205,24 @@ class RiemannianQLTO:
         # QPE energy estimate (read directly from ancilla, no separate circuit needed)
         self.last_qpe_energy = None
         self._last_sensing_time = None  # Store for phase→energy conversion
+
+        # Sensing must use the TRACELESS Hamiltonian. The evolution is
+        # controlled, so an identity term c*I becomes a relative phase
+        # e^{-i c tau} between the ancilla branches, attenuating the signal by
+        # cos(c tau) and mixing in Re<U>; at c*tau = pi/2 it vanishes entirely.
+        # Molecular Hamiltonians carry large constants (LiH: c = -7.883), and
+        # this is why V2's final energy drifted 0.15-0.21 below its own best on
+        # H2 and LiH while staying stable on the spin models.
+        _ident = 0.0
+        _p, _c = [], []
+        for _pauli, _coeff in zip(hamiltonian.paulis, hamiltonian.coeffs):
+            if set(_pauli.to_label()) == {"I"}:
+                _ident += complex(_coeff).real
+            else:
+                _p.append(_pauli.to_label()); _c.append(_coeff)
+        self.h_offset = _ident
+        self.H_sense = (SparsePauliOp(_p, _c).simplify() if _p
+                        else SparsePauliOp("I" * hamiltonian.num_qubits, [0.0]))
 
         H_mat = hamiltonian.to_matrix()
         self.H_norm = float(np.linalg.norm(H_mat, ord=2))   # spectral norm
@@ -214,12 +260,8 @@ class RiemannianQLTO:
             # Original fast loop (No dictionary lookups, no 'if' checks)
             for instr in decomp.data:
                 op = instr.operation
-                if len(op.params) == 1 and isinstance(op.params[0], Parameter):
-                    p_obj = op.params[0]
-                    try:
-                        p_idx = param_order.index(p_obj)
-                    except ValueError: continue
-                    
+                p_idx = self._parameterised_index(op, param_order)
+                if p_idx is not None:
                     sys_q_idx = decomp.find_bit(instr.qubits[0]).index
                     target_qubit = sys_reg[sys_q_idx]
                     
@@ -249,14 +291,10 @@ class RiemannianQLTO:
         
         for instr in decomp.data:
             op = instr.operation
-            
-            # Check if instruction is parameterized
-            if len(op.params) == 1 and isinstance(op.params[0], Parameter):
-                p_obj = op.params[0]
-                try:
-                    p_idx = param_order.index(p_obj)
-                except ValueError: continue
 
+            # Check if instruction is parameterized
+            p_idx = self._parameterised_index(op, param_order)
+            if p_idx is not None:
                 # Identify target qubit in system register
                 sys_q_idx = decomp.find_bit(instr.qubits[0]).index
                 target_qubit = sys_reg[sys_q_idx]
@@ -291,23 +329,53 @@ class RiemannianQLTO:
         return qc
 
     # Helper for gate application to keep code clean
+    @staticmethod
+    def _parameterised_index(op, param_order):
+        """Index of the ansatz parameter this gate rotates, or None.
+
+        Must not test `len(op.params) == 1`: `efficient_su2().decompose()` emits
+        RGate(theta, phi), whose second parameter is a plain float. That test
+        silently dropped every RY-derived rotation from the W-gate, so the walk
+        searched a circuit missing half the ansatz.
+        """
+        if not op.params:
+            return None
+        first = op.params[0]
+        if isinstance(first, Parameter):
+            target = first
+        elif isinstance(first, ParameterExpression) and first.parameters:
+            free = list(first.parameters)
+            if len(free) != 1:
+                return None
+            target = free[0]
+        else:
+            return None
+        try:
+            return param_order.index(target)
+        except ValueError:
+            return None
+
     def _apply_gate(self, qc, op, angle, target):
         if isinstance(op, RYGate): qc.ry(angle, target)
         elif isinstance(op, RZGate): qc.rz(angle, target)
         elif isinstance(op, RXGate): qc.rx(angle, target)
         elif isinstance(op, PhaseGate): qc.p(angle, target)
+        elif isinstance(op, RGate): qc.r(angle, float(op.params[1]), target)
+        else: raise TypeError(f"W-gate cannot encode parameterised gate '{op.name}'")
 
     def _apply_controlled_gate(self, qc, op, angle, ctrl, target):
         if isinstance(op, RYGate): qc.append(RYGate(angle).control(1), [ctrl, target])
         elif isinstance(op, RZGate): qc.append(RZGate(angle).control(1), [ctrl, target])
         elif isinstance(op, RXGate): qc.append(RXGate(angle).control(1), [ctrl, target])
         elif isinstance(op, PhaseGate): qc.append(PhaseGate(angle).control(1), [ctrl, target])
+        elif isinstance(op, RGate): qc.append(RGate(angle, float(op.params[1])).control(1), [ctrl, target])
+        else: raise TypeError(f"W-gate cannot encode parameterised gate '{op.name}'")
 
     def run_walk(
-        self, 
-        center_params: np.ndarray, 
-        k_steps: int = 2, 
-        delta_t: float = 0.5, 
+        self,
+        center_params: np.ndarray,
+        k_steps: int = 2,
+        delta_t: float = 0.5,
         search_radius: float = 0.5,
         layer: bool = False,
         gradient_reuse: bool = False,
@@ -328,9 +396,8 @@ class RiemannianQLTO:
         
         # Precompute expensive terms ONCE per epoch
         if gradient_reuse:
-            # 1. Compute Global Gradient ONCE (Cost: 2N or 2L circuits)
+            # 1. Compute Global Gradient ONCE (Cost: 2M-N circuits)
             global_grad = self.grad_engine.compute_gradient(self.estimator, center_params)
-            # self.nefv += self.grad_engine.get_nefv_cost()
             self.nefv += self.grad_engine.get_nefv_cost()['actual_with_cnot']
         else:
             global_grad = None
@@ -351,12 +418,13 @@ class RiemannianQLTO:
             for i, layer_info in enumerate(layers_to_use):
                 active_indices = layer_info['params']
                 if not active_indices: continue
-                
+
                 current_params, last_energy = self._execute_walk(
-                    current_params, 
-                    k_steps, delta_t, search_radius, 
+                    current_params,
+                    k_steps, delta_t, search_radius,
                     active_indices=active_indices,
-                    precomputed_grad=global_grad,
+                    precomputed_grad=self._layer_gradient(
+                        global_grad, current_params, search_radius, active_indices),
                     precomputed_fim=global_fim,
                     coherence=coherence,
                     drift_gain=1.0/np.sqrt(search_radius)
@@ -364,15 +432,22 @@ class RiemannianQLTO:
             return current_params, last_energy
         else:
             return self._execute_walk(
-                center_params, 
-                k_steps, delta_t, search_radius, 
+                center_params,
+                k_steps, delta_t, search_radius,
                 active_indices=None,
-                precomputed_grad=global_grad,
+                precomputed_grad=self._layer_gradient(
+                    global_grad, center_params, search_radius, None),
                 precomputed_fim=global_fim,
                 coherence=coherence,
                 drift_gain=1.0/np.sqrt(search_radius)
             )
     
+    def _layer_gradient(self, global_grad, center_params, search_radius, active_indices):
+        """Gradient handed to one walk. V2 just forwards whatever run_walk
+        precomputed; this is the single seam subclasses override to supply the
+        gradient another way (see nisq_v3.RiemannianQLTOv3)."""
+        return global_grad
+
     def get_sensing_diagnostics(self) -> Dict[str, Any]:
         """
         Get sensing diagnostics from the last run_walk call.
@@ -466,6 +541,11 @@ class RiemannianQLTO:
         if precomputed_grad is not None:
             grad_full = precomputed_grad
         else:
+            # Reached only when no caller supplied a gradient. Announce it: this
+            # submits 2M-N circuits, and a silent fallback here is how a walk
+            # that was supposed to be gradient-free ends up paying for one.
+            print("  [QLTO] no precomputed gradient - falling back to the "
+                  "CommutingBlockGradient engine (2M-N circuits).")
             grad_full = self.grad_engine.compute_gradient(self.estimator, center_params)
             self.nefv += self.grad_engine.get_nefv_cost()['actual_with_cnot']
             
@@ -514,7 +594,7 @@ class RiemannianQLTO:
                 reps = max(1, int(time_scale * 2))
                 trotter = LieTrotter(reps=reps)
 
-                evo_sense = PauliEvolutionGate(self.hamiltonian, time=t_a, synthesis=trotter)
+                evo_sense = PauliEvolutionGate(self.H_sense, time=t_a, synthesis=trotter)
 
                 if coherence:
                     # Controlled sensing: ancilla a accumulates phase ⟨cos(E(θ) * t_a)⟩
@@ -534,7 +614,7 @@ class RiemannianQLTO:
             sensing_time = delta_t * np.pi
             self._last_sensing_time = sensing_time
             trotter = LieTrotter(reps=1)
-            evo_sense = PauliEvolutionGate(self.hamiltonian, time=sensing_time, synthesis=trotter)
+            evo_sense = PauliEvolutionGate(self.H_sense, time=sensing_time, synthesis=trotter)
 
             if coherence:
                 qc.append(evo_sense.control(1), [qr_anc[0]] + list(qr_sys))
@@ -668,6 +748,7 @@ class RiemannianQLTO:
         try:
             _pub = (self.ansatz, self.hamiltonian, new_params)
             point_energy = float(self.estimator.run([_pub]).result()[0].data.evs)
+            self.nefv += 1   # a submitted circuit like any other
         except Exception as _e:
             # Graceful fallback: keep landscape average if statevector fails
             point_energy = self.last_qpe_energy if self.last_qpe_energy is not None else float('nan')
@@ -982,14 +1063,18 @@ if __name__ == "__main__":
     
     # 1. Setup Problem
     N = 4
-    # H = generate_frustrated_hamiltonian(N, seed=42)
-    H = force_heisenberg_hamiltonian(N)
+    H = generate_frustrated_hamiltonian(N, seed=42)
+    # H = force_heisenberg_hamiltonian(N)
     # EfficientSU2 is naturally structured into commuting blocks (Rotation layers)
     # Decompose to ensure it's compatible with Aer primitives
     ansatz = EfficientSU2(N, reps=2, entanglement='linear', su2_gates=['u3']).decompose()
     print(f"Ansatz Ops: {ansatz.count_ops()}")
     
     print(f"Problem: {N} Qubits, {ansatz.num_parameters} Parameters.")
+    # Exact ground state energy for reference (computed classically)
+    H_mat = H.to_matrix()
+    exact_gs = float(np.min(np.linalg.eigvalsh(H_mat)))
+    print(f"Exact GS energy: {exact_gs:.6f}")
     
     # 2. Initialize Optimizer
     # bits_per_param=1 is the quantum advantage regime:

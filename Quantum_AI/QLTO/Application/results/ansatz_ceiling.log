@@ -1,0 +1,22 @@
+Ceiling = lowest energy the ansatz can represent (classical optimisation).
+V2 / V3-L / V3-G = circuits per epoch. A / B = Bowles conditions.
+
+============================================================================================
+Heisenberg N=4
+============================================================================================
+exact ground state: -6.464102
+
+  ansatz                     M   B    ceiling      gap     V2   V3-L   V3-G   A  B    time
+  ----------------------------------------------------------------------------------------
+  efficient_su2 reps=1      16   4    -6.1231   0.3410     36      9      3   Y  n     42s
+  efficient_su2 reps=2      24   6    -6.3273   0.1368     56     13      3   Y  n    135s
+  efficient_su2 reps=3      32   8    -6.4641   0.0000     76     17      3   Y  n    245s
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_dsolve/linsolve.py:606: SparseEfficiencyWarning: splu converted its input to CSC format
+  return splu(A).solve
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_matfuncs.py:707: SparseEfficiencyWarning: spsolve is more efficient when sparse b is in the CSC matrix format
+  return spsolve(Q, P)
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/_index.py:168: SparseEfficiencyWarning: Changing the sparsity structure of a csr_matrix is expensive. lil and dok are more efficient.
+  self._set_intXint(row, col, x.flat[0])
+  HVA p=1 (Neel)             3   3    -4.6885   1.7756      8      7      3   Y  n     46s
+  HVA p=2 (Neel)             6   6    -5.1270   1.3371     20     13      3   Y  n    284s
+  HVA p=4 (Neel)            12  12    -5.1463   1.3178     44     25      3   Y  n    481s

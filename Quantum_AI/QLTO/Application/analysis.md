@@ -1191,4 +1191,217 @@ If you want, I can implement an SPSA mode in the walk so nisq_v2.py can run with
 
 then what if I parameterize the system trotterization with another QLTO circuit based on the QFT output, so its like QLTO + QLTO parallel, let's mathematically verify if we can get trained a operation we want, like learn arbitary operation like inverse function, or shor's trotterization
 
+---
+
+## Session: Why V3's walk-gradient never learns, and the gradient-free fix (nisq_v3.py)
+
+### 1. Diagnosis: four independent bugs in the walk-gradient estimator
+
+`nisq_v3.py`'s `use_qpe_gradient=True` path tries to extract a finite-difference
+gradient from the walk circuit's own measurement counts (MSB-partitioned
+activation/energy split), so `CommutingBlockGradient` is never called. Running
+it (`python nisq_v3.py`, N=4 frustrated Ising, `num_ancillas=4`) shows the
+energy stuck oscillating around the random-init value (E≈−0.25, exact GS
+−3.25) for all 30 epochs, with entropy pinned at 1.00. Four independent bugs
+compound to cause this:
+
+1. **Aliased sensing time.** The run never set `use_qpe_sensing=True`, so it
+   fell back to legacy single-ancilla sensing with
+   `sensing_time = delta_t·π ≈ 4.48` rad, while the alias-free bound is
+   `τ₀ = π/‖H‖ = 0.121` rad — **37× over**. `P(anc=1) ~ sin²(Eτ/2)` then
+   oscillates ~4.6 times across the spectrum, so `sign(rate_upper −
+   rate_lower)` in `_extract_legacy_gradient` has no consistent relation to
+   `sign(∂E/∂θᵢ)`.
+2. **Post-walk decorrelation.** The ancilla correlates with the *pre-walk*
+   vertex; the param bits are measured *after* the CRZ/CRX walk has rotated
+   them (and those gates are themselves ancilla-controlled). So
+   `P(anc, bit_i)` no longer factors through `E(θ_x)` by the time it's read —
+   this is the same unitarity fact this file's own "Full Mathematical Trace"
+   section proves for `W→U→W†`: the walk (like `W†`) doesn't disturb the
+   ancilla marginal, so any post-walk conditioning has already lost the
+   per-vertex correlation.
+3. **Unanchored bootstrap loop.** Epoch 0 runs `global_grad = zeros(...)`
+   (`_spsa_gradient_init` exists for exactly this but is never called — dead
+   code), so epoch 0's decode is pure shot noise; that noise becomes epoch 1's
+   CRZ drift; epoch 1's counts (biased by that injected noise, via the
+   ancilla-controlled gates) become epoch 2's gradient. There is no step that
+   ever touches ground truth.
+4. **Drift buried under the mixer.** Even with a correct gradient, the CRZ
+   drift angle is ≈0.06 rad vs. the CRX mixer's ≈2 rad — two orders of
+   magnitude too small to bias the interference the mixer creates.
+
+### 2. The fix: a gradient-free QAOA-sandwich walk (`use_qaoa_walk=True`)
+
+Per the "learn without gradient circuits, in one circuit" brainstorm earlier
+in this file: the landscape supplies its own drift as a **phase potential**,
+with no gradient circuits, no FIM, and (see §4) no ancilla.
+
+Per block:
+
+$$W \;\to\; e^{+iH\gamma} \;\to\; W^\dagger \;\to\; \text{mixer } RX(\beta)$$
+
+$$|x\rangle|0\rangle \xrightarrow{W} |x\rangle|\psi(\theta_x)\rangle
+\xrightarrow{e^{+iH\gamma}} A(x)\,|x\rangle|\psi(\theta_x)\rangle + \text{leakage},
+\quad A(x) = \langle\psi_x|e^{+iH\gamma}|\psi_x\rangle \approx e^{+i\gamma E(\theta_x)}$$
+
+$W^\dagger$ then uncomputes: the phase now sits on $|x\rangle$, sys returns to
+$|0\ldots0\rangle$ up to leakage $O(\gamma^2 \mathrm{Var}_x(H))$ (this is
+exactly the Loschmidt-echo mechanism — $A(x)$ is exact whenever
+$|\psi(\theta_x)\rangle$ is an $H$-eigenstate, and first-order-exact in
+general). The mixer then interferes adjacent hypercube vertices:
+
+$$P(\text{downhill bit}_i) = \tfrac{1}{2} + \tfrac{\sin\beta}{2}\sin\!\big(2\gamma R\, \partial E/\partial\theta_i\big)$$
+
+so probability flows toward lower energy — the finite-difference gradient is
+realized by interference, never computed. $k$ sandwiches with no intermediate
+mixer compose exactly ($W e^{iH\gamma}W^\dagger \cdot W e^{iH\gamma}W^\dagger =
+W e^{iH\cdot2\gamma}W^\dagger$, since $W^\dagger W = I$ cancels), so
+`_execute_qaoa_walk` merges $k$ steps into one sandwich with
+$\gamma_{\text{eff}} = k\gamma$ plus a single final $RX(\pi/2)$ mixer — one
+circuit, one measurement, per epoch. `retention` (the post-selected fraction
+with sys $= |0\ldots0\rangle$) doubles as the leakage/SNR diagnostic and
+auto-tunes $\gamma_{\text{eff}}$ (`_qaoa_gain_auto`).
+
+**Sign convention**, fixed by direct check (`test_v3_smoke.py` Test 1):
+Qiskit `RX(β) = e^{-i\beta X/2}` combined with `PauliEvolutionGate(H,
+time=-γ)` (i.e. $e^{+iH\gamma}$) flows amplitude *downhill*; flipping either
+sign reverses the walk.
+
+### 3. A bigger discovery: `build_w_gate` never encoded the u3 ansatz — in V2 either
+
+While wiring the sandwich, `_execute_qaoa_walk` initially reused the existing
+`build_w_gate`. Direction was near-zero (`cos(step, −grad) ≈ +0.06`, 53% sign
+agreement — consistent with pure noise). Checking what `build_w_gate` actually
+emits for `EfficientSU2(..., su2_gates=['u3'])` (the ansatz **v2's own
+`__main__` uses**):
+
+```
+legacy build_w_gate output ops: {'cx': 6}
+```
+
+**Zero single-qubit rotations.** The encoder's fast path only matches
+instructions with `len(op.params) == 1`; `u3` gates carry 3 params
+`(θ,φ,λ)`, so the check fails and the instruction is silently dropped —
+not even applied as a fixed constant. `qr_sys` starts at $|0\ldots0\rangle$
+and is only ever touched by the 6 linear-entanglement CX gates. **The system
+register never encodes $\theta$ or $x$ at all.** $W$ is not
+"$|x\rangle|0\rangle \to |x\rangle|\psi(\theta_x)\rangle$" for this ansatz —
+it's a fixed, $x$-independent Clifford-ish circuit.
+
+This means v2's own `python nisq_v2.py` run (E: −0.24→−3.17 over 30 epochs,
+logged this session) is not evidence of a working coherent-superposition
+search — the "2^36 configurations evaluated per circuit" claim analyzed
+earlier in this file never actually held for v2's default configuration. What
+*is* real in that trajectory: `CommutingBlockGradient` (a legitimate,
+separate O(L) circuit) computes a true classical gradient every epoch
+(`gradient_reuse=True`), and the CRZ/CRX walk — even acting on a param
+register whose entanglement to sys is broken — still applies a
+gradient-informed phase bias to param that the decode reads back with some
+fidelity. **v2 converges via a phase-tagged classical gradient descent riding
+on top of an inert "quantum search", not via the coherent walk mechanism the
+papers describe.** This also explains why v2's circuits stayed fast (`W` is
+depth-5, 6 CX gates only) despite 36 param qubits + ancilla + sys = 41 total
+qubits.
+
+**Fix** (new in `nisq_v3.py`, used only by `use_qaoa_walk=True`):
+`_normalize_walk_ansatz()` transpiles the ansatz to `{rx, ry, rz, cx}` so
+every trainable `Parameter` sits on a single-parameter rotation.
+`_linear_param_info(op)` detects, for each such gate, the linear form
+`angle = coeff·θ + offset` (transpilation of `u3` introduces constant offsets,
+e.g. from `rz·rx·rz` decompositions — the legacy encoder also couldn't have
+handled these even if it matched 1-param gates). `_build_w_gate_linear` then
+builds the correct bit-controlled encoding: one unconditional base gate at
+`coeff·(θ−R)+offset`, plus one controlled increment per bit
+`coeff·step·2^b`. Verified exactly via statevector fidelity
+(`test_v3_smoke.py` Test 0): $|\langle W|x\rangle|0\rangle \,,\,
+|x\rangle|\psi(\theta_x)\rangle\rangle| > 0.999$ for every tested vertex $x$.
+
+### 4. Validation results
+
+**N=2** (statevector backend, 18 params, fast — confirms the mechanism):
+
+```
+W-encoder: 18/18 parameters encodable
+cos(step, -grad) = +0.791   (single epoch, vs. +0.06 with the broken encoder)
+6 epochs: E  +0.02 → -0.99  (exact GS -1.09), NEFV = 14
+```
+
+Monotone descent to within 10% of exact ground state in 6 epochs, 14 total
+circuit evaluations (2 per epoch: the sandwich + one point-energy read) — no
+gradient circuits, no FIM, no ancilla.
+
+**N=4** (36 params, MPS backend, matching v2's benchmark problem): W-encoder
+correctly reports 36/36 encodable, but the circuit (36 param + 4 sys = 40
+qubits, now genuinely $\theta$-dependent — real controlled rotations plus a
+Trotterized 9-term Heisenberg evolution linking all 4 sys qubits) did not
+complete even one epoch within 150s on this MPS backend, both before and
+after capping `trotter_reps` at 3. Given §3, this isn't surprising: v2's
+"equivalent" N=4 circuit was cheap only because its $W$ never actually
+entangled anything. **Open item, not a correctness bug** — the fix works
+(§3, §4-N=2); it needs either (a) `layer=True`-style processing of one
+commuting block (3–6 params) at a time instead of all 36 params in one
+global-mode circuit, mirroring how v2 itself splits work, or (b) profiling
+whether `transpile()` or the MPS bond-dimension growth from the Trotterized
+multi-qubit evolution dominates, before deciding where to optimize. Deferred
+per explicit instruction not to keep chasing long runs this session.
+
+### 5. Why the ancilla was dropped, and whether to add it back
+
+**Why dropped.** In every prior mode (legacy Hadamard-test, QPE), the
+ancilla's *only* job was being a **control qubit**: `H(anc) →
+controlled-e^{-iHτ} → H(anc) → measure`, converting energy into a population
+`sin²(Eτ/2)` that could be read out or (unsuccessfully, per §1) split for a
+gradient. In the QAOA sandwich, the phase potential doesn't need a dedicated
+control qubit, because **the parameter register already plays that role** —
+$W$ entangles param with sys, so applying $e^{+iH\gamma}$ *uncontrolled* to
+sys still produces a branch-dependent amplitude, since each branch
+$|x\rangle$ already carries a different sys state $|\psi(\theta_x)\rangle$.
+This is the identical entangle→evolve→disentangle mechanism this file's
+opening "Full Mathematical Trace" derives for $W\to U\to W^\dagger$ — the
+"control" was always logically the param register; the ancilla in earlier
+designs was one more layer of controlled-evolution on top of that, needed
+only to convert the phase into a *separately measurable* population bit.
+Dropping it removes bug #1 (no more `sin²` population to alias) and bug #2
+(no more ancilla-controlled CRZ/CRX to decorrelate post-walk), and roughly
+halves the sensing step's controlled-gate depth (uncontrolled $e^{iH\gamma}$
+vs. controlled).
+
+**Can it come back — yes, for read-only diagnostics, two ways:**
+
+- **Already present, no ancilla needed.** `_execute_qaoa_walk` already reads
+  the result after computation: once param bits are decoded classically, one
+  extra `StatevectorEstimator`/`AerEstimator` call gives the *exact* point
+  energy $\langle\psi(\theta_{\text{decoded}})|H|\psi(\theta_{\text{decoded}})\rangle$
+  — strictly better than any ancilla-QPE estimate (exact vs. the old
+  landscape-averaged, noisy `landscape_avg_energy`), at the same 1-circuit
+  cost. This is the "reading the result after the computation" the question
+  asked about, and it's cheaper/more accurate without the ancilla.
+- **Optional, not yet implemented:** bolt a single ancilla + Hadamard test
+  onto the *same* circuit, sensing **before** the phase sandwich (so it reads
+  the pre-decode landscape average, at $\tau \le \tau_0$ this time — fixing
+  the old aliasing bug), reproducing legacy `landscape_avg_energy` purely as
+  a monitoring channel for `CriticalitySensor`. It would not feed back into
+  drift, so it can't reintroduce §1's bugs. Recommendation: skip for now —
+  `retention` (post-selection fraction) and `normalized_entropy` already
+  serve the homeostat's inputs, so this would be a redundant diagnostic
+  today. Worth revisiting only if a use case needs the *pre-decode* landscape
+  average specifically (retention only bounds $\mathrm{Var}_x(H)$, not the
+  mean).
+- **Not recommended right now:** an ancilla-conditioned "trap-diffusion" /
+  imaginary-time filter (discussed earlier as "Route C") is a legitimate
+  *different* mechanism for creating a downhill direction, but reintroduces
+  controlled-gate complexity that the QAOA sandwich already avoids
+  mathematically. Not needed now that §2 supplies a clean, verified
+  direction.
+
+### 6. Status
+
+- Fixed and verified: descent direction (Test 1, N=2 and N=4 W-encoder
+  check), W-gate correctness (Test 0), sign convention, mixer/drift ratio.
+- Fixed but not yet re-validated end-to-end at N=4 scale: circuit depth/width
+  makes the current global-mode MPS run too slow to complete in this
+  session — see §4 open item.
+- `use_qpe_gradient=True` (the original V3 mechanism) is kept only for
+  reference; per §1 it does not converge and should not be used.
+
 

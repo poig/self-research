@@ -1,0 +1,17 @@
+Heisenberg N=4, 16 params, 12 epochs
+exact GS -6.4641; efficient_su2(reps=1) ceiling is -6.1231
+
+  variant        E_final     E_best  circuits   per ep     time
+  ------------------------------------------------------------
+[V3] 4 commuting blocks [4, 4, 4, 4] | ||H||_2 = 6.4641 | no gradient engine
+  sensed         -5.9811    -6.0522       108      9.0     446s
+[V3] 4 commuting blocks [4, 4, 4, 4] | ||H||_2 = 6.4641 | no gradient engine
+  zero           -1.3902    -1.7275        60      5.0     113s
+[V3] 4 commuting blocks [4, 4, 4, 4] | ||H||_2 = 6.4641 | no gradient engine
+  random         -0.5424    -1.2218        61      5.1     110s
+[V3] 4 commuting blocks [4, 4, 4, 4] | ||H||_2 = 6.4641 | no gradient engine
+  senseonly       0.0011    -1.3381        60      5.0     223s
+
+  sensed vs zero      : -4.3248  (negative = drift helps)
+  sensed vs random    : -4.8304  (negative = the DIRECTION helps, not just any drift)
+  senseonly vs sensed : +4.7141  (<=0 => walk circuit is redundant, halve the cost)
