@@ -67,24 +67,63 @@ def make_estimator():
 # `python benchmark.py --tune` re-derives this table by sweeping each grid on a
 # representative subset, symmetric across all methods: one global value each,
 # selected the same way.
+# FINAL - every method searched until its optimum was interior or bracketed.
+# Scores are the mean gap to exact as a fraction of the spectral range, over
+# H2 / MaxCut N=4 / Heisenberg N=4 / Heisenberg N=6, 2 trials each:
+#
+#   QLTO V2        k=45   0.0234   interior (30/45/60)
+#   Correct QNG    lr=0.3 0.0301   interior
+#   QLTO V3 Had.   k=20   0.0308   interior
+#   QLTO V3 QPE    k=15   0.0318   interior
+#   AdamW          lr=0.5 0.0348   bracketed 0.3..1.0
+#   SPSA           lr=0.5 0.0458   bracketed 0.1..1.0
+#   QAOA           p=4    0.0817   bracketed 3..6
+#
+# Repeatability: V3 QPE at k=15 scored 0.0299 (round 2) and 0.0318 (round 3) on
+# identical settings, so 2-trial noise is ~+-0.002 and gaps under ~0.005 are not
+# real. QNG / V3-Hadamard / V3-QPE / AdamW are therefore one tied band.
+#
+# What tuning changed, and why it mattered: AdamW moved 0.0463 -> 0.0306 (lr
+# 0.1 -> 0.5) and V2 moved 0.0236 -> 0.0234 (k 20 -> 45). Every earlier run in
+# this project used AdamW at lr=0.1, i.e. against a handicapped baseline - the
+# classical mirror of V2's identity-phase bug. V3's own optimum barely moved
+# (k=15, already the default), so QLTO was near-tuned all along and the
+# baselines were not.
+#
+# Note V2 buys its lead with DEPTH: k=45 triples its walk depth versus k=15.
 TUNED = {
     'QLTO V3 QPE (k=4)': 15,      # k_step
-    'QLTO V3 (Hadamard)': 15,     # k_step
-    'QLTO V2 (engine-grad)': 15,  # k_step
-    'QAOA': 3,                    # p_layers
-    'Correct QNG': 0.1,           # lr
-    'AdamW': 0.1,                 # lr
-    'SPSA': 0.1,                  # lr
+    'QLTO V3 (Hadamard)': 20,     # k_step
+    'QLTO V2 (engine-grad)': 45,  # k_step
+    'QAOA': 4,                    # p_layers
+    'Correct QNG': 0.3,           # lr
+    'AdamW': 0.5,                 # lr
+    'SPSA': 0.5,                  # lr
 }
 
+# Round 2. Round 1 used [10,15,20] / [2,3,4] / [0.01,0.05,0.1] / [0.05,0.1,0.5]
+# and EVERY method selected the top of its grid - so those were grid edges, not
+# optima. It mattered most for the baselines: AdamW improved 8x across its grid
+# (0.368 -> 0.047) and was still improving at the boundary, i.e. the values the
+# suite had been using all along were far from its best. Grids shifted upward to
+# bracket the optimum; equal size so no method gets more search than another.
+# Round 3. Search continues for any method still selecting a grid EDGE - an edge
+# means the optimum has not been found, so stopping there under-serves that
+# method. Five settled in rounds 1-2 with interior/bracketed optima and are
+# pinned. Two were still improving at the boundary:
+#   QLTO V2   20 -> 30, still descending (0.0236 -> 0.0222)
+#   AdamW    0.1 -> 0.5, still descending (0.0463 -> 0.0333 -> 0.0306)
+# Note this gives the unsettled methods more grid evaluations than the settled
+# ones. That is the fair procedure, not a bias: every method is searched until
+# its optimum is interior, and the ones that converged early simply needed less.
 TUNE_GRID = {
-    'QLTO V3 QPE (k=4)': [10, 15, 20],
-    'QLTO V3 (Hadamard)': [10, 15, 20],
-    'QLTO V2 (engine-grad)': [10, 15, 20],
-    'QAOA': [2, 3, 4],
-    'Correct QNG': [0.01, 0.05, 0.1],
-    'AdamW': [0.01, 0.05, 0.1],
-    'SPSA': [0.05, 0.1, 0.5],
+    'QLTO V3 QPE (k=4)': [15],
+    'QLTO V3 (Hadamard)': [20],
+    'QLTO V2 (engine-grad)': [30, 45, 60],
+    'QAOA': [4],
+    'Correct QNG': [0.3],
+    'AdamW': [0.5, 1.0, 2.0],
+    'SPSA': [0.5],
 }
 
 
@@ -598,7 +637,9 @@ class QAOA:
         self.n_params = 2 * p_layers  # gamma and beta for each layer
         
         # Circuit depth (computed once at init since QAOA structure is fixed)
-        self._circuit_depth = self.qaoa_ansatz.depth()
+        # decompose(): PauliEvolutionGate is one opaque instruction, so the raw
+        # depth reads ~7 and is not comparable with the other rows.
+        self._circuit_depth = self.qaoa_ansatz.decompose(reps=2).depth()
         
         # Store current best for warm restart
         self._current_best_params = None
@@ -651,11 +692,43 @@ class QAOA:
 
         ident = sum(complex(c).real for p, c in zip(hamiltonian.paulis, hamiltonian.coeffs)
                     if set(p.to_label()) == {"I"})
-        keep = [(p.to_label(), c) for p, c in zip(hamiltonian.paulis, hamiltonian.coeffs)
-                if set(p.to_label()) != {"I"}]
-        H_cost = (SparsePauliOp([p for p, _ in keep], [c for _, c in keep]).simplify()
-                  if keep else SparsePauliOp("I" * n_qubits, [0.0]))
         self.h_offset = ident
+
+        # QAOA is only defined when H splits into a DIAGONAL cost (Z-only
+        # Paulis, which the cost layer implements) plus a transverse field
+        # (single-X terms, which the X mixer represents). Applying it elsewhere
+        # is not a weak baseline, it is an undefined one:
+        #   - the old code silently dropped every non-Z term, so on Heisenberg it
+        #     optimised ZZ alone (1/3 of H) and was scored on the full operator;
+        #   - replacing that with exp(-i gamma H) for general H does not rescue
+        #     it, because |+>^N is not a sensible start. For Heisenberg N=4,
+        #     <+|H|+> = N-1 = +3 exactly, and QAOA returns +2.98: it never
+        #     leaves the initial state. Normalising gamma changes nothing.
+        # So: run QAOA where it is defined, report N/A where it is not, rather
+        # than manufacture a number either way.
+        diag, other = [], []
+        for p, c in zip(hamiltonian.paulis, hamiltonian.coeffs):
+            s = p.to_label()
+            if set(s) == {"I"}:
+                continue
+            (diag if set(s) <= {"I", "Z"} else other).append((s, c))
+
+        bad = [s for s, _ in other if not (s.count("X") == 1 and set(s) <= {"I", "X"})]
+        if bad:
+            raise ValueError(
+                "QAOA not applicable: Hamiltonian has non-diagonal terms the X "
+                f"mixer does not represent (e.g. {bad[0]}). Standard QAOA needs "
+                "a Z-only cost plus a transverse field.")
+
+        H_cost = (SparsePauliOp([s for s, _ in diag], [c for _, c in diag]).simplify()
+                  if diag else SparsePauliOp("I" * n_qubits, [0.0]))
+
+        # NOT normalised. For a diagonal H_cost the terms commute, so
+        # PauliEvolutionGate(H_cost, gamma) is exactly the old per-term
+        # cx/rz(2*gamma*coeff)/cx construction - same circuit, but now covering
+        # Z-strings of any weight instead of only 1- and 2-body. Rescaling gamma
+        # shifts the range COBYLA must search and measured worse (MaxCut N=4
+        # 0.93 vs 0.61), so the natural scale is kept.
 
         for layer in range(p_layers):
             qc.append(PauliEvolutionGate(H_cost, time=gammas[layer],
@@ -1178,7 +1251,14 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
                     else:
                         params = np.random.uniform(-np.pi, np.pi, ansatz.num_parameters)
                         eval_ansatz = ansatz
-                except Exception: continue
+                except ValueError as e:
+                    # e.g. QAOA on a Hamiltonian it is not defined for. Report
+                    # N/A rather than a manufactured number.
+                    if t == 0:
+                        print(f"    N/A: {e}", flush=True)
+                    break
+                except Exception:
+                    continue
 
                 trial_energies = []
                 trial_nefv = []
@@ -1279,16 +1359,22 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
 def tune_all(trials=2, epochs=20):
     """Sweep every optimizer's grid on a representative subset, symmetrically.
 
-    Selection metric is the mean normalised gap to the exact ground state,
-    (E - exact)/|exact|, averaged over the tuning problems - so no single
-    problem's energy scale dominates. Every method gets one global value chosen
-    the same way, matching how QLTO's k_step was picked.
+    Selection metric is the mean gap to the exact ground state normalised by the
+    SPECTRAL RANGE, (E - exact)/(Emax - Emin), averaged over the tuning problems.
+
+    Normalising by |exact| looks natural and is wrong: MaxCut's exact ground
+    state is 0, so the ratio divides by ~1e-16 and explodes to ~1e15, after
+    which selection is pure noise - and `or 1.0` does not guard it because
+    -1e-16 is truthy. The range is never zero for a non-trivial Hamiltonian and
+    puts every problem on the same 0..1 footing.
     """
     probs = [get_h2_problem(), get_maxcut_problem(4, seed=101),
              get_heisenberg_problem(4), get_heisenberg_problem(6)]
-    exact = {}
+    exact, scale = {}, {}
     for ansatz, H, name in probs:
-        exact[name] = float(np.min(np.linalg.eigvalsh(H.to_matrix())))
+        ev = np.linalg.eigvalsh(H.to_matrix())
+        exact[name] = float(ev[0])
+        scale[name] = float(ev[-1] - ev[0]) or 1.0
 
     est = make_estimator()
     for opt_name, grid in TUNE_GRID.items():
@@ -1315,7 +1401,7 @@ def tune_all(trials=2, epochs=20):
                             E = float(est.run([(ev.assign_parameters(p), H)])
                                       .result()[0].data.evs)
                             best = min(best, E)
-                        gaps.append((best - exact[pname]) / abs(exact[pname] or 1.0))
+                        gaps.append((best - exact[pname]) / scale[pname])
                     except Exception as e:
                         print(f"      {opt_name}={val} on {pname} failed: {e}")
                     finally:
