@@ -225,7 +225,9 @@ def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
 # --- Optimizers ---
 
 class QLTO_Wrapper:
-    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4, walk_gradient=False, v3_ancillas=1):
+    def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4, walk_gradient=False, v3_ancillas=1,
+                 r0=0.6, r_decay=0.9, dt0=0.5, dt_decay=0.95, tau_scale=1.0,
+                 qpe_margin=2.0):
         if walk_gradient:
             # V3 is standalone - it shares no code with V2 and takes its own args.
             # backend is deliberately NOT forwarded: V3 picks statevector vs MPS
@@ -236,7 +238,8 @@ class QLTO_Wrapper:
             # shots and circuits on Heisenberg N=6.
             from nisq_v3 import QLTOv3
             self.optimizer = QLTOv3(ansatz, hamiltonian, shot_budget=SHOTS or shot_budget,
-                                    num_ancillas=v3_ancillas)
+                                    num_ancillas=v3_ancillas, tau_scale=tau_scale,
+                                    qpe_margin=qpe_margin)
         else:
             # backend deliberately NOT forwarded, same as V3: V2's walk circuits
             # are the same narrow-but-entangled shape, so the suite's MPS default
@@ -250,6 +253,10 @@ class QLTO_Wrapper:
         self.k_step=k_step
         self.walk_gradient=walk_gradient
         self.gradient_reuse=gradient_reuse   # forced False above when walk_gradient
+        self.r0=r0
+        self.r_decay=r_decay
+        self.dt0=dt0
+        self.dt_decay=dt_decay
 
     @property
     def nefv(self):
@@ -267,9 +274,13 @@ class QLTO_Wrapper:
 
     def step(self, params):
         self.epoch += 1
-        # Annealing schedule from nisq_v2.py main
-        r = max(0.6 * (0.9 ** (self.epoch - 1)), 1e-4)
-        dt = max(0.5 * (0.95 ** self.epoch), 0.01)
+        # Annealing schedule. r0/dt0 were 0.6/0.5 hardcoded from nisq_v2.py's
+        # __main__ and never justified - r matters directly, since the sensed
+        # signal is 2R*dE while the estimator's bias is O(R^3), so R trades
+        # signal against bias. Exposed so it can be tuned like any other
+        # hyperparameter rather than inherited.
+        r = max(self.r0 * (self.r_decay ** (self.epoch - 1)), 1e-4)
+        dt = max(self.dt0 * (self.dt_decay ** self.epoch), 0.01)
         if self.walk_gradient:
             result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer)
         else:

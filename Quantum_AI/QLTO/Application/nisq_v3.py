@@ -1,276 +1,313 @@
 """
 nisq_v3.py: QLTO with the gradient read out of the sensing circuit itself.
 
-Standalone. Imports numpy and qiskit and nothing else - no nisq_v2, no
-commute_gradient, no commute_fim. That is the point of the file: V2 spends
-2M-N circuits per epoch inside CommutingBlockGradient, and V3 reaches
-comparable accuracy without any gradient engine in the import graph at all.
+Standalone - numpy and qiskit only. No nisq_v2, no commute_gradient. V2 spends
+2M-N circuits per epoch inside CommutingBlockGradient; V3 spends one sensing
+circuit per block and reads the gradient off its measurement marginals.
 
-─────────────────────────────────────────────────────────────────────────────
-THE MECHANISM
-─────────────────────────────────────────────────────────────────────────────
+═══ MECHANISM ═══
 
 The W-gate prepares a uniform superposition over the 2^n vertices of the
 hypercube {c_i +- R}, each entangled with its own ansatz state. An ancilla-
-controlled e^{-iH*tau} plus a Y-basis readout gives, conditioned on the
-measured vertex x,
+controlled e^{-i H0 tau} encodes each vertex's energy in the ancilla.
+Conditioned on the measured vertex x the ancilla reports E(theta_x), and a
+gradient is a marginal, not a per-vertex quantity:
 
-    <Z_anc | x>  =  Im <psi(theta_x)| e^{-iH tau} |psi(theta_x)>  ~=  -tau E(theta_x)
-
-Per-vertex energies are unrecoverable - 2^n vertices, finitely many shots. But
-a gradient is a marginal, not a per-vertex quantity:
-
-    g_i  ~  <signal | x_i=1> - <signal | x_i=0>   =   2R d_iE + O(R^3)
+    g_i  ~  <signal | x_i=1> - <signal | x_i=0>  =  2R d_iE + O(R^3)
 
 the O(R^2) cross terms cancelling under the symmetric +-R perturbation of the
-other coordinates. Every shot carries a value for every bit, so all n
-components come from the same shots.
+other coordinates. Every shot carries a value for every bit, so all components
+come from the same shots: ONE circuit, not 2M.
 
-Stated honestly this is not exponential parallelism. It is:
+num_ancillas=1   Hadamard test. One +-1 bit per shot, Var(<H>) ~ 1/(tau^2 S).
+                 tau = tau_scale/range(H) shrinks as O(1/N), so this is
+                 O(N^2/S) - the reason it needed a 16x shot budget to match V2.
+num_ancillas=k   QPE. Each shot decodes a sampled EIGENVALUE: Var(H)/S, no tau
+                 penalty, O(N/S). Measured at Heisenberg N=6 on identical shots
+                 and circuits: 0.94 Hartree better, 10x lower variance, 3.1x
+                 depth. Coherent time buys precision at the Heisenberg limit
+                 (1/T) where shots only manage the standard quantum limit
+                 (1/sqrt S); measured exchange rate 3.1x depth <-> 16x shots.
 
-    one circuit yields S simultaneous-perturbation gradient samples,
-    where classical SPSA needs 2 circuits per sample.
+Resolution is 2*margin*||H0||/2^k and must clear the signal 2R*d_iE. At k=4, H2
+sits at resolution 0.204 against signal ~0.24 - and H2 is where V3-QPE places
+last. k should scale with ||H0||/(R d_iE) rather than being fixed. UNIMPLEMENTED.
 
-That converts circuit cost into shot cost.
+═══ RESULT: 8 problems, 5 trials, every method tuned to an interior optimum ═══
 
-Estimator checked against an exact gradient, N=4, one centre: cosine 0.974 at
-200k shots, 0.902 at 8192. The X-basis readout V2 uses for its walk feedback
-scores 0.803 at matched settings - a plain H reads Re<U> ~ 1 - tau^2<H^2>/2, a
-variance-like signal, while the energy sits in the imaginary part and needs the
-Sdg. V3 uses the Y basis for sensing and keeps the X basis for the walk.
+No method dominates. Four win two problems each.
 
-─────────────────────────────────────────────────────────────────────────────
-MEASURED - Heisenberg N=4, efficient_su2(reps=1), 20 epochs, ONE seed
-─────────────────────────────────────────────────────────────────────────────
+    problem              winner              V3 QPE     circuits win/V3
+    Frustrated Ising  V2      -1.4088        3rd          720 / 180
+    MaxCut N=4        V3 QPE   0.0065        best         180
+    MaxCut N=6        QNG     -0.0137        3rd         1040 / 180
+    H2                AdamW   -1.8575        last         320 / 180
+    LiH               AdamW   -8.9229        2nd          640 / 180
+    Heisenberg N=4    V2      -6.0550        3rd          720 / 180
+    Heisenberg N=6    V3 QPE  -9.0550        best         180
+    Heisenberg N=8    QNG    -12.1692        3rd         1360 / 180
 
-    optimizer          E_final   E_best   circuits   per epoch
-    QLTO walk-grad     -6.020    -6.071        180        9.0
-    QLTO engine-grad   -6.082    -6.082       1287       64.3
-    AdamW              -5.773    -5.773        640       32.0
-    SPSA               -5.890    -5.890        200        2.0
-    (exact GS -6.4641)
+V3 QPE vs V2: one significant V2 win (3.1 sigma), one marginal, six ties - V3
+nominally ahead on three of those. V3 QPE vs tuned AdamW: two significant V3
+wins, three AdamW, three ties.
 
-    at a shared 180-circuit budget:
-    walk-grad -6.071 | SPSA -5.882 | AdamW -4.903 | engine-grad -4.497
+DEFENSIBLE CLAIM: competitive with the best classical and quantum-gradient
+optimisers - top group on accuracy, 2 of 8 outright - at 180 circuits on EVERY
+problem against 320-1360, and about half V2's depth (136-1060 vs 572-2320).
+NOT "V3 wins on accuracy". It does not.
 
-Within 0.010 Hartree of the engine gradient at 7.2x fewer circuits, and ahead
-of SPSA at matched budget. E_best still differs from E_final by 0.05, so the
-run is not fully settled - the step size is still slightly too large for the
-noise in the sensed direction.
+The cost figure is the durable part: 180 is flat in M while every baseline scales
+with it, so the ratio widens as problems grow (7x at N=8).
 
-ONE seed, N=4. The earlier draft of this file, which wrapped V2 rather than
-standing alone, scored -5.938 best at 284 circuits; the gain here is partly the
-cleaner decode (V2's low-activation fallback mangled its bitstring keys) and
-partly seed noise, and one run cannot separate the two.
+Read E_final, not E_best. E_best is min-over-epochs of noisy evaluations and is
+biased low by ~0.02 at 20 epochs - QNG's -0.0137 on MaxCut N=6 is below that
+problem's exact 0.0 purely from this.
 
-─────────────────────────────────────────────────────────────────────────────
-WHAT THIS IS NOT
-─────────────────────────────────────────────────────────────────────────────
+═══ WHAT THE BENCHMARK NEEDED FIRST ═══
 
-Not validated beyond N=4 on one seed. Not a simulation result - both QLTO
-variants plateau ~0.5 Hartree above the true ground state because
-efficient_su2(reps=1) cannot represent it. The claim is about this optimiser's
-measurement cost and nothing wider. Against SPSA the margin is 0.05 Hartree on
-one seed, which is not evidence of anything yet.
+Seven asymmetries, all closed; every one had favoured QLTO.
+  * NEFV was a hardcoded formula (2*len(layers)), not a count of what ran
+  * baselines received EXACT statevector gradients (reproducible to 5.6e-17)
+  * V3 chose statevector while V2 was forced onto MPS (316x at 13 qubits)
+  * V2 sensed with the identity term included; V3 traceless
+  * QAOA silently dropped every non-Z Pauli - two thirds of Heisenberg
+  * PennyLane QNG was scored on a different circuit than it optimised
+  * QLTO was tuned; the baselines sat at lr=0.1 from the original file
 
-Scope, deliberately narrower than V2: bits_per_param=1, identity metric (no
-QFIM), single sensing ancilla. V2 keeps the QPE multi-ancilla mode, the QFIM
-path and the criticality sensor.
+The last mattered most because it was invisible - it produced plausible numbers.
+Tuning to interior optima moved AdamW 0.0463 -> 0.0306 (lr 0.1 -> 0.5) and QNG
+to lr=0.3, after which both WON two problems each having been middling in every
+earlier run. QLTO's own optimum barely moved (k=15, already the default). Earlier
+"QLTO beats the baselines" results were substantially a tuning artifact.
 
-─────────────────────────────────────────────────────────────────────────────
-QPE SENSING (num_ancillas > 1): 4x FEWER SHOTS FOR THE SAME GRADIENT
-─────────────────────────────────────────────────────────────────────────────
+Remaining asymmetry, deliberately not chased: every method has its PRIMARY knob
+tuned and its secondary knobs at defaults - AdamW's betas/weight_decay, SPSA's
+alpha/gamma/c, QNG's FIM regularisation, and V3's num_ancillas / tau_scale /
+qpe_margin / R0 / decay schedules. V3 has more untuned knobs than the baselines,
+so the comparison is if anything now conservative for V3 rather than generous.
+r0/r_decay/dt0/dt_decay/tau_scale/qpe_margin are exposed on QLTO_Wrapper for
+anyone who wants to close that gap; defaults reproduce the schedule these
+results were measured with.
 
-The single-ancilla Hadamard test returns one +-1 bit per shot, so the <H>
-estimate carries variance ~1/(tau^2 S). tau = tau_scale/range(H) shrinks as
-O(1/N), making that variance O(N^2/S) - which is why V3 needed a 16x shot
-budget to match V2 at Heisenberg N=6.
+═══ PRIOR ART ═══
 
-QPE decodes an eigenvalue sample per shot instead, giving Var(H)/S with no tau
-factor at all: O(N/S) for an extensive H.
+Jordan, PRL 95 050501 (2005), is NOT the citation. It requires a reversible
+arithmetic oracle that coherently evaluates f into a register, giving an exact
+phase. <psi(theta)|H|psi(theta)> is an expectation value - no such circuit
+exists, which is why VQE needs repeated measurement at all.
 
-Measured, Heisenberg N=6, gradient vs the exact analytic gradient over 3 centres:
+Gilyen, Arunachalam & Wiebe, arXiv:1711.00465, IS the citation and covers VQE by
+name: LCU probability->phase oracle conversion at O(log 1/eps), Jordan-style
+gradient on top, O~(sqrt(d)/eps) queries.
 
-    sensing        shots   cosine   rel err   depth
-    Hadamard k=1    8192   0.7874     0.689     123
-    Hadamard k=1   32768   0.9092     0.439     123
-    QPE k=4         8192   0.9492     0.347     772
-    QPE k=5         8192   0.9535     0.347    1653
-    QPE k=6         8192   0.9480     0.340    3446
+V3 differs in kind, not only in simplicity: no oracle conversion, no LCU, no
+coherent QFT readout. The Hamiltonian evolution is native to the problem and the
+gradient comes from classical marginals. Scaling trade: theirs O~(sqrt(d)/eps),
+V3 O(1/eps^2) and INDEPENDENT of d. V3 is cheaper whenever eps > 1/sqrt(d) - at
+d=48 that is eps > 0.14, and cosine 0.95 was measured sufficient to reach V2
+parity. Better in eps for them, better in d for V3, and d-dependence is what
+hurts VQE.
 
-QPE k=4 at 8192 shots beats the Hadamard test at 32768 on both metrics: a 4x
-shot saving. k=4/5/6 are indistinguishable, so the residual error is NOT
-resolution-limited - it is the Var(H) sampling floor plus the O(R^3) smearing
-bias, both irreducible. Use the smallest k that clears the resolution
-requirement; k=6 costs 4.5x the depth of k=4 for nothing.
+UNCHECKED: whether this specific shallow instantiation - parameter superposition
++ Hamiltonian-native phase kickback + classical marginal readout, no oracle
+conversion - is published. The concept space is mapped; this corner may not be.
 
-The price is depth: 772 vs 123, 6.3x. On shots x depth QPE is ~1.6x WORSE, so
-this is a win only when the bottleneck is shot count or circuit submissions
-rather than coherence time.
+═══ IMPLEMENTATION TRAPS (each cost a measurement to find) ═══
 
-END TO END, Heisenberg N=6, 3 seeds, 20 epochs, k_steps=15:
+tau0 = pi/(margin*||H0||), NOT pi/(2^(k-1)*||H0||). The aliasing constraint binds
+    the BASE unitary; the 2^a ancilla times resolve that turn rather than
+    relaxing it. Tell: decoded energy doubled per added ancilla. nisq_v2's
+    use_qpe_sensing path still carries this error - never enabled, never shown.
+ancilla bit order: read the printed register UNREVERSED, E = -2 pi phi / tau0.
+    Verified against exact <H_sense> across all four sign/order combinations;
+    the others are 1.2-2.9x worse.
+qpe_margin > 1 is required. At margin=1 the extreme eigenvalues sit on the +-0.5
+    wrap boundary; measured 2.99 error on a state whose true energy was -3.00.
+identity term must be stripped from the SENSING Hamiltonian. Under a CONTROLLED
+    evolution c*I becomes a relative phase: signal attenuated by cos(c tau),
+    contaminated by Re<U>, gone entirely at c tau = pi/2. LiH (c=-7.883) lost 8x.
+W-gate must not test len(op.params)==1. efficient_su2 decomposes to
+    RGate(theta,phi) and that test silently drops every RY-derived rotation -
+    the walk then searches a circuit missing half the ansatz.
+simulator by circuit WIDTH, not system size.
 
-    sensing         shots   E_final     std   circ  depth  total shots
-    Hadamard k=1     8192   -8.0812   0.811    180    248        1.5M
-    Hadamard k=1    32768   -8.4861   0.632    180    248        5.9M
-    QPE k=4          8192   -9.0233   0.081    180    772        1.5M
-    QPE k=4         32768   -9.0765   0.058    180    772        5.9M
-    V2 (reference)   8192   -9.0909   0.072   1000    658        8.2M
+═══ OPEN, RANKED ═══
 
-QPE k=4 at 8192 shots ties V2 (1.1 sigma) on 5.6x fewer circuits AND 5.5x fewer
-total shots, at comparable depth. At identical shots and circuits, swapping the
-Hadamard test for QPE bought 0.94 Hartree and a 10x variance reduction.
+adaptive k      Formula derived, unused. H2 and Heisenberg N=8 - V3's two worst
+                results - are both under-resolved at k=4. Cheapest gain
+                available. Caveat: MaxCut N=4 is also nominally under-resolved
+                and V3 won it, so the rule is incomplete.
+ansatz          LARGEST gain, and it favours V3. reps=1 caps at -6.1231 while
+                reps=3 reaches exact at N=4; every method in the suite is
+                fighting over the last 1-2% beneath that ceiling. Raising reps
+                multiplies M and V3's cost is flat in M. HVA underperforms as
+                implemented (p=4 -> -5.146) but its gradients used an invalid
+                shift rule for multi-term generators - a loose bound only.
+global mode     2 circuits/epoch against 2B+1, independent of M and B. Matches
+                layered accuracy where measured (H2, Heisenberg N=4), so ~60
+                circuits rather than 180. Blocked by simulator memory
+                (1+M+N qubits; 31q = 34 GB), not by the algorithm.
+||g|| magnitude Direction cosine 0.999 but norm ratio 0.55 and 2.08 across two
+                blocks of one circuit. UNEXPLAINED.
+free savings    point-energy is 1 circuit/epoch of logging the optimiser never
+                reads. W-dagger is block-diagonal in the param basis and cannot
+                change the measured marginals - removable, halving the walk's W
+                contribution to depth. Both untested.
+schedule        gamma and beta both scale with k, entangling k with step size.
+                Likely cause of the isolated dips (H2 layered k=10; Heisenberg
+                layered AND global k=20). Normalising total accumulated angle
+                would decouple them.
+drift/mixer     Untested and high-impact per ablation: zeroing the gradient
+                costs 4.32 Hartree and RANDOM drift is worse than none, so it is
+                the direction that matters. CRZ is diagonal in both registers
+                and moves no populations - it only writes phases CRX later
+                converts. Nobody has varied that mechanism.
+diagnostics     activation_rate is useless (~50% for every k and every mode).
+                normalized_entropy measures concentration, not correctness - it
+                falls monotonically with k while energy peaks then declines, so
+                "walk until concentrated" overshoots. Run-to-run VARIANCE
+                tracked quality perfectly but needs repeated runs.
 
-PRIOR ART - the concept is established, the instantiation is not obviously so.
+═══ EXTENSIONS WORTH BUILDING ═══
 
-  Jordan, PRL 95 050501 (2005), is NOT the right citation. It needs a reversible
-  arithmetic blackbox that coherently evaluates f and writes it into a register,
-  giving an exact deterministic phase. <psi(theta)|H|psi(theta)> is an
-  EXPECTATION VALUE - no such circuit exists, which is why VQE needs repeated
-  measurement at all. Jordan's single query depends on that exactness.
+The reusable primitive is more general than ground-state search: encode a
+parameter configuration into a state, measure a Hamiltonian-derived property over
+a superposition of configurations, extract coordinate-wise structure from the
+marginals. Ranked by how much machinery already exists.
 
-  Gilyen, Arunachalam & Wiebe, arXiv:1711.00465, IS the right citation and
-  covers this setting explicitly: LCU-based probability->phase oracle conversion
-  at O(log 1/eps) overhead, Jordan-style gradient on top, applied to VQE by name
-  ("the expected energy ... is mapped to the probability of some measurement
-  outcome"), with a figure for converting ground-state energy to a probability.
-  Complexity O~(sqrt(d)/eps) probability-oracle queries.
+COMPARATOR on the energy register - highest leverage, one circuit element,
+    unlocks three things at once. QPE now yields a k-bit ENERGY per vertex, so a
+    threshold test (E < t) becomes available for the first time:
+      * Grover / Durr-Hoyer minimum finding. Replace the CRX mixer with a
+        reflection about the low-energy subspace. The current walk is a weak
+        biased diffusion, NOT Grover - with an energy register it can be proper
+        amplitude amplification: ~sqrt(2^N) ~ 64 iterations per block at N=12 to
+        find the EXACT best vertex, against k=15 steps returning a weighted mean.
+      * Quantum counting -> adaptive radius. Count the fraction of vertices below
+        the current energy: many good ones means R is too small, almost none
+        means too large. Replaces R = 0.6*0.9^epoch, an arbitrary schedule
+        inherited from nisq_v2's __main__, with a measured quantity.
+      * Threshold-conditioned drift, instead of a linear gradient term.
+X-BASIS SECOND MOMENT - Re<U> ~ 1 - tau^2<H^2>/2 sits in circuits already being
+    run and discarded. Gives Var(H) per vertex free: a diagonal preconditioner
+    (what Adam's v term and the diagonal Fisher both estimate expensively), and
+    the second moment that folded-spectrum objectives need.
+OVERLAP ESTIMATION - the W-gate IS a controlled state preparation, so a Hadamard
+    test between two parameter configurations gives <psi(theta_a)|psi(theta_b)>
+    with no new machinery. Enables deflation and fidelity objectives.
 
-  Where V3 differs, and why it is not merely a worse version:
-    * no oracle conversion, no LCU, no coherent arithmetic. The Hamiltonian
-      evolution is native to the problem; the gradient comes from classical
-      marginal statistics over parameter bits.
-    * SCALING TRADE: theirs is O~(sqrt(d)/eps); V3 is O(1/eps^2) shots and
-      INDEPENDENT of d, because every component is read from the same shots.
-      V3 is cheaper whenever eps > 1/sqrt(d) - at d=48 that is eps > 0.14, and
-      cosine 0.95 was measured sufficient to reach V2 parity. Descent needs a
-      direction, not a derivative. Their algorithm is better in eps; V3 is
-      better in d, and d-dependence is what hurts VQE.
-    * depth 772 vs a construction needing coherent QFT arithmetic on the
-      parameter register.
+APPLICATION PIVOTS
 
-  STILL UNCHECKED: whether this specific shallow instantiation - parameter
-  superposition + Hamiltonian-native phase kickback + classical marginal
-  readout, no oracle conversion - is already published. The concept space is
-  mapped; this corner of it may not be.
+excited states     Cheapest and cleanest fit. Folded spectrum minimises
+    (grounded)     <(H-omega)^2> = <H^2> - 2 omega <H> + omega^2, and BOTH moments
+                   come from the same circuit - Y basis for <H>, X basis for
+                   <H^2>. Excited-state search then costs the same as
+                   ground-state search, where most VQE variants pay substantially
+                   for the second moment. With overlap estimation, deflation gives
+                   a spectrum-walking method.
+Hamiltonian        Swap what the W-gate encodes: candidate HAMILTONIAN parameters
+  learning         rather than ansatz parameters, evolve a known state, compare
+    (grounded)     against measured data. The marginal estimator then returns
+                   d(loss)/d(H coefficients). Plausibly a BETTER target than
+                   chemistry: moderate parameter counts, LOOSE precision - which
+                   is exactly the regime where V3 beats Gilyen et al., eps >
+                   1/sqrt(d) - and every quantum device needs calibrating.
+metrology          Maximise Fisher information over a parameterised probe. QFI
+  (speculative)    relates to variance, so the X-basis moment feeds it directly,
+                   and V2 already carries an unused QFIM engine.
+reservoir          Freeze the walk, inject data through the param register, train
+  computing        only a linear readout on ancilla statistics. The encoder and
+  (speculative)    nonlinear map already exist. Different goal - classification
+                   tolerates far looser precision than chemistry - so it is a
+                   spin-off, not a QLTO improvement.
 
-THREE IMPLEMENTATION BUGS found here, all caught by measurement:
-  * tau0 must be pi/(margin * ||H0||), NOT pi/(2^(k-1) * ||H0||). The aliasing
-    constraint binds the base unitary; the 2^a ancilla times resolve that turn
-    rather than relaxing it. Tell: decoded energy doubled per added ancilla.
-    NOTE nisq_v2's use_qpe_sensing path has this same error - it has never been
-    enabled, so it has never shown, but it would be wrong if switched on.
-  * ancilla bit order: read the printed register unreversed with
-    E = -2 pi phi / tau0. Verified against exact <H_sense> across all four
-    sign/order combinations; the others are 1.2-2.9x worse.
-  * qpe_margin > 1 is required. At margin=1 the extreme eigenvalues sit exactly
-    on the +-0.5 wrap boundary and states with weight near the spectrum edges
-    decode to a corrupted mean - measured 2.99 error on a state whose true
-    energy was -3.00.
+HONEST STEER: chemistry is where V3 measured WORST (H2 last of six), where
+classical methods are strongest, and where precision demands are harshest.
+Loose-precision, moderate-dimension problems are where the eps > 1/sqrt(d)
+scaling actually favours this method. If only one thing gets built, build the
+comparator - it unlocks three of the four components above, and it only became
+possible once QPE produced an energy register.
 
-UNEXPLAINED: gradient direction reaches cosine 0.999 while the norm ratio comes
-out 0.55 and 2.08 across two blocks of the same circuit. Direction is what the
-drift consumes so it may be harmless, but the scale error is unaccounted for.
+═══ NON-CLAIMS ═══
 
-─────────────────────────────────────────────────────────────────────────────
-WHAT SIMULATION HIDES: GLOBAL MODE AND ADAPTIVE DEPTH
-─────────────────────────────────────────────────────────────────────────────
+Barren plateaus: NOT addressed. V3 is a cost-function-difference estimator, the
+    class Arrasmith et al. (Quantum 5, 558) show is exponentially suppressed on a
+    plateau. Smoothing helps rugged landscapes; a plateau has nothing to smooth
+    toward.
+State preparation / Hilbert-space overlap: SIDESTEPPED, not solved. QPE here
+    estimates <H> by averaging sampled eigenvalues, so no ground-state overlap is
+    needed - but the difficulty reappears as the ansatz ceiling, where every
+    optimiser plateaus. analysis.md's "dissolves the state preparation
+    bottleneck" is not supported by this data.
+Classical computing: not eliminated. Each epoch still decodes bitstrings, bins
+    them, forms the update and sets the next radius classically. What moves into
+    the circuit is the OPTIMISER - no Adam moments, no Fisher inversion - not the
+    control loop.
 
-Two of V3's most useful configurations are cheap on hardware and painful to
-simulate, so a simulator benchmark systematically understates them.
+DIAGONAL-HAMILTONIAN RULE: a final RZ block commutes with a diagonal H, so its
+gradient is identically zero - measured ||g_exact|| = 0.00000 on MaxCut N=4's
+last block. Half of efficient_su2's blocks are Z, so a quarter of its parameters
+do nothing on those problems. Match the last block's axis to H.
 
-GLOBAL MODE (layer=False) puts all M parameters in one register: 2 circuits per
-epoch - sensing + walk - plus one optional energy readout, independent of M and
-B, against 2B+1 layered. It needs 1+M+N qubits, routine on hardware and
-exponential in memory to simulate: 21q = 34 MB at Heisenberg N=4, 31q = 34 GB at
-N=6. Measured where it fits, it matches layered accuracy at a third of the
-circuits (H2 -1.8495 @ 60 circuits vs -1.8488 @ 180; Heisenberg N=4 -5.834 @
-3/epoch vs -5.871 @ 9/epoch). Its walk depth grows as O(M^2) against layered's
-B circuits of O(N^2), so it wins on circuit count and loses on gate volume.
+═══ WHY NO QFIM ═══
 
-ADAPTIVE DEPTH via dynamic circuits - measure and reset the ancilla each walk
-step and branch on the outcome, either walking again or stopping to read the
-parameters out - is native on hardware (mid-circuit measurement and feed-forward
-are standard) and forces a simulator to give up final-state sampling for
-shot-by-shot trajectory simulation, turning one simulation into `shots` of them.
-It is the natural answer to the k_steps problem below, where the right k is
-problem-dependent and must currently be guessed in advance. NOT IMPLEMENTED, and
-with a real caveat: the obvious stopping signals do not work. See the axis map -
-entropy falls monotonically while energy peaks then declines, and
-activation_rate is pinned at ~50%. What a per-step ancilla measurement should
-key on is an open question, not a solved one.
+Every run in this project used use_fim=False, and V2 still placed best overall.
+The natural-gradient metric appears to be redundant here, and there is a
+mechanism for it rather than just an absence of benefit.
 
-─────────────────────────────────────────────────────────────────────────────
-AXIS MAP - what is settled, what is open
-─────────────────────────────────────────────────────────────────────────────
+A QFIM preconditioner exists to fix parameter-space conditioning: it rescales
+steps so that equal parameter changes produce equal STATE changes. But the walk
+never works in parameter space - it evaluates real states at the hypercube
+vertices and measures their energies. A direction that barely moves the state
+produces vertices with nearly equal energy, so the marginal difference is ~0 and
+the walk does not step that way. That is precisely what the metric would have
+prescribed, obtained for free. The walk takes many steps of its own (k_steps)
+over measured states rather than following a preconditioned route, so it does not
+need to be told which way is downhill in a rescaled coordinate system.
 
-SETTLED (measured):
-  tau           tau_scale / spectral_range(traceless H). The identity term must
-                be stripped: under a CONTROLLED evolution it becomes a relative
-                phase that attenuates the signal by cos(c*tau) and contaminates
-                it with Re<U>. LiH lost ~8x to this; at c*tau = pi/2 the signal
-                would vanish outright.
-  simulator     Choose by circuit width, not system size. These circuits are
-                narrow but maximally entangled across param<->sys, the worst
-                case for MPS: 82s vs 0.26s at 13 qubits, 316x.
-  shots         Every optimiser pays the same budget. The baselines had been
-                running on exact statevector expectations, reproducible to
-                5.6e-17, which no hardware can supply.
-  both circuits Neither is redundant. Zeroing the sensed gradient costs 4.32
-                Hartree, dropping the walk circuit costs 4.71, and random drift
-                is WORSE than no drift - so it is the direction that matters.
+Skipping it is also a real saving: the QFIM costs L circuits per epoch (measured
+count, not the old formula).
 
-OPEN, ranked by expected value:
-  ansatz        DOMINANT and barely explored. efficient_su2(reps=1) caps at
-                -6.1231 on Heisenberg N=4 against exact -6.4641; reps=3 reaches
-                exact. Both optimisers plateau within 0.05 of the ceiling, so
-                accuracy work IS ansatz work. HVA underperforms as implemented
-                (p=4 reaches only -5.146) but its gradients used an invalid shift
-                rule for multi-term generators - treat as a loose lower bound.
-  drift/mixer   Untested, and the ablation says high-impact. CRZ is diagonal in
-                both registers so it moves NO populations; it only writes phases
-                that CRX later converts into movement. The entire update rests on
-                a phase-then-interfere mechanism nobody has varied. CRY drift,
-                reordering, amplitude amplification in place of the mixer: all
-                untouched.
-  schedule      gamma = s*pi*delta_t grows with step index, so total drift and
-                total mixer angle both scale with k. That entangles k with
-                effective step size and is the likely cause of the isolated dips
-                (H2 layered at k=10; Heisenberg layered AND global at k=20).
-                Normalising so total angle is fixed - k controlling granularity
-                only - is the change that would make k behave.
-  k_steps       Problem-dependent, NOT dimension-dependent. A rule of
-                k ~ 3*params_per_walk was fitted and then refuted: global
-                searches 16 parameters and still peaks at k=10, same as layered's
-                4. It depends on the landscape, the starting point and the path.
-                Default 15; k=10 looked marginally better on Heisenberg in both
-                modes.
-  encoding      bits_per_param=1 only. Linear vs log vs Gray untested (v2 has a
-                dead mode='log' path).
-  decode rule   Weighted mean over anc=1 shots. Softmax weighting or best-vertex
-                untested.
-  diagnostics   activation_rate is USELESS: ~50% for every k and every mode,
-                because the ancilla starts in equal superposition and the energy
-                bias is first order in tau. normalized_entropy measures
-                concentration but not correctness - it falls monotonically with k
-                while energy peaks and declines, so "walk until concentrated"
-                would overshoot. Run-to-run VARIANCE tracked quality perfectly in
-                both sweeps (minimum std coincided with best energy every time)
-                but needs repeated runs, so it cannot drive a within-run rule.
-  W-dagger      Applied before measurement for faithfulness to V2, but it is
-                block-diagonal in the param basis and cannot change the measured
-                (param, anc) distribution. Should be removable, halving the
-                walk's W contribution. Untested.
-  point-energy  One circuit per epoch, logging only - the optimiser never reads
-                it. Droppable, or run every k-th epoch.
-  scale         N=8, N=12, multiple seeds. The variance argument predicts the
-                estimator is dimension-independent. That is a prediction.
+CAVEATS - and the mechanism above is NOT the reason V2's FIM did nothing.
 
-PROBLEM-DEPENDENT RULE worth remembering: for a DIAGONAL Hamiltonian (MaxCut,
-Ising) a final RZ block commutes with H and its gradient is identically zero -
-measured ||g_exact|| = 0.00000 on MaxCut N=4's last block. Half of
-efficient_su2's blocks are Z, so a quarter of its parameters do nothing on those
-problems. Match the last block's axis to the Hamiltonian's structure.
+Tested empirically: enabling use_fim in V2 does not help. The cause is V2's USE
+of the metric, not the protocol. commute_fim.py implements the block-diagonal
+QFIM correctly:
+
+    F_ij = Re<G_i G_j> - <G_i><G_j>,    F_ii = 1 - <G_i>^2   (G^2 = I for Paulis)
+
+and needs no conjugation by the future circuit, because <d_i psi|d_j psi> =
+(1/4)<phi|G_i^dag W^dag W G_j|phi> and W^dag W = I cancels - which is exactly why
+the protocol is O(L). (Physics verified here; arXiv:2505.09818's exact protocol
+not read.)
+
+V2 then departs from natural gradient three ways:
+  * DIAGONAL ONLY. commute_fim computes every within-block off-diagonal entry
+    from the SAME measurement at zero extra circuit cost, and _execute_walk calls
+    np.diag() and discards all of them.
+  * 1/sqrt(F) instead of F^-1. Natural gradient is F^-1 g; even a diagonal
+    approximation is g_i/F_ii, not g_i/sqrt(F_ii). The square root makes this
+    RMSProp-like, not natural-gradient-like.
+  * clipped to [0.1, 5.0], capping whatever effect survives.
+
+So V2 never implemented natural gradient, and "QFIM does not help" is not
+established - only that THIS usage does not. Direct evidence the proper version
+works: benchmark.py's CorrectQNG does pinv(F_block) @ g_block and WON two of
+eight problems in the fair suite, including Heisenberg N=8 at -12.1692, the best
+result any method reached there.
+
+Also note commute_fim.py's generator detection was broken until this session -
+the gate-name test labelled every generator 'Z', so each qubit's two parameters
+got identical Pauli strings. Any FIM test predating that fix used a metric built
+from duplicated operators.
+
+Two things worth doing before accepting the redundancy argument: use the full
+block (drop np.diag) with a proper block solve, and A/B use_fim on the same
+problems now that the generators are correct.
+
+Scope: bits_per_param=1, identity metric (no QFIM), single sensing ancilla for
+the walk. V2 retains the QPE multi-ancilla walk mode, the QFIM path and the
+criticality sensor.
 
 Author: Tan Jun Liang
 """
