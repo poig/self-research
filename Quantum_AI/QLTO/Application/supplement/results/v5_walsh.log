@@ -1,0 +1,32 @@
+====================================================================================
+PART 1. Walsh variance decomposition by degree (Parseval, exact)
+====================================================================================
+  fraction of Var(E) over the +-R hypercube living at each degree
+
+  --- Heisenberg N=4 ---
+    R=0.6: deg1= 0.757  deg2= 0.239  deg3= 0.004  deg4= 0.000
+    R=0.3: deg1= 0.894  deg2= 0.106  deg3= 0.000  deg4= 0.000
+
+  --- Heisenberg N=6 ---
+    R=0.6: deg1= 0.856  deg2= 0.142  deg3= 0.001  deg4= 0.000  deg5= 0.000  deg6= 0.000
+    R=0.3: deg1= 0.951  deg2= 0.049  deg3= 0.000  deg4= 0.000  deg5= 0.000  deg6= 0.000
+
+  --- H2 ---
+    R=0.6: deg1= 0.838  deg2= 0.162
+    R=0.3: deg1= 0.895  deg2= 0.105
+
+====================================================================================
+PART 2. Are the degree-2 coefficients MEASURABLE from a sensing run?
+====================================================================================
+  blk    |d1| exact  |d2| exact  |d1| meas  |d2| meas   d1 SNR   d2 SNR
+  ---------------------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/v5_walsh.py:128: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+  0          1.5261      0.3586     1.4887     0.3656    21.80     3.24
+  1          0.1505      0.0088     0.1495     0.0504     1.60     0.51
+  2          0.2997      0.4145     0.2769     0.4076     2.60     4.34
+  3          0.2098      0.5219     0.2158     0.4983     3.23     3.70
+
+  SNR = ||coefficient vector|| / per-run scatter. Degree-2 is only worth
+  wiring into the walk if its exact weight is a real fraction of degree-1
+  AND its SNR at 8192 shots is above ~1.

@@ -156,7 +156,14 @@ class CommutingBlockFIM:
                 for j_local, p_j in enumerate(indices):
                     if i_local == j_local:
                         exp_i = vals[('single', i_local)]
-                        fim_matrix[p_i, p_j] = 1.0 - exp_i**2
+                        # 1 - <G>^2 is a variance and cannot be negative, but a
+                        # SAMPLED <G> can land just above 1 and make it so. That
+                        # then reaches nisq_v2's 1/sqrt(g_ii) and yields NaN,
+                        # which surfaces as TranspilerError 'Binding to NaN'.
+                        # It fires near convergence, exactly when parameters
+                        # saturate and <G> -> +-1 so the variance -> 0. Latent
+                        # until the estimators were given a finite shot budget.
+                        fim_matrix[p_i, p_j] = max(0.0, 1.0 - float(np.real(exp_i))**2)
                     else:
                         i, j = sorted((i_local, j_local))
                         exp_prod = vals[('pair', i, j)]

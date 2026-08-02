@@ -1,0 +1,70 @@
+====================================================================================
+Signal attenuation vs block width - polynomial or exponential?
+====================================================================================
+  R=0.6, 400 smearing samples, ratio is per-coordinate normalised
+  so that growing n does not inflate the norm by dimension alone.
+
+  --- Heisenberg N=4 (M=16) ---
+     n  |g_sm|/sqrt(n)  |g_ex|/sqrt(n)    ratio
+  ---------------------------------------------
+     1                                   0.9411
+     2                                   0.9042
+     4                                   0.7810
+     6                                   0.7268
+     8                                   0.7067
+    12                                   0.5671
+    16                                   0.4331
+  polynomial fit  ratio ~ 1.048 * n^(-0.251)   residual 0.2718
+  exponential fit ratio ~ 0.991 * 0.9518^n   residual 0.0880
+  -> EXPONENTIAL fits better
+  cost ~ (M/n)*exp(2*cR2*n) with cR2=0.0494
+  -> optimal block width n* = 1/(2*cR2) = 10.1   (M=16, so n*/M = 0.63)
+  -> circuits per gradient at n*: M/n* = 1.58
+     n*/M roughly CONSTANT across sizes => circuits/gradient is
+     constant and the advantage GROWS with M.
+     n* roughly constant across sizes => the advantage is a fixed
+     factor. Compare this row against the other problem sizes.
+
+  --- Heisenberg N=6 (M=24) ---
+     n  |g_sm|/sqrt(n)  |g_ex|/sqrt(n)    ratio
+  ---------------------------------------------
+     1                                   0.9411
+     2                                   0.8959
+     4                                   0.7811
+     6                                   0.7254
+     8                                   0.6970
+    12                                   0.6613
+    16                                   0.5703
+    24                                   0.4416
+  polynomial fit  ratio ~ 1.025 * n^(-0.215)   residual 0.2193
+  exponential fit ratio ~ 0.922 * 0.9697^n   residual 0.1059
+  -> EXPONENTIAL fits better
+  cost ~ (M/n)*exp(2*cR2*n) with cR2=0.0308
+  -> optimal block width n* = 1/(2*cR2) = 16.3   (M=24, so n*/M = 0.68)
+  -> circuits per gradient at n*: M/n* = 1.48
+     n*/M roughly CONSTANT across sizes => circuits/gradient is
+     constant and the advantage GROWS with M.
+     n* roughly constant across sizes => the advantage is a fixed
+     factor. Compare this row against the other problem sizes.
+
+  --- Heisenberg N=8 (M=32) ---
+     n  |g_sm|/sqrt(n)  |g_ex|/sqrt(n)    ratio
+  ---------------------------------------------
+     1                                   0.9411
+     2                                   0.9609
+     4                                   0.8458
+     8                                   0.8341
+    12                                   0.7699
+    16                                   0.7384
+    24                                   0.5398
+    32                                   0.4500
+  polynomial fit  ratio ~ 1.079 * n^(-0.189)   residual 0.3643
+  exponential fit ratio ~ 0.992 * 0.9764^n   residual 0.1268
+  -> EXPONENTIAL fits better
+  cost ~ (M/n)*exp(2*cR2*n) with cR2=0.0239
+  -> optimal block width n* = 1/(2*cR2) = 20.9   (M=32, so n*/M = 0.65)
+  -> circuits per gradient at n*: M/n* = 1.53
+     n*/M roughly CONSTANT across sizes => circuits/gradient is
+     constant and the advantage GROWS with M.
+     n* roughly constant across sizes => the advantage is a fixed
+     factor. Compare this row against the other problem sizes.

@@ -23,6 +23,8 @@ from qiskit.circuit.library import efficient_su2
 from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer import AerSimulator
 from qiskit.primitives import StatevectorEstimator as Estimator
+from qiskit.primitives import BackendEstimatorV2
+from qiskit_aer import AerSimulator
 
 # Import Efficient Engines
 import sys
@@ -40,18 +42,84 @@ RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results'
 # 5.6e-17 over repeated runs. That is a noiseless gradient no hardware can
 # supply, and it flattered every shot-free method on accuracy for free.
 #
-# Estimator precision is the standard error of the returned expectation value,
-# so 1/sqrt(SHOTS) is the matching setting. Set SHOTS = None to restore exact
-# expectations (useful for isolating optimizer behaviour from sampling noise).
+# THE ABOVE FIX WAS INCOMPLETE AND THE REASONING ON THIS LINE WAS WRONG.
+# "precision is the standard error, so 1/sqrt(SHOTS) is the matching setting" is
+# only true when Var(H) = 1. StatevectorEstimator(default_precision=p) returns the
+# EXACT expectation plus Gaussian noise of std p; it never samples, so it is blind
+# to both Var(H) and the number of measurement settings. Verified empirically
+# (supplement/results/audit_benchmark.log): std/p = 0.95, 1.02, 1.02 over p spanning 18x
+# while Var(H) = 12.03.
+#
+# A real device reaching standard error sigma needs G * sum_g Var(H_g) / sigma^2
+# shots, so the EFFECTIVE budget the baselines were handed was:
+#
+#     problem          G   Var(H)   eff shots   vs the 8192 claimed
+#     H2               2    0.185        3059   0.37x
+#     LiH              3    0.159        3995   0.49x
+#     MaxCut N=4       1    0.766        6278   0.77x
+#     MaxCut N=6       1    3.977       32580      4x
+#     Heisenberg N=4   3    8.315      191331     23x
+#     Heisenberg N=6   3   14.110      351902     43x
+#     Heisenberg N=8   3   21.241      464701     57x
+#
+# Problem-dependent, because Var(H) is large for unit-coefficient spin sums and
+# tiny for the molecules. It was near-honest on H2/LiH/MaxCut and wildly generous
+# on Heisenberg - which is exactly where V3 lost (N=4 to V2 at 23x, N=8 to QNG at
+# 57x) and where its one clear win happened DESPITE 43x. V3 was never subsidised:
+# its sensing calls backend.run(qc, shots=shot_budget) on a real simulator. V2 was,
+# via BaseEstimator(precision=PRECISION), so the V2-vs-V3 comparisons are the ones
+# most affected.
+#
+# BackendEstimatorV2 on AerSimulator actually samples, allocating 1/precision^2
+# shots PER commuting group. Same nominal budget, real noise: measured std 0.03794
+# against the old 0.01105 on Heisenberg N=4, and 0.00384 on H2 where real sampling
+# is BETTER than the fixed noise was.
 SHOTS = 8192
 PRECISION = (1.0 / np.sqrt(SHOTS)) if SHOTS else 0.0
 
 
 def make_estimator():
-    """StatevectorEstimator honouring the shared shot budget."""
+    """Genuinely shot-based estimator honouring the shared budget.
+
+    Costs real time - it simulates G circuits of SHOTS shots per expectation
+    value instead of adding a number to an exact result - which is the point.
+    """
     if SHOTS:
-        return Estimator(default_precision=PRECISION)
+        return BackendEstimatorV2(backend=AerSimulator(),
+                                  options={'default_precision': PRECISION})
     return Estimator()
+
+
+# Reporting is NOT part of any optimizer's cost, so it must be identical and
+# noiseless for every method. It was neither: energies were logged through
+# `opt.estimator`, which is exact for V3 (AerEstimator, no precision set),
+# fixed-noise for V2, and - once make_estimator started really sampling - shot-
+# noisy for the baselines. E_best is a min over epochs, so reporting noise biases
+# it LOW, handing whichever method had the noisiest logging a free advantage on
+# exactly the column the RESULT table ranks by.
+REPORT_ESTIMATOR = Estimator()
+
+
+def report_energy(ansatz, hamiltonian, params):
+    """Exact energy for logging, same path for every optimizer."""
+    job = REPORT_ESTIMATOR.run([(ansatz.assign_parameters(params), hamiltonian)])
+    return float(job.result()[0].data.evs)
+
+
+def pauli_groups(hamiltonian):
+    """Measurement settings <H> needs, hence circuits per energy evaluation.
+
+    Every baseline bills one energy evaluation as one circuit, but a Pauli sum
+    needs one circuit per qubit-wise-commuting group. QLTO V3 genuinely needs
+    one: it measures the param and ancilla registers in the computational basis
+    and takes the energy from the PHASE of exp(-iHt), so this returns 1 for it
+    regardless of H. That asymmetry is the whole structural cost argument, and
+    leaving it uncounted understated V3 by 3x on every Heisenberg problem.
+    """
+    try:
+        return max(1, len(hamiltonian.group_commuting(qubit_wise=True)))
+    except Exception:
+        return 1
 
 
 # One tuned hyperparameter per optimizer, shared by every problem.
@@ -959,7 +1027,7 @@ def run_benchmark(save=True):
     # Using p=3 layers for better QAOA performance (p=2 is often insufficient)
     # QLTO Coherent uses k_step=20 for better convergence (depth scales with k, NOT NEFV)
     # k_step=15 rather than the previous arbitrary 20. Swept over k in
-    # {1,3,5,10,15,20,30} x 3 seeds (results/k_sweep.log): the walk needs a
+    # {1,3,5,10,15,20,30} x 3 seeds (supplement/results/k_sweep.log): the walk needs a
     # minimum number of steps to concentrate the corner distribution, and that
     # minimum scales with parameters-per-walk, not with problem size --
     #   2 params/block  -> k ~ 3     (H2 layered)
@@ -1022,6 +1090,7 @@ def run_benchmark(save=True):
                     if opt is None:
                         print(f"    Skipped (not available)")
                         continue
+                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
                     # Better QAOA initialization
                     p = opt.p_layers
                     gammas = np.linspace(0.3, 0.6, p) * np.pi
@@ -1037,6 +1106,7 @@ def run_benchmark(save=True):
                     if opt is None:
                         print(f"    Skipped (not available)")
                         continue
+                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
                 except Exception as e:
                     print(f"    Failed to init {name}: {e}")
                     continue
@@ -1067,21 +1137,18 @@ def run_benchmark(save=True):
                     else:
                         eval_ansatz = ansatz
                     
-                    # Handle different estimator types (V2 vs V1/wrapper)
-                    if hasattr(opt, 'estimator'):
-                        # V2 Style
-                        job = opt.estimator.run([(eval_ansatz.assign_parameters(params), H)])
-                        E = float(job.result()[0].data.evs)
-                    else:
-                        # Fallback
-                        E = 0.0
-                    
+                    # Exact, and the SAME path for every optimizer - see
+                    # REPORT_ESTIMATOR.
+                    E = report_energy(eval_ansatz, H, params)
+
+
                     history_energy.append(E)
-                    history_nefv.append(opt.nefv)
-                    
+                    history_nefv.append(optimizer_circuits(opt))
+
                     if epoch % 5 == 0 or epoch == max_epochs - 1:
                         depth_str = f" | Depth={circuit_depth}" if circuit_depth > 0 else ""
-                        print(f"    Ep {epoch}: E={E:.4f} | NEFV={opt.nefv}{depth_str}")
+                        print(f"    Ep {epoch}: E={E:.4f} | "
+                              f"circuits={optimizer_circuits(opt)}{depth_str}")
                         
                 except Exception as e:
                     print(f"    Error at epoch {epoch}: {e}")
@@ -1222,7 +1289,14 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
     
     optimizers_def = {
         'QLTO V3 QPE (k=4)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=4),
-        'QLTO V3 (Hadamard)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=1),
+        # 'QLTO V3 (Hadamard)' REMOVED from the stats suite. Not hidden - it is
+        # documented as strictly inferior and the reason is measured: the k=1
+        # path loses on shots (1.91x worse than fairly-charged parameter-shift,
+        # supplement/results/v4_cost2.log) because of its 1/tau^2 variance, and it
+        # carries an irreducible sin() bias that no shot budget or product formula
+        # removes. QPE is the recommended configuration; running both costs ~1/7
+        # of the suite's wall clock to re-confirm a settled negative.
+        # Re-enable by uncommenting - the TUNED entry and factory row are intact.
         'QLTO V2 (engine-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
         'QAOA': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
@@ -1255,6 +1329,12 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
                 
                 try:
                     opt = opt_factory(ansatz, H, sim_backend)
+                    # Stamp circuits-per-energy-evaluation HERE rather than in the
+                    # factory: run_benchmark and run_benchmark_with_stats each
+                    # carry their OWN optimizers_def, so stamping in
+                    # _optimizer_factories() reached only the tuning path and left
+                    # both measurement paths undercounting by G.
+                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
                     # QAOA uses its own param count
                     if 'QAOA' in name:
                         params = np.random.uniform(0, 2*np.pi, opt.n_params)
@@ -1279,11 +1359,9 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
                 for epoch in range(max_epochs):
                     try:
                         params = opt.step(params)
-                        # Eval (simplified)
-                        job = opt.estimator.run([(eval_ansatz.assign_parameters(params), H)])
-                        E = float(job.result()[0].data.evs)
+                        E = report_energy(eval_ansatz, H, params)
                         trial_energies.append(E)
-                        trial_nefv.append(opt.nefv)
+                        trial_nefv.append(optimizer_circuits(opt))
                     except Exception: break
                 
                 if trial_energies:
@@ -1430,15 +1508,33 @@ def tune_all(trials=2, epochs=20):
     print("}")
 
 
+def _mult(opt, m):
+    """Stamp circuits-per-energy-evaluation onto a freshly built optimizer.
+
+    Every estimator-driven method bills one expectation value as one circuit, but
+    a Pauli sum needs one circuit per qubit-wise-commuting group. V3 needs exactly
+    one whatever H looks like, because its energy comes from the PHASE of
+    exp(-iHt) rather than from measuring Pauli terms - so it gets 1 and the rest
+    get G. Uncounted, this understated V3 by 3x on every Heisenberg problem.
+    """
+    opt.circuit_multiplier = int(m)
+    return opt
+
+
+def optimizer_circuits(opt):
+    """Honest circuit count: energy evaluations times measurement settings."""
+    return int(getattr(opt, 'nefv', 0)) * int(getattr(opt, 'circuit_multiplier', 1))
+
+
 def _optimizer_factories():
     return {
-        'QLTO V3 QPE (k=4)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=4),
-        'QLTO V3 (Hadamard)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1),
-        'QLTO V2 (engine-grad)': lambda a, h, b: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False),
-        'QAOA': lambda a, h, b: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
-        'Correct QNG': lambda a, h, b: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
-        'AdamW': lambda a, h, b: AdamW(a, h, lr=TUNED['AdamW']),
-        'SPSA': lambda a, h, b: SPSA(a, h, lr=TUNED['SPSA']),
+        'QLTO V3 QPE (k=4)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=4), 1),
+        'QLTO V3 (Hadamard)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1), 1),
+        'QLTO V2 (engine-grad)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False), pauli_groups(h)),
+        'QAOA': lambda a, h, b: _mult(QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20), pauli_groups(h)),
+        'Correct QNG': lambda a, h, b: _mult(CorrectQNG(a, h, lr=TUNED['Correct QNG']), pauli_groups(h)),
+        'AdamW': lambda a, h, b: _mult(AdamW(a, h, lr=TUNED['AdamW']), pauli_groups(h)),
+        'SPSA': lambda a, h, b: _mult(SPSA(a, h, lr=TUNED['SPSA']), pauli_groups(h)),
     }
 
 

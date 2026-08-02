@@ -1,0 +1,27 @@
+============================================================================================
+V4 CANDIDATES: gradient fidelity vs cost   (target = R-smeared gradient)
+============================================================================================
+  ||g_smeared|| = 2.6275 over 4 blocks, 65536 shots, 3 repeats
+
+  candidate                  bias    noise   depth  circ  bias*depth
+  ------------------------------------------------------------------
+  had lie r=1              0.1088   0.0858      42     1         4.6
+  had lie r=2  SHIP        0.0732   0.0754      75     1         5.5
+  had lie r=4              0.0591   0.0587     141     1         8.3
+  had lie r=8              0.0934   0.0641     273     1        25.5
+  had suzuki2 r=1          0.0879   0.0532      74     1         6.5
+  had richardson 1,2       0.1108   0.1568      75     2         8.3
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/v4_candidates.py:120: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+  qpe x1      SHIP         0.1828   0.0330     484     1        88.5
+  qpe x2                   0.1157   0.0287     979     1       113.3
+  qpe x4                   0.0609   0.0319    1969     1       119.8
+  qpe x8                   0.0472   0.0318    3949     1       186.2
+  qpe suzuki2 x1           0.0558   0.0359     991     1        55.3
+  qpe richardson 1,2       0.0594   0.0745     979     2        58.1
+
+  lowest bias      : qpe x8 (0.0472)
+  best bias*depth  : had lie r=1 (4.6)
+
+  Richardson is only worth it if its bias drop beats its ~2.24x noise
+  amplification AND it beats simply raising reps at equal depth.

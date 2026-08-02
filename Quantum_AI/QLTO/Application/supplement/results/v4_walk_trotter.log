@@ -1,0 +1,24 @@
+==================================================================================
+Walk product formula A/B.  k=15, dt=0.3 (t=0.942), R=0.6, 6 seeds
+==================================================================================
+  synthesis            E mean      std    E best   depth
+  ------------------------------------------------------
+  lie   r=1  SHIP     -2.6522   0.9800   -4.3393     162
+  lie   r=2           -2.5698   1.0516   -4.3385     195
+  lie   r=4           -2.5764   1.0149   -4.3523     261
+  lie   r=8           -2.6391   1.0460   -4.4836     393
+  suz2  r=1           -2.5128   1.0498   -4.3398     194
+  suz2  r=2           -2.5886   1.0513   -4.3947     259
+  suz2  r=4           -2.5553   1.0735   -4.4139     389
+
+  shipping mean -2.6522 at depth 162
+  lie   r=2      : +0.0825 (0.1 sigma), depth x1.2
+  lie   r=4      : +0.0759 (0.1 sigma), depth x1.6
+  lie   r=8      : +0.0131 (0.0 sigma), depth x2.4
+  suz2  r=1      : +0.1395 (0.2 sigma), depth x1.2
+  suz2  r=2      : +0.0637 (0.1 sigma), depth x1.6
+  suz2  r=4      : +0.0969 (0.2 sigma), depth x2.4
+
+  If none of these move the energy, the walk is INSENSITIVE to its own
+  Trotter error - the drift only needs the right ordering of vertex
+  energies, not their exact values, and reps=1 is already correct.

@@ -1,0 +1,38 @@
+========================================================================================
+1a. StatevectorEstimator(default_precision=p) semantics
+========================================================================================
+  precision=0.011049 -> measured std 0.010491   ratio std/precision = 0.950
+  precision=0.050000 -> measured std 0.050812   ratio std/precision = 1.016
+  precision=0.200000 -> measured std 0.204664   ratio std/precision = 1.023
+  Var(H) at this point = 12.0278
+  If std == precision for every p, the estimator ADDS FIXED NOISE and is
+  blind to Var(H) - it is not simulating shots.
+
+========================================================================================
+1b/2. Per-problem: effective shots the baselines receive, and G
+========================================================================================
+  nominal SHOTS = 8192, PRECISION = 0.011049
+
+  problem            terms    G    Var(H)   G*sumVar   eff shots   subsidy  circ x
+  --------------------------------------------------------------------------------
+  H2                     5    2     0.185      0.373        3059        0x      2x
+  LiH                   15    3     0.159      0.488        3995        0x      3x
+  Heisenberg N=4         9    3     8.315     23.356      191331       23x      3x
+  Heisenberg N=6        15    3    14.110     42.957      351902       43x      3x
+  Heisenberg N=8        21    3    21.241     56.726      464701       57x      3x
+  MaxCut N=4             4    1     0.766      0.766        6278        1x      1x
+  MaxCut N=6            11    1     3.977      3.977       32580        4x      1x
+
+  eff shots = G * sum_g Var(H_g) / PRECISION^2 : what a real device needs
+  to deliver the standard error the baselines are being GIVEN for free.
+  subsidy = that, over the 8192 the benchmark claims to be enforcing.
+  circ x  = factor by which baseline circuit counts are UNDERCOUNTED.
+
+  subsidy range 0x - 57x, median 4x
+  G range 1 - 3
+
+  DIRECTION OF BIAS: both defects flatter the BASELINES and penalise V3,
+  which samples real shots and needs one setting. Fixing them can only
+  improve V3's standing, so the published 180-vs-320-1360 comparison is
+  CONSERVATIVE, not inflated. V2 sits on the subsidised path, so the
+  V2-vs-V3 comparisons in RESULT are the ones actually at risk.

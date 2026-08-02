@@ -1,0 +1,8 @@
+
+===== Heisenberg N=4 | exact -6.4641 | 12 seeds, PAIRED =====
+  CRZ+CRX  mean -6.0242  std 0.0485
+  merged   mean -6.0274  std 0.0460
+  paired difference (merged - base): -0.0032 +- 0.0101  (0.3 sigma)
+  merged better on 7/12 seeds   [2005s]
+
+===== Heisenberg N=6 | exact -9.9743 | 12 seeds, PAIRED =====

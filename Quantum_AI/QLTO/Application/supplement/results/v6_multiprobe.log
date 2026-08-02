@@ -1,0 +1,18 @@
+==================================================================================
+Multi-probe Hamiltonian learning, TOTAL SHOTS PER EPOCH HELD FIXED
+==================================================================================
+  5 coefficients, c_true = [ 0.8  -0.55  0.35  0.6  -0.4 ]
+  probes available: [('x', 1.0), ('mix', 1.0), ('x', 2.0), ('y', 1.5)]
+  16384 shots/epoch split across P probes, 40 epochs, 4 seeds
+
+    P  shots/probe  circuits/ep   max |err|   rms |err|  worst seed
+  -----------------------------------------------------------------
+    1        16384            1      0.0364      0.0296      0.0618
+    2         8192            2      0.0287      0.0285      0.0561
+    3         5461            3      0.0216      0.0183      0.0365
+    4         4096            4      0.0180      0.0170      0.0407
+
+  If P=1 is already as good, one probe suffices and the parallel-register
+  construction is unnecessary. If error falls with P at FIXED total shots,
+  probe diversity is doing real work and the parallel version is worth
+  building - it would deliver the same P gradients in ONE circuit.

@@ -1,0 +1,32 @@
+
+===== Heisenberg N=4 | exact -6.4641 | 4 seeds, 20 epochs, k=15 =====
+  deg2 gain       E_best   E_final     std     SEM   depth   time
+  ---------------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/v5_deg2walk.py:60: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+  0.0  (V3)      -5.9123   -5.8985  0.0595  0.0297     536   162s
+  0.25           -5.9550   -5.9044  0.0583  0.0292     536   167s
+  0.5            -5.8124   -5.7706  0.2780  0.1390     536   126s
+  1.0            -5.8087   -5.8076  0.1804  0.0902     536   127s
+  2.0            -5.6757   -5.6529  0.2660  0.1330     536   143s
+
+  vs gain=0 (E_final, negative = degree-2 helps):
+    gain=0.25 -0.0059  (0.1 sigma)
+    gain=0.5  +0.1280  (0.9 sigma)
+    gain=1.0  +0.0909  (1.0 sigma)
+    gain=2.0  +0.2456  (1.8 sigma)
+
+===== Heisenberg N=6 | exact -9.9743 | 4 seeds, 20 epochs, k=15 =====
+  deg2 gain       E_best   E_final     std     SEM   depth   time
+  ---------------------------------------------------------------
+  0.0  (V3)      -8.6304   -8.5061  0.5878  0.2939     920   166s
+  0.25           -8.6780   -8.6540  0.3942  0.1971     920   204s
+  0.5            -8.5846   -8.5803  0.5916  0.2958     920   183s
+  1.0            -8.0747   -8.0340  0.7184  0.3592     920   184s
+  2.0            -6.6158   -6.6121  1.3964  0.6982     920   181s
+
+  vs gain=0 (E_final, negative = degree-2 helps):
+    gain=0.25 -0.1479  (0.4 sigma)
+    gain=0.5  -0.0742  (0.2 sigma)
+    gain=1.0  +0.4721  (1.0 sigma)
+    gain=2.0  +1.8940  (2.5 sigma)

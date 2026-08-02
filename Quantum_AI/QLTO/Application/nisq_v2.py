@@ -638,7 +638,9 @@ class RiemannianQLTO:
             for i in range(n_active):
                 g_ii = metric_local[i]
                 grad_i = grad_local[i]
-                ng_scale = np.clip(1.0 / (np.sqrt(g_ii) + 1e-6), 0.1, 5.0)
+                # max(g_ii, 0) belt-and-braces: a sampled FIM diagonal can go
+                # slightly negative and sqrt() would return NaN.
+                ng_scale = np.clip(1.0 / (np.sqrt(max(g_ii, 0.0)) + 1e-6), 0.1, 5.0)
                 scaled_grad = grad_i * ng_scale
                 
                 for b in range(self.bits_per_param):
@@ -667,7 +669,7 @@ class RiemannianQLTO:
             # OPTIMIZATION: Use individual CRX gates instead of grouped control
             for i in range(n_active):
                 g_ii = metric_local[i]
-                scale = np.clip(1.0 / (np.sqrt(g_ii) + 1e-6), 0.1, 5.0)
+                scale = np.clip(1.0 / (np.sqrt(max(g_ii, 0.0)) + 1e-6), 0.1, 5.0)
                 
                 for b in range(self.bits_per_param):
                     q_idx = i * self.bits_per_param + b

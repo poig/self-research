@@ -1,0 +1,31 @@
+======================================================================================
+Does the growing advantage survive DENSE coupling? (T10 stress test)
+======================================================================================
+
+  ===== Heisenberg  (1D, degree 2) =====
+    N    M  terms     cR^2   cR^2*N      n*   n*/M   M/n*
+  -------------------------------------------------------
+    4   16      9   0.0495   0.1978    10.1   0.63   1.58
+    6   24     15   0.0312   0.1874    16.0   0.67   1.50
+    8   32     21   0.0239   0.1911    20.9   0.65   1.53
+
+  ===== Frustrated  (all-to-all) =====
+    N    M  terms     cR^2   cR^2*N      n*   n*/M   M/n*
+  -------------------------------------------------------
+    4   16     10   0.0350   0.1401    14.3   0.89   1.12
+    6   24     21   0.0293   0.1758    17.1   0.71   1.41
+    8   32     36   0.0211   0.1688    23.7   0.74   1.35
+
+======================================================================================
+VERDICT
+======================================================================================
+  Heisenberg  (1D, degree 2)
+    spread of cR^2   across N:  30.8%
+    spread of cR^2*N across N:   2.2%
+    -> cR^2 ~ 1/N. n* scales with M, circuits/gradient constant,
+       ADVANTAGE GROWS WITH M.
+  Frustrated  (all-to-all)
+    spread of cR^2   across N:  20.1%
+    spread of cR^2*N across N:   9.6%
+    -> cR^2 ~ 1/N. n* scales with M, circuits/gradient constant,
+       ADVANTAGE GROWS WITH M.

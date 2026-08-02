@@ -1,0 +1,18 @@
+======================================================================================
+Multi-scale gradient from ONE multi-bit circuit
+======================================================================================
+  Heisenberg N=4, block of 4 params, 2 bits each (2^8 = 256 vertices), 3 centres
+
+        R   ratio w0/w1   (exact 2 if linear)  cos(w0,g)  cos(w1,g)  |w1/(R/2)|/|g|
+  ---------------------------------------------------------------------------------
+     0.20        2.0203                          0.99981    0.99981          0.9530
+     0.40        2.0857                          0.99700    0.99700          0.8253
+     0.60        2.2116                          0.98509    0.98509          0.6505
+     1.00        2.8508                          0.88203    0.88203          0.3027
+     1.50       15.1368                          0.36572    0.36572          0.0312
+
+  ratio -> 2.0 at small R and drifting at large R means the coarse/fine
+  disagreement IS a usable nonlinearity signal, available from the same
+  shots that already produce the gradient.
+  cos(w1,g) > cos(w0,g) means the fine bit tracks the true gradient
+  direction better - the bias half of the bias-variance dial.

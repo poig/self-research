@@ -1,0 +1,36 @@
+============================================================================================
+Gradient bias by reps schedule, PER PROBLEM (the metric the algorithm uses)
+============================================================================================
+
+  --- H2 | ||H0||=0.827  tau0=1.898  top t=15.19 ---
+  schedule                             bias      cos   depth
+  ----------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/supplement/v13_repschedule.py:73: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+  lie  reps=2^a      (pre-fix)       0.6627   0.8652     162
+  suz2 reps=2^a/2    (SHIPPED)       0.3436   0.9629     134
+  suz2 reps=2^a                      0.0541   0.9986     239
+  suz2 step<=0.5     (bounded)       0.0600   0.9982     899
+  suz2 step<=0.25    (bounded)       0.0764   0.9971    1754
+
+  --- Heisenberg N=4 | ||H0||=6.464  tau0=0.243  top t=1.94 ---
+  schedule                             bias      cos   depth
+  ----------------------------------------------------------
+  lie  reps=2^a      (pre-fix)       0.0673   0.9984     484
+  suz2 reps=2^a/2    (SHIPPED)       0.0437   0.9993     536
+  suz2 reps=2^a                      0.0357   0.9994     991
+  suz2 step<=0.5     (bounded)       0.0561   0.9987     536
+  suz2 step<=0.25    (bounded)       0.0300   0.9996     991
+
+  --- MaxCut N=4 | ||H0||=1.625  tau0=0.967  top t=7.73 ---
+  schedule                             bias      cos   depth
+  ----------------------------------------------------------
+  lie  reps=2^a      (pre-fix)       0.0388   0.9993     119
+  suz2 reps=2^a/2    (SHIPPED)       0.0336   0.9995      88
+  suz2 reps=2^a                      0.0366   0.9993     151
+  suz2 step<=0.5     (bounded)       0.0401   0.9993     286
+  suz2 step<=0.25    (bounded)       0.0436   0.9992     547
+
+  A step-bounded schedule adapts reps to ||H0|| automatically, which is
+  what the shipped 2^a/2 rule fails to do: it fixes the REP COUNT and lets
+  the STEP float with tau0 = pi/(margin ||H0||).

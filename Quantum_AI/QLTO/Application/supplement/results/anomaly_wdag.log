@@ -1,0 +1,40 @@
+===============================================================================
+A. ||g|| anomaly - is the R-smeared gradient the right reference?
+===============================================================================
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+
+  --- Hadamard sensing, R=0.6 ---
+  blk  axis     |g_ex|   |g_sm|  |g_sens|  sens/ex  sens/sm  cos_ex  cos_sm
+  -------------------------------------------------------------------------
+  0    Y        3.2010   2.5353    2.4836    0.776    0.980   1.000   0.999
+  1    Z        0.2686   0.2505    0.3132    1.166    1.250   0.988   0.986
+  2    Y        0.6173   0.5265    0.3425    0.555    0.651   0.969   0.978
+  3    Z        0.4503   0.3610    0.3742    0.831    1.037   0.976   0.963
+  spread of sens/ex : 0.555 - 1.166   (ratio 2.10x)
+  spread of sens/sm : 0.651 - 1.250   (ratio 1.92x)
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+
+  --- QPE k=4 sensing, R=0.6 ---
+  blk  axis     |g_ex|   |g_sm|  |g_sens|  sens/ex  sens/sm  cos_ex  cos_sm
+  -------------------------------------------------------------------------
+  0    Y        3.2010   2.5353    2.4337    0.760    0.960   0.992   0.998
+  1    Z        0.2686   0.2505    0.5451    2.029    2.176   0.995   0.995
+  2    Y        0.6173   0.5265    0.3942    0.639    0.749   0.927   0.946
+  3    Z        0.4503   0.3610    0.6437    1.430    1.783   0.962   0.958
+  spread of sens/ex : 0.639 - 2.029   (ratio 3.18x)
+  spread of sens/sm : 0.749 - 2.176   (ratio 2.91x)
+
+===============================================================================
+B. W-dagger removal - does it change the measured distribution?
+===============================================================================
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+
+  blk    depth W+Wd  depth noWd     -%  gates W+Wd  gates noWd      TVD  |dparam|
+  -----------------------------------------------------------------------------
+  0             162         162     0%         210         191   0.0103   0.00518
+  1             161         161     0%         202         187   0.0108   0.00719
+  2             164         162     1%         210         191   0.0106   0.00531
+  3             164         162     1%         206         191   0.0108   0.00652
+
+  shot-noise floor (same circuit, seeds 7 vs 99): TVD = 0.0457
+  => a TVD at or below this floor means W-dagger changes nothing.

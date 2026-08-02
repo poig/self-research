@@ -1,0 +1,23 @@
+========================================================================================
+QPE sensing frontier: reps schedule = 2^a / div, k=4
+========================================================================================
+  ||g_sm||=2.6275  blocks ['2.54', '0.25', '0.50', '0.35']  65536 shots x 4
+
+  candidate            bias    noise   depth    blk0    blk1    blk2    blk3
+  --------------------------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/v4_frontier.py:75: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/v4_frontier.py:75: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+  lie   /1  SHIP     0.1891   0.0331     484   0.972   2.159   0.877   1.786
+  lie   /2           0.3305   0.0372     253   0.841   2.798   0.800   2.053
+  suz2  /8           0.1960   0.0402     276   0.834   1.118   0.747   0.821
+  suz2  /4           0.1853   0.0408     341   0.891   1.282   1.010   0.894
+  suz2  /2           0.0669   0.0298     536   0.968   1.145   0.931   0.942
+  suz2  /1           0.0415   0.0320     991   0.992   0.980   0.996   0.992
+  suz4  /8           0.0671   0.0327    1316   0.987   1.207   1.063   1.198
+  suz4  /4           0.0406   0.0341    1641   0.988   1.097   1.011   1.057
+
+  shipping: bias 0.1891 at depth 484
+  strictly better than shipping (lower bias AND depth <= shipping):
+    suz2  /4        bias 0.1853 (1.0x better), depth 341
