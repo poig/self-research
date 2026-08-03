@@ -1,0 +1,32 @@
+============================================================================================
+CHEMISTRY SCALING — measured T and G for a JW electronic-structure Hamiltonian
+============================================================================================
+  Pauli strings generated from the JW structure; coefficients are irrelevant
+  to both the term count and the qubit-wise-commuting grouping.
+
+     N   T terms  G groups     T/G    T/N^4    G/N^3
+  --------------------------------------------------
+     6       171        75    2.28    0.132    0.347
+     8       652       259    2.52    0.159    0.506
+    10      1825       656    2.78    0.182    0.656
+    12      4170      1420    2.94    0.201    0.822
+
+  fitted exponents:   T ~ N^4.61    G ~ N^4.24    T/G ~ N^0.37
+  claimed:            T ~ N^4.00    G ~ N^3.00    T/G ~ N^1.00
+
+============================================================================================
+WHAT THAT DOES TO THE V3 / V4 CHOICE, using MEASURED G
+============================================================================================
+  V3: 3 circuits/epoch, depth ~ Sigma_a r_a * T * 16 gates (kappa=3 -> Sigma=4)
+  V4: (G+2) circuits/epoch, depth ~ ansatz
+
+     N        T       G   V3 depth    V3 dur  V3 $/epoch  V4 $/epoch   winner
+  ----------------------------------------------------------------------------
+     6      171      75      10944      766us        20.0       126.9       V3
+     8      652     259      41728     2921us        62.3       430.4       V3
+    10     1825     656     116800     8176us       165.7      1085.6       V3
+    12     4170    1420     266880    18682us       372.2      2347.4       V3
+
+  The crossover here is the whole chemistry case. If V3 loses at every N
+  the THC build is what rescues it - depth Theta(T) -> Theta(N^2) - and if
+  V3 already wins, the build is unnecessary and the priority is wrong.

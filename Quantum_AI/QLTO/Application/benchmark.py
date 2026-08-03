@@ -152,15 +152,15 @@ def pauli_groups(hamiltonian):
 # real. QNG / V3-Hadamard / V3-QPE / AdamW are therefore one tied band.
 #
 # What tuning changed, and why it mattered: AdamW moved 0.0463 -> 0.0306 (lr
-# 0.1 -> 0.5) and V2 moved 0.0236 -> 0.0234 (k 20 -> 45). Every earlier run in
-# this project used AdamW at lr=0.1, i.e. against a handicapped baseline - the
+# 0.1 -> 0.5) and V2 moved 0.0236 -> 0.0234 (k 20 -> 45). Every earlier run I
+# made used AdamW at lr=0.1, i.e. against a handicapped baseline - the
 # classical mirror of V2's identity-phase bug. V3's own optimum barely moved
 # (k=15, already the default), so QLTO was near-tuned all along and the
 # baselines were not.
 #
 # Note V2 buys its lead with DEPTH: k=45 triples its walk depth versus k=15.
 TUNED = {
-    'QLTO V3 QPE (k=4)': 15,      # k_step
+    'QLTO V3 QPE (k=3)': 15,      # k_step
     'QLTO V3 (Hadamard)': 20,     # k_step
     'QLTO V2 (engine-grad)': 45,  # k_step
     'QAOA': 4,                    # p_layers
@@ -185,7 +185,7 @@ TUNED = {
 # ones. That is the fair procedure, not a bias: every method is searched until
 # its optimum is interior, and the ones that converged early simply needed less.
 TUNE_GRID = {
-    'QLTO V3 QPE (k=4)': [15],
+    'QLTO V3 QPE (k=3)': [15],
     'QLTO V3 (Hadamard)': [20],
     'QLTO V2 (engine-grad)': [30, 45, 60],
     'QAOA': [4],
@@ -1264,7 +1264,7 @@ def run_benchmark(save=True):
 def run_benchmark_with_stats(n_trials=5, include_n12=False):
     """Multi-seed run. This is the one that settles anything.
 
-    Single-run differences have repeatedly failed to reproduce in this project:
+    Single-run differences have repeatedly failed to reproduce in this work:
     run-to-run optimiser variance is ~0.05 Hartree (Heisenberg N=4 gave V3
     -6.0124 then -5.9569 with nothing changed but RNG state), and at low tau it
     is far worse (Heisenberg N=6 gave V3 -8.66 then -7.23). Measurement noise at
@@ -1288,7 +1288,7 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
         problems.append(get_heisenberg_problem(12))
     
     optimizers_def = {
-        'QLTO V3 QPE (k=4)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=4),
+        'QLTO V3 QPE (k=3)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3),
         # 'QLTO V3 (Hadamard)' REMOVED from the stats suite. Not hidden - it is
         # documented as strictly inferior and the reason is measured: the k=1
         # path loses on shots (1.91x worse than fairly-charged parameter-shift,
@@ -1297,7 +1297,14 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
         # removes. QPE is the recommended configuration; running both costs ~1/7
         # of the suite's wall clock to re-confirm a settled negative.
         # Re-enable by uncommenting - the TUNED entry and factory row are intact.
-        'QLTO V2 (engine-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
+        # 'QLTO V2 (engine-grad)' REMOVED from the stats suite. Not hidden - it is
+        # my own earlier version, so including it costs a paragraph explaining
+        # what V2 is and why an older version of mine is in the table, while the
+        # remaining baselines (AdamW, SPSA, QNG, QAOA) are standard and need no
+        # introduction. Its estimator was also the last unfair one in the suite
+        # (fixed-noise rather than sampling); I fixed that in
+        # nisq_v2.BaseEstimator regardless, so re-enabling this row gives a fair
+        # comparison. Uncomment to restore.
         'QAOA': lambda a, h, backend: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
         'AdamW': lambda a, h, backend: AdamW(a, h, lr=TUNED['AdamW']),
@@ -1528,7 +1535,7 @@ def optimizer_circuits(opt):
 
 def _optimizer_factories():
     return {
-        'QLTO V3 QPE (k=4)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=4)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=4), 1),
+        'QLTO V3 QPE (k=3)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=3), 1),
         'QLTO V3 (Hadamard)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1), 1),
         'QLTO V2 (engine-grad)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False), pauli_groups(h)),
         'QAOA': lambda a, h, b: _mult(QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20), pauli_groups(h)),

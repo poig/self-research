@@ -1,0 +1,30 @@
+==============================================================================================
+CLASSICAL OVERHEAD — build + decode CPU time per gradient, ms
+==============================================================================================
+  1024 shots/circuit, 3 repeats, medians. RUN is simulation and is
+  NOT a hardware-comparable number; it is shown only for context.
+
+  ===== H2 | M=8 | G=2 =====
+  method             circuits     build    decode  CLASSICAL     (run)
+  --------------------------------------------------------------------
+  parameter-shift          32       1.5       2.3        3.8      39.5
+  QLTO                      4     509.3       0.9      510.3      59.9
+  -> QLTO classical overhead is 133.78x MORE EXPENSIVE than parameter-shift
+
+  ===== MaxCut N=4 | M=16 | G=1 =====
+  method             circuits     build    decode  CLASSICAL     (run)
+  --------------------------------------------------------------------
+  parameter-shift          32       1.8       4.8        6.6      45.5
+  QLTO                      4     490.4       3.7      494.1      41.6
+  -> QLTO classical overhead is 74.81x MORE EXPENSIVE than parameter-shift
+
+  ===== Heisenberg N=4 | M=16 | G=3 =====
+  method             circuits     build    decode  CLASSICAL     (run)
+  --------------------------------------------------------------------
+  parameter-shift          96       5.5      12.1       17.7     145.4
+  QLTO                      4     509.5       2.7      512.2     140.0
+  -> QLTO classical overhead is 29.01x MORE EXPENSIVE than parameter-shift
+
+  If QLTO is cheaper here too, the circuit-count claim stands unqualified.
+  If it is more expensive, the claim needs the crossover stated: the saved
+  quantum time has to exceed the extra local CPU time.

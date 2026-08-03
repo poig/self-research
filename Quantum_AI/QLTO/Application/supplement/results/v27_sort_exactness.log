@@ -1,0 +1,27 @@
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_dsolve/linsolve.py:606: SparseEfficiencyWarning: splu converted its input to CSC format
+  return splu(A).solve
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_matfuncs.py:707: SparseEfficiencyWarning: spsolve is more efficient when sparse b is in the CSC matrix format
+  return spsolve(Q, P)
+========================================================================================
+IS SORTING EXACT ON THE FULL SENSING CIRCUIT?
+========================================================================================
+  Same problem, same centre, same R. sort_terms False vs True, measurements
+  stripped, unitaries compared directly. No seeds, no shots, no sampling.
+
+  problem            kappa  H0_norm same  tau0 same  spectral dist   verdict
+  --------------------------------------------------------------------------
+  H2                     4          True       True      0.000e+00     EXACT
+  H2                     2          True       True      0.000e+00     EXACT
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/_index.py:168: SparseEfficiencyWarning: Changing the sparsity structure of a csr_matrix is expensive. lil and dok are more efficient.
+  self._set_intXint(row, col, x.flat[0])
+  MaxCut N=4             4          True       True      0.000e+00     EXACT
+  MaxCut N=4             2          True       True      0.000e+00     EXACT
+  Heisenberg N=4         4          True       True      0.000e+00     EXACT
+  Heisenberg N=4         2          True       True      0.000e+00     EXACT
+
+  Zero spectral distance => sorting cannot have caused v26's 2.2 and 3.3
+  sigma, and those are sampling noise on six unseeded draws - keep the
+  default and record the false alarm.
+  Nonzero => Suzuki-2's error constant is adjacency-dependent, v24's
+  single-stage 0.00e+00 did not generalise, and sort_terms must be
+  reverted to False until the accuracy cost is characterised.

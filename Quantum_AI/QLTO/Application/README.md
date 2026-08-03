@@ -1,88 +1,94 @@
-# NISQ V2: Riemannian Coherent QLTO (MPS Enabled)
+# QLTO V3 — a one-circuit local-landscape oracle
 
-## Overview
-This project implements **Riemannian Coherent Quantum Learning via Trajectory Optimization (QLTO)**, a novel quantum optimization architecture that merges the Quantum nature gradient and the geometric efficiency of **Riemannian optimization** for quantum optimization tools.
-
-The core innovation is the "Symmetric Sandwich" quantum walk, which evolves a parameter wavefunction on a curved Riemannian manifold defined by the Quantum Fisher Information Matrix (QFIM). This allows the optimizer to navigate the energy landscape using **Natural Gradient flow** coherently, bypassing the "blind search" limitations of standard Grover-based methods.
-
-This V2 implementation includes:
-- **Matrix Product State (MPS) Support**: Enables simulation of larger systems with significant entanglement.
-- **Commuting-Block Geometry Sensing**: Achieves $O(L)$ scaling for Gradient and Metric computation, making it feasible to train deep, overparameterized circuits.
-
-## Key Features
-- **Riemannian Coherent Walk**: Uses a metric-scaled mixer to perform geodesic descent on the parameter manifold.
-- **Efficient Sensing**: Exploits commuting-block structure to measure gradients and curvature with linear circuit depth cost.
-- **Hybrid Architecture**: Combines classical geometry sensing with coherent quantum evolution.
-- **Benchmark Suite**: Includes a comprehensive benchmark against Classical QNG, AdamW, and SPSA.
-
-## Research Summary
-
-### Plan: Fusing QWOA and QLTO
-The research plan focused on integrating the structural benefits of QWOA into the QLTO framework.
-- **Goal**: To prevent Barren Plateaus and ensure trainability.
-- **Strategy**:
-    1.  **Structure-Aware Ansatz**: Using commuting-block Hamiltonians (like QWOA) to guarantee polynomial Dynamical Lie Algebra (DLA) dimension.
-    2.  **Indexed Parameter Space**: Compressing the search space to valid parameter manifolds.
-    3.  **Hybrid Mixing**: Combining Riemannian diffusion (local descent) with Complete Graph mixing (global tunneling) to escape local minima.
-
-### Verdict: Complexity & Performance
-The theoretical analysis concludes that QLTO represents a **"Geometric Quantum Descent"** paradigm.
-- **Complexity Class**: Efficiently solves problems in **BPPO** (Bounded-Error Probabilistic Polynomial-Time Optimization) and **BP-APX** (Approximable problems).
-- **The "Curse" Resolution**:
-    - **Expressivity**: QLTO cannot break the physical limit of the ansatz; hard problems still require deep circuits ($O(\sqrt{2^N})$).
-    - **Trainability**: QLTO **breaks the optimization bottleneck**. It enables the training of the deep, overparameterized circuits required for hard problems by using efficient $O(L)$ geometry sensing and Riemannian navigation.
-- **Conclusion**: QLTO is a "Polynomial-Time Solver" for representable problems and a robust "Approximate Solver" for hard physical systems, offering exponential convergence in the optimization loop compared to standard blind search.
-
-## References
-
-### implimentaiton reference for efficient NQG (commute_fim.py, commute_gradient.py) 
-- **1909.02108v3**: *Quantum Natural Gradient* - https://arxiv.org/pdf/1909.02108
-- **2505.09818v1**: *Efficient protocol to estimate the Quantum Fisher Information Matrix for Commuting-Block Circuits* - https://arxiv.org/pdf/2505.09818
-- **q-2025-10-02-1873**: *Backpropagation scaling in parameterised quantum circuits* - https://quantum-journal.org/papers/q-2025-10-02-1873/
-
-### implimentaiton reference for QLTO (nisq_v2.py)
-- **2508.05749v1**: *Expressivity Limits and Trainability Guarantees in Quantum Walk-based Optimization* - **Key Theoretical Basis for QLTO Limits.** https://arxiv.org/html/2508.05749v1 
-- **PhysRevResearch.2.023302**: *Combinatorial optimization via highly efficient quantum walks* - https://arxiv.org/pdf/PhysRevResearch.2.023302
-- **s11128-019-2171-3**: *A quantum walk-assisted approximate algorithm for bounded NP optimisation problems* - https://link.springer.com/article/10.1007/s11128-019-2171-3
-- **2309.09342v3**: *A Lie Algebraic Theory of Barren Plateaus for Deep Parameterized Quantum Circuits* - https://arxiv.org/pdf/2309.09342v3
-- **2407.12587v1**: *On the dynamical Lie algebras of quantum approximate optimization algorithms* - https://arxiv.org/pdf/2407.12587v1
-
-These papers provide the mathematical foundation for the Commuting-Block ansatz structure, the Riemannian metric sensing protocols, and the convergence guarantees utilized in this project.
-
-## Usage
+One circuit puts 2ⁿ parameter configurations in superposition, reads an energy for
+each, and returns a gradient for **every coordinate at once** from the measurement
+marginals. Cost per epoch is flat in the parameter count.
 
 ```python
-from nisq_v2 import RiemannianQLTO
+from nisq_v3 import QLTOv3
 
-# Initialize optimizer
-qlto = RiemannianQLTO(ansatz, H, bits_per_param=1, shot_budget=8192,
-backend=None,
-fim_full=False
-)
-
-# Step
-r = max(search_radius * (0.8 ** epoch), 1e-4)
-dt = max(0.5 * (0.85 ** epoch), 0.01)
-
-# Run optimization
-result = optimizer.run_walk(params, 
-k_steps=3, 
-delta_t=dt, 
-search_radius=r, 
-layer=True, 
-gradient_reuse=True, coherence=True
-)
+opt = QLTOv3(ansatz, hamiltonian)     # defaults are the measured optima
+params, energy = opt.minimize()       # 20 epochs, no tuning
 ```
 
-### Running the Optimizer
-To run the main QLTO optimizer on a Heisenberg spin chain:
-```bash
-python nisq_v2.py
+No per-problem tuning: the same settings ran all 8 benchmark problems, spanning
+‖H₀‖ from 0.83 to 21.2 and M from 8 to 32 parameters.
+
+## How it works
+
+```
+per epoch:
+  R  = 0.6 · 0.9^epoch              shrink the search box
+  dt = 0.5 · 0.95^(epoch+1)         shrink the step
+  for each commuting block:
+      circuit 1  W-gate → 2ⁿ corners in superposition, each entangled with its
+                 own ansatz state; QPE reads an energy per corner; per-bit
+                 marginals give the gradient
+      circuit 2  quantum walk drifts the param register along that gradient
+  circuit 3      log the energy
 ```
 
-### Running Benchmarks
-To compare QLTO against other optimizers (Correct QNG, AdamW, SPSA):
-```bash
-python benchmark.py
+**180 circuits for 20 epochs** on a 4-block ansatz (140 when a block is provably dead), regardless of how many parameters there are.
+
+## What is measured
+
+| | result |
+|---|---|
+| accuracy | **1st or 2nd on 6 of 8 problems**, one outright win (MaxCut N=4), at **140–180 circuits vs 400–4080** |
+| cost vs parameter-shift | **8–36× fewer circuits**, and circuits are what the vendors bill |
+| how that scales | circuit advantage **grows with M** — 10.2× at M=16, 15.3× at M=24, 20.4× at M=32 |
+| priced on real tariffs | one Heisenberg N=6 gradient: **$243 parameter-shift vs $24–30 QLTO** on IBM; 18× on Braket |
+| projected to large N | direct-readout cost per gradient is **flat in N** ($30.0 at N=8 → $30.7 at N=100); parameter-shift reaches **134×** |
+| what the circuits cost | 19–141× the depth for QPE — a **coherence** constraint, largely invisible to billing since `rep_delay` (250 µs) dominates circuit duration |
+| gradient quality | at **fixed R**, direction plateaus at cos ≈ 0.98; the floor is R being pinned, not the method — trading R against shots gives O(1/ε³) with no floor |
+| classical complexity | **Θ(N·U) vs parameter-shift's Θ(N²·U)** per gradient — a factor of N, growing (wall-clock build time is a Qiskit artefact, not this) |
+| the estimator | the marginal *is* the degree-1 Walsh coefficient of the energy on the ±R hypercube, exact to 1e-16 |
+| why it scales | that estimator is **linear**, so it is unbiased at *any* shots-per-vertex — including fewer than one |
+| landscape structure | locality bounds the Walsh degree; degree-1 + degree-2 is 99.6%+ of the local landscape |
+| application | Hamiltonian learning validated end-to-end: 30 circuits vs 300 |
+
+## What is *not* claimed
+
+- **Not** accuracy dominance. Across 8 problems: 1 win, 2 seconds, 5 thirds.
+  Competitive, not winning — and the reps=1 ansatz ceiling means the suite cannot
+  resolve optimizers on accuracy anyway.
+- **Not** a barren-plateau solution. This is a cost-function-difference estimator,
+  the class Arrasmith et al. prove is *exponentially suppressed* on a plateau.
+- **Not** an exponential speedup. Superposition here is a resource for computing
+  averages cheaply, not for searching. See `RESEARCH_NOTES.md` for why Grover and
+  hidden-subgroup structure are both closed.
+
+## Layout
+
 ```
-This will generate performance plots (e.g., `benchmark_Heisenberg_N4.png`) showing Energy vs. NEFV (Number of Function Evaluations).
+nisq_v3.py           the optimizer (this is the one to read)
+nisq_v2.py           predecessor: Riemannian / commuting-block QFIM variant
+commute_*.py         V2's gradient and metric engines
+benchmark.py         8-problem suite vs AdamW, SPSA, QNG, QAOA, V2
+RESEARCH_NOTES.md    the full research record — derivations, results, dead ends
+supplement/          investigation scripts, one question each
+supplement/results/  their logs; every number in the notes cites one
+results/             benchmark output
+```
+
+## On V2
+
+`nisq_v2.py` is the earlier Riemannian variant: it estimates the Quantum Fisher
+Information Matrix from commuting blocks and preconditions the step with it. It
+is kept as the benchmark comparison, but the metric was measured **not to help** —
+proper block natural gradient, magnitude-matched natural gradient, and the
+diagonal square-root variant all fail to beat no metric at all, and estimating F
+from shots adds variance without adding signal. See `RESEARCH_NOTES.md`.
+
+## Reading the notes
+
+`RESEARCH_NOTES.md` is a research record, not API documentation. Negative results
+sit beside positive ones because most of what I learned is where things do
+*not* work — five separate attempts to give the update more information (natural
+gradient, nonlinear decoders, degree-2 drift, mixer shaping, multi-level encoding)
+all failed, and that consistency is itself the finding.
+
+Two traps documented there are worth knowing before trusting any benchmark:
+`StatevectorEstimator(default_precision=p)` returns the *exact* expectation plus
+fixed noise — it never samples, and it silently subsidised baselines by 23–57×;
+and sub-2σ results on few seeds reversed twice under replication.

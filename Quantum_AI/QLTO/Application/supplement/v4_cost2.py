@@ -18,7 +18,7 @@ estimation does not:
 
 QPE avoids BOTH. It reads the energy out of the phase of exp(-iHt), in one
 setting, whatever H looks like. That is the structural advantage, and it is
-independent of everything else measured in this project.
+independent of everything else I measured.
 
 Fair accounting, allocating S shots per energy evaluation split across G groups:
 

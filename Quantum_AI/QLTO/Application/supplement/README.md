@@ -30,7 +30,26 @@ is the headline suite, not a supplement.
 | `v4_argmin.py` | Is argmin better than the marginal? Is Grover worth building? | **argmin loses** at both sizes; it can never take a small step. Grover closed |
 | `v4_softmin.py` | Which decoder, with the shot-parity control? | Nothing beats the walk. Boltzmann T=0.1 **ties** at half the circuits. top-4's earlier "win" did **not** replicate |
 | `v4_cost.py` | Cost vs block width | Var flat in n (b/a = −0.004); signal attenuates, so the optimum is **interior** (n≈M/2), not global |
-| `v4_cost2.py` | Is QLTO cheaper, baseline charged honestly? | **Yes**: 3.2× fewer shots, 48× fewer circuits at n=8. Hadamard **loses** on shots |
+| `v4_cost2.py` | Is QLTO cheaper, baseline charged honestly? | ~~Yes: 3.2× fewer shots~~ — **shot claim withdrawn by `v14`**, it normalised each method by its own target. 48× fewer circuits stands. Hadamard **loses** on shots |
+| `v14_oracle_curve.py` | Gradient quality vs cost, both against the *same* target | QLTO **plateaus at cos ≈ 0.98** — bias, not variance. Parameter-shift has no floor and overtakes near **8k shots**. Circuit count is the only win |
+| `v15_classical_overhead.py` | Is the circuit saving repaid in local CPU? | **40–100× worse** — but decode is *cheaper* (1.1 vs 3.4 ms); it is all rebuild+transpile, fixable with a parameterised template |
+| `v16_hardware_currency.py` | Circuits, depth and 2q gates per gradient | Circuits **0.03–0.13×**, depth **19–141×**, 2q gates **5–40×**. The saving is bought, not free |
+| `v17_depth_vs_ancillas.py` | Is the depth structural? | **Yes** — doubles per ancilla, the (2^k−1)·τ₀ ladder. k=1 is cost-competitive (1.2–3.6× 2q gates) but that is the Hadamard test, which loses on variance |
+| `v18_v4_direct_readout.py` | Does the circuit-count win need QPE at all? | **No.** Direct Pauli readout: same win, depth **19–141× → 1.5×**, total 2q **0.28–0.46×** of parameter-shift, cos equal or better. QPE only ever bought G-independence |
+| `v19_complexity_growth.py` | Whose cost *grows* slower? | Fitted α: total 2q **p-shift 2.20, V3 1.26, V4 1.06**; circuits **0.00** for both QLTO vs 1.00. V3 depth α=1.27 — grows faster than the problem |
+| `v20_walk_shot_tolerance.py` | Does the walk earn its circuit at low shots? | **One row only** (job stopped). N=4/256 shots: walk beats Boltzmann by 2.5σ (the nonlinear collapse T2 predicts) but **loses to a classical step by 0.4σ** |
+| `v21_billing_models.py` | What do vendors actually charge for? | **Circuits, not depth.** IBM: `(rep_delay + circ_len)×circuits×shots`, rep_delay 250 µs ≫ circuit duration. Braket: per-task + per-shot, **no depth term**. Reverses the depth verdict |
+| `v22_v4_accuracy.py` | Does V4 optimise, or only look good on cosines? | **3 ties, 1 loss.** MaxCut N=4 at 3.0σ — but see `v27`: the harness produces 3.3σ on a null, so **this result is withdrawn as evidence** |
+| `v22b_decode_sanity.py` | Is the V4 decode right, or a plausible-looking bug? | **Right.** At R=0 measured ⟨H⟩ matches exact within 1σ shot noise; **signed** cos +0.978–0.998, which is what tests bin ordering (a swap flips the sign, not \|cos\|) |
+| `v23_v3_depth_source.py` | Is V3's Θ(N) depth the shared ancilla? | **Inconclusive, not refuted** — controlled and uncontrolled both grew, because the term-ordering artefact dominated both arms and masked the effect |
+| `v24_term_ordering.py` | Is the depth just the term ORDER? | **Yes.** Chain order serialises every consecutive bond. Layer-sorting: depth **N^1.25 → N^0.00**, flat at 225, *fewer* gates, unitary error 0.00e+00 |
+| `v24b_sorted_sensing.py` | Same, on the full sensing circuit | **N^1.22 → N^0.64**, 1.4–2.7×. Residual is the ancilla critical path + the ansatz CX chain. cx unchanged → **money fix, not fidelity fix** |
+| `v25_ancilla_fanout.py` | Can fan-out flatten the residual? | **Yes, exactly.** Depth **N^0.55 → N^0.03**, unitary error 0.00e+00, for +7.6% gates and N/2 helper qubits. *Not yet wired into `nisq_v3`* |
+| `v26_fix_validation.py` | Do sorting and κ reduction survive end-to-end? | **κ=3 is free** — every arm inside noise at **half** the gates, survival 0.009→0.098 at Heis N=6. κ=2 tempting (0.26× gates) but Heis N=6 regresses +0.29. **Now the default is κ=3** |
+| `v27_sort_exactness.py` | Sorting was 2.2σ/3.3σ "worse" in v26 — real? | **No — and it calibrates the harness.** All 6 configs **0.000e+00: identical unitaries**. So v26's sorted arm was a NULL experiment that returned 0.2/2.2/3.3/1.9σ. **Two of four exceeded 2σ with nothing to detect** |
+| `v28_seeded_null.py` | Does `sim_seed` make the null return *exactly* zero? | Acceptance test for the seeded sampler — criterion is bit-exact 0, not "smaller σ" |
+| `v29_fanout_wired.py` | Does fan-out deliver once wired into `nisq_v3`? | **No — negative result.** 1–21% depth for **4–16% more gates**. The prototype isolated one stage; sorting and κ=3 had already taken the parallelism. **Stays off by default** |
+| `v30_chemistry_scaling.py` | Is chemistry really T=Θ(N⁴), G=Θ(N³)? | **G was wrong.** Measured **T~N^4.61, G~N^4.24, T/G~N^0.37** — not N^1.0. Qiskit's greedy QWC compresses only ~3×, so **V3 wins chemistry 6.3× at N=12** and widening |
 | `v5_walsh.py` | What does the Walsh spectrum hold? | deg1+deg2 = **99.6%+**; deg2 exceeds deg1 on 2 of 4 blocks; measurable at SNR 3–4 |
 | `v5_deg2walk.py` | Does degree-2 drift help? | **No.** Monotonic degradation past gain 0.25; variance grows with gain |
 | `v5_merge.py` | Can CRZ+CRX merge to one tilted-axis rotation? | Identity exact to 4e−16. **Depth −37%**; energy contradictory across sizes, unresolved |
@@ -75,3 +94,23 @@ seed fixes only the initial parameters. A 1.1σ effect on 4 seeds reversed on 6
 (`v4_argmin.log` → `v4_softmin.log`), and `diag_sqrt`'s 0.9σ would have become
 "the QFIM helps" had all four metric variants not been run. Replicate before
 recording, and quote σ with the seed count beside it.
+
+**…and the threshold is far above 2σ — now measured, not guessed.** `v26` ran
+`base` against `term-sorted`, which `v27` then proved are **the same unitary to
+0.000e+00** at every problem and every κ. That arm was therefore a **null
+experiment**, and it returned:
+
+| problem | "effect" on identical circuits |
+|---|---|
+| H2 | 0.2σ |
+| MaxCut N=4 | **2.2σ** |
+| Heisenberg N=4 | **3.3σ** |
+| Heisenberg N=6 | 1.9σ |
+
+**Two of four exceeded 2σ with nothing to detect.** The cause is that "paired
+seeds" pin only the *initial parameters* while the sampling stays unseeded, so
+the pairing never removes the dominant variance and every σ here is understated.
+Consequences: treat 2–3σ at six seeds as consistent with zero; `v22`'s MaxCut
+3.0σ is withdrawn as evidence; and **seeding the sampler** would make every
+future A/B in this project roughly an order of magnitude more sensitive — it is
+worth more than any single result in this table.

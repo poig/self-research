@@ -1,0 +1,207 @@
+
+========================================
+Benchmarking: Frustrated Ising N=4 (5 trials)
+========================================
+Exact GS energy: -1.549051
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=4.5066 identity=+0.0000 tau=0.2219 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QAOA...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Frustrated_Ising_N4_stats.png
+
+  === Frustrated Ising N=4 over 5 trials (exact -1.5491) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  AdamW                       -1.3914    0.0363   0.0162    -1.3820   1280      0
+  QLTO V3 QPE (k=4)           -1.3652    0.0228   0.0102    -1.3633    180    248
+  Correct QNG                 -1.3179    0.0353   0.0158    -1.3179   1440      0
+  SPSA                        -1.2853    0.0409   0.0183    -1.2853    400      0
+
+========================================
+Benchmarking: MaxCut N=4 (Opt=4.0) (5 trials)
+========================================
+Exact GS energy: -0.000000
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=3.9600 identity=+1.9800 tau=0.2525 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+  Running QAOA...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_MaxCut_N4_Opt4.0_stats.png
+
+  === MaxCut N=4 (Opt=4.0) over 5 trials (exact -0.0000) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  QLTO V3 QPE (k=4)            0.0107    0.0048   0.0022     0.0255    140     88
+  AdamW                        0.0411    0.0171   0.0077     0.0528    640      0
+  Correct QNG                  0.1272    0.1852   0.0828     0.1272    720      0
+  SPSA                         0.2639    0.4205   0.1881     0.2639    200      0
+
+========================================
+Benchmarking: MaxCut N=6 (Opt=12.0) (5 trials)
+========================================
+Exact GS energy: -0.000000
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=11.9900 identity=+8.6350 tau=0.0834 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] dead blocks [3] (generators commute with H - gradient identically zero) - skipping, saves 2 circuits/epoch
+  Running QAOA...
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_MaxCut_N6_Opt12.0_stats.png
+
+  === MaxCut N=6 (Opt=12.0) over 5 trials (exact -0.0000) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  Correct QNG                  0.0071    0.0065   0.0029     0.0276   1040      0
+  QLTO V3 QPE (k=4)            0.1818    0.3356   0.1501     0.1856    140    377
+  AdamW                        0.2303    0.0743   0.0332     0.4254    960      0
+  SPSA                         0.3990    0.2953   0.1321     0.3990    200      0
+
+========================================
+Benchmarking: H2 Molecule (5 trials)
+========================================
+Exact GS energy: -1.857275
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+[V3] 4 commuting blocks [2, 2, 2, 2] | range(H)=1.6324 identity=-1.0524 tau=0.6126 | layered 5q statevector, global 11q (fits) | no gradient engine
+  Running QAOA...
+    N/A: QAOA not applicable: Hamiltonian has non-diagonal terms the X mixer does not represent (e.g. XX). Standard QAOA needs a Z-only cost plus a transverse field.
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_H2_Molecule_stats.png
+
+  === H2 Molecule over 5 trials (exact -1.8573) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  AdamW                       -1.8493    0.0039   0.0017    -1.8424    640      0
+  QLTO V3 QPE (k=4)           -1.8350    0.0287   0.0128    -1.7506    180    239
+  SPSA                        -1.8308    0.0146   0.0065    -1.8308    400      0
+  Correct QNG                 -1.8251    0.0156   0.0070    -1.8251    800      0
+
+========================================
+Benchmarking: LiH Molecule (5 trials)
+========================================
+Exact GS energy: -8.949737
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=1.7830 identity=-7.8825 tau=0.5609 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QAOA...
+    N/A: QAOA not applicable: Hamiltonian has non-diagonal terms the X mixer does not represent (e.g. IXIX). Standard QAOA needs a Z-only cost plus a transverse field.
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_LiH_Molecule_stats.png
+
+  === LiH Molecule over 5 trials (exact -8.9497) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  AdamW                       -8.9155    0.0153   0.0068    -8.8974   1920      0
+  QLTO V3 QPE (k=4)           -8.8405    0.0736   0.0329    -8.8405    180    844
+  SPSA                        -8.6644    0.1995   0.0892    -8.6644    600      0
+  Correct QNG                 -8.4846    0.3350   0.1498    -8.4846   2160      0
+
+========================================
+Benchmarking: Heisenberg N=4 (5 trials)
+========================================
+Exact GS energy: -6.464102
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+[V3] 4 commuting blocks [4, 4, 4, 4] | range(H)=9.4641 identity=+0.0000 tau=0.1057 | layered 9q statevector, global 21q (fits) | no gradient engine
+  Running QAOA...
+    N/A: QAOA not applicable: Hamiltonian has non-diagonal terms the X mixer does not represent (e.g. XXII). Standard QAOA needs a Z-only cost plus a transverse field.
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N4_stats.png
+
+  === Heisenberg N=4 over 5 trials (exact -6.4641) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  SPSA                        -6.0095    0.0456   0.0204    -6.0093    600      0
+  QLTO V3 QPE (k=4)           -6.0062    0.0511   0.0229    -5.9765    180    360
+  Correct QNG                 -6.0048    0.0715   0.0320    -6.0048   2160      0
+  AdamW                       -5.9313    0.0716   0.0320    -5.9212   1920      0
+
+========================================
+Benchmarking: Heisenberg N=6 (5 trials)
+========================================
+Exact GS energy: -9.974309
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+[V3] 4 commuting blocks [6, 6, 6, 6] | range(H)=14.9743 identity=+0.0000 tau=0.0668 | layered 13q statevector, global 31q (too wide) | no gradient engine
+  Running QAOA...
+    N/A: QAOA not applicable: Hamiltonian has non-diagonal terms the X mixer does not represent (e.g. XXIIII). Standard QAOA needs a Z-only cost plus a transverse field.
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N6_stats.png
+
+  === Heisenberg N=6 over 5 trials (exact -9.9743) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  Correct QNG                 -8.8705    0.4760   0.2129    -8.8702   3120      0
+  AdamW                       -8.8481    0.1316   0.0589    -8.8115   2880      0
+  QLTO V3 QPE (k=4)           -8.8304    0.3998   0.1788    -8.8120    180    377
+  SPSA                        -8.2768    0.6583   0.2944    -8.2768    600      0
+
+========================================
+Benchmarking: Heisenberg N=8 (5 trials)
+========================================
+Exact GS energy: -13.499730
+  Running QLTO V3 QPE (k=4)...
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+[V3] 4 commuting blocks [8, 8, 8, 8] | range(H)=20.4997 identity=+0.0000 tau=0.0488 | layered 17q statevector, global 41q (too wide) | no gradient engine
+  Running QAOA...
+    N/A: QAOA not applicable: Hamiltonian has non-diagonal terms the X mixer does not represent (e.g. XXIIIIII). Standard QAOA needs a Z-only cost plus a transverse field.
+  Running Correct QNG...
+  Running AdamW...
+  Running SPSA...
+  Saved plot with error bars: results/benchmark_Heisenberg_N8_stats.png
+
+  === Heisenberg N=8 over 5 trials (exact -13.4997) ===
+  Optimizer               E_best mean   +/- std      SEM    E_final   NEFV  Depth
+  -------------------------------------------------------------------------------
+  Correct QNG                -12.1559    0.0477   0.0213   -12.1559   4080      0
+  QLTO V3 QPE (k=4)          -11.9302    0.2429   0.1086   -11.8660    180    394
+  AdamW                      -11.7798    0.1745   0.0780   -11.7559   3840      0
+  SPSA                        -9.7228    0.3786   0.1693    -9.6862    600      0

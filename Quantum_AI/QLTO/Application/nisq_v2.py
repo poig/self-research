@@ -54,14 +54,28 @@ class BaseEstimator:
         if backend and hasattr(backend, 'options'):
             method = getattr(backend.options, 'method', 'automatic')
 
-        # precision is the standard error of the returned expectation value;
-        # 0.0 means exact statevector expectations (no sampling noise at all,
-        # reproducible to ~5e-17). Pass 1/sqrt(shots) to make the gradient cost
-        # precision the way hardware would.
+        # FAIRNESS FIX. The comment below used to say that passing 1/sqrt(shots)
+        # "makes the gradient cost precision the way hardware would". It does not.
+        # Aer's EstimatorV2 with default_precision=p returns the EXACT expectation
+        # plus Gaussian noise of standard deviation p - measured std/p = 1.00,
+        # 0.94, 1.06 over p spanning 18x while Var(H) = 12.03, i.e. completely
+        # blind to Var(H) and to the number of measurement settings.
+        # On Heisenberg N=4 that gave V2 gradients with std 0.011 where honest
+        # 8192-shot sampling gives 0.066 - 6x the precision, ~36x the effective
+        # shots - while V3 sampled for real. Every V2 row in the benchmark was
+        # inflated by that, and V2-vs-V3 is the comparison the notes discuss most.
+        # BackendEstimatorV2 on AerSimulator actually samples, allocating
+        # 1/precision^2 shots per qubit-wise-commuting group.
         opts = {'backend_options': {'method': method}}
         if precision:
-            opts['default_precision'] = float(precision)
-        self._estimator = AerEstimator(options=opts)
+            from qiskit.primitives import BackendEstimatorV2
+            from qiskit_aer import AerSimulator as _AerSim
+            self._estimator = BackendEstimatorV2(
+                backend=_AerSim(method=method if method != 'automatic'
+                                else 'statevector'),
+                options={'default_precision': float(precision)})
+        else:
+            self._estimator = AerEstimator(options=opts)
         
     def run(self, pubs, **kwargs): 
         """

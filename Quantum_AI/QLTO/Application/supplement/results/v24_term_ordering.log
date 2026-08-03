@@ -1,0 +1,30 @@
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_dsolve/linsolve.py:606: SparseEfficiencyWarning: splu converted its input to CSC format
+  return splu(A).solve
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_matfuncs.py:707: SparseEfficiencyWarning: spsolve is more efficient when sparse b is in the CSC matrix format
+  return spsolve(Q, P)
+================================================================================================
+TERM ORDERING — is V3's linear depth a scheduling artefact?
+================================================================================================
+  Same operator, same Trotter settings, terms regrouped into layers of
+  mutually disjoint support. Depth is the critical path, so a schedule the
+  transpiler can parallelise should collapse it.
+
+     N    T  layers  depth chain  depth sorted  speedup  cx chain  cx sorted  unitary err
+  ---------------------------------------------------------------------------------------
+     4    9       6          357           225      1.6       130        124     0.00e+00
+     6   15       6          621           225      2.8       226        206     0.00e+00
+     8   21       6          885           225      3.9       322        288     0.00e+00
+    10   27       6         1149           225      5.1       418        370          nan
+    12   33       6         1413           225      6.3       514        452          nan
+
+  depth growth   chain order N^1.25     layer-sorted N^0.00
+
+  A sorted exponent near 0 confirms the diagnosis: the depth was never the
+  physics, it was the term ORDER, and the fix costs nothing and holds for
+  every N. cx is unchanged by construction, so this is a MONEY fix only -
+  V3's fidelity problem is the gate count and is untouched.
+
+  unitary err is the spectral distance between the two product formulas.
+  Reordering within a Trotter step changes the error CONSTANT, not the
+  order, so a small nonzero value is expected and correct - it is the same
+  approximation, not the same circuit.

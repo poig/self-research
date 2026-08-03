@@ -1,0 +1,16 @@
+====================================================================================================
+WALK vs CLASSICAL DECODE ACROSS SHOT BUDGET AND SIZE
+====================================================================================================
+  6 paired seeds, 20 epochs, k_steps=15, QPE k=4.
+  Arms share one sensing call per block-epoch, so the gradient is identical.
+  vertices/block = 2^n; boltz needs shots >~ vertices, walk does not (T2).
+
+  ===== Heisenberg N=4 | exact -6.4641 | M=16 | 4 params/block = 16 vertices =====
+    shots  shots/vertex        walk    boltz0.1    gradstep  walk-boltz  walk-grad
+  --------------------------------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/supplement/v20_walk_shot_tolerance.py:93: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/supplement/v20_walk_shot_tolerance.py:93: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=k, inverse=True, do_swaps=True), anc)
+      256          16.0     -5.7904     -5.5951     -5.8096     -0.1952    +0.0192
+                            +-0.045     +-0.054     +-0.035      (2.5s)     (0.4s)
