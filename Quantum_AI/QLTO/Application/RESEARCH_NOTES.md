@@ -434,7 +434,46 @@ structure - in which case it is a design, or whether it needs the full state, in
 which case it is only a bound.
 
 
-### IS THE WALK NECESSARY? YES, AND THE ARGUMENT IS SHOT COMPLEXITY
+### VERDICT: THE WALK IS NOT NECESSARY. IT WINS 0 OF 7 ON THE FULL SUITE
+
+supplement/results/v54_benchmark_ab.log, 3 trials, 20 epochs, seeds 42+t, the
+same harness accounting as run_benchmark_with_stats:
+
+    problem            exact    walk E    grad E      diff   walk C  grad C
+    MaxCut N=4       -0.0000    0.0496    0.0117   +0.0379      140      80
+    MaxCut N=6       -0.0000    0.0148    0.0263   -0.0115      140      80
+    H2 Molecule      -1.8573   -1.7638   -1.8399   +0.0761      180     100
+    LiH Molecule     -8.9497   -8.8344   -8.9428   +0.1084      180     100
+    Heisenberg N=4   -6.4641   -5.9536   -5.9583   +0.0048      180     100
+    Heisenberg N=6   -9.9743   -9.0257   -8.9446   -0.0810      180     100
+    Heisenberg N=8  -13.4997  -11.7868  -12.0411   +0.2543      180     100
+
+    walk better 0    gradstep better 2    tie (<0.09) 5    of 7
+
+gradstep wins the TWO LARGEST problems - LiH and Heisenberg N=8 - and ties the
+rest, at 1.8x fewer circuits. Since the walk costs 2 circuits per block-epoch to
+gradstep's 1, PARITY IS ALREADY A LOSS, and it never achieves better than parity.
+
+WIDE R DOES NOT SAVE IT EITHER (v53). At R0=pi/2, where v9_globalgrid measured
+the box going multi-modal at 1.7 -> 3.3 minima and where a stochastic bounded
+step is supposed to beat a deterministic one - the walk's own claim - gradstep
+won 3 of 4 rows and the single walk win (1.4 sigma) failed to replicate at 4x the
+shots. Even the Boltzmann decoder, running unguarded at 4-16 shots per vertex,
+beat the walk in 3 of 4.
+
+AND THE MECHANISM PREDICTED IT. The walk keeps direction (atan2, bounded) and
+discards magnitude (hypot, unbounded, wraps), so it cannot spend precision:
+4x the shots moved the walk by -0.04 while gradstep gained +0.24. It plateaus;
+everything that uses magnitude does not.
+
+*** SHIPPED AS nisq_v5.py, standalone. Walk removed, QPE optional
+*** (gradient_mode='qpe' keeps 1 circuit per block; 'direct' costs G circuits and
+*** G*S shots - which v21's billing model punishes - but measures depth 8 against
+*** 274 at N=4, and V3's ladder was measured at survival 0.098 on hardware at
+*** N=6. Bill-limited -> qpe, fidelity-limited -> direct.
+
+
+### THE OLD QUESTION, SUPERSEDED: IS THE WALK NECESSARY?
 
 This session derived that the walk's phase is PROPORTIONAL TO ENERGY, so
 P ~ sin^2(phi/2) is a Boltzmann reweighting - which finally explains why

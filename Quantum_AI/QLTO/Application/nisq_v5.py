@@ -100,7 +100,8 @@ import numpy as np
 from qiskit import (QuantumCircuit, QuantumRegister, ClassicalRegister,
                     AncillaRegister, transpile)
 from qiskit.circuit import ParameterExpression
-from qiskit.circuit.library import QFT, PauliEvolutionGate, SuzukiTrotter
+from qiskit.circuit.library import QFT, PauliEvolutionGate
+from qiskit.synthesis import SuzukiTrotter
 from qiskit.quantum_info import SparsePauliOp, Statevector
 from qiskit_aer import AerSimulator
 
@@ -139,6 +140,8 @@ class QLTOv5:
 
         self.backend = backend or AerSimulator()
         self.groups = self._group(hamiltonian)
+        # ParameterView has no .index(), so map parameter -> global index once.
+        self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
         self.layers = self._layers()
         self.num_ancillas = max(1, int(num_ancillas))
         if self.gradient_mode == 'qpe' and self.num_ancillas < 2:
@@ -167,8 +170,7 @@ class QLTOv5:
                    if isinstance(p, ParameterExpression) and p.parameters]
             if not prm:
                 continue
-            idx = sorted(self.ansatz.parameters.index(q)
-                         for p in prm for q in p.parameters)
+            idx = sorted(self._pidx[q] for p in prm for q in p.parameters)
             qs = {self.ansatz.find_bit(b).index for b in inst.qubits}
             if qs & used:
                 blocks.append(cur)
@@ -198,7 +200,7 @@ class QLTOv5:
             if not prm:
                 qc.append(op, qs)
                 continue
-            gi = self.ansatz.parameters.index(next(iter(prm[0].parameters)))
+            gi = self._pidx[next(iter(prm[0].parameters))]
             if gi not in pos:
                 qc.append(op.__class__(float(centre[gi])), qs)
                 continue
