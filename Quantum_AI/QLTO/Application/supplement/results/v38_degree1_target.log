@@ -1,0 +1,35 @@
+====================================================================================================
+IS THE PRODUCT MIXER AIMING AT THE WRONG CORNER? Full hypercube enumeration.
+====================================================================================================
+  R=0.6. No optimiser, no shots. x_deg1 is the best a product mixer can
+  reach; x_deg2 is the best a 2-body mixer could reach; x_true is exact.
+
+          problem  blk  n    deg1    deg2  ham1  ham2  regret1  regret2  wrong?
+  ----------------------------------------------------------------------------------
+               H2    0  2  0.1466  0.0002     0     0    0.000    0.000      no
+               H2    1  2  0.0002  0.0000     0     0    0.000    0.000      no
+               H2    2  2  0.0027  0.0029     1     0    0.358    0.000     YES
+               H2    3  2  0.0000  0.0026     1     0    0.889    0.000     YES
+       MaxCut N=4    0  4  0.2320  0.0192     0     0    0.000    0.000      no
+       MaxCut N=4    1  4  0.0052  0.0031     1     0    0.339    0.000     YES
+       MaxCut N=4    2  4  0.0943  0.1297     1     0    0.168    0.000     YES
+       MaxCut N=4    3  4  0.0000  0.0000     2     1    0.000    0.000     YES
+   Heisenberg N=4    0  4  0.4269  0.0904     0     0    0.000    0.000      no
+   Heisenberg N=4    1  4  0.3697  0.0035     0     0    0.000    0.000      no
+   Heisenberg N=4    2  4  0.3516  0.3334     2     0    0.337    0.000     YES
+   Heisenberg N=4    3  4  0.6386  0.2516     1     0    0.143    0.000     YES
+   Heisenberg N=6    0  6  1.7610  0.1427     0     0    0.000    0.000      no
+   Heisenberg N=6    1  6  0.8607  0.0000     0     0    0.000    0.000      no
+   Heisenberg N=6    2  6  0.6061  0.0738     0     0    0.000    0.000      no
+   Heisenberg N=6    3  6  1.2318  0.0705     0     0    0.000    0.000      no
+  ----------------------------------------------------------------------------------
+  product-mixer target differs from the true corner on 7/16 blocks
+
+  'deg1'/'deg2' are the squared Walsh weights at each degree. 'ham' is the
+  Hamming distance from the surrogate corner to the true one; 'regret' is
+  the energy left on the table as a fraction of the hypercube's range.
+
+  A product mixer cannot represent a target that is not the sign pattern of
+  the degree-1 coefficients, so ham1 > 0 is a REACHABILITY failure, not a
+  signal-to-noise one - and therefore outside what Cerezo & Coles forbids.
+  regret2 << regret1 would price the 2-body mixer exactly.

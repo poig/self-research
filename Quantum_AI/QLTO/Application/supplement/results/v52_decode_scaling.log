@@ -1,0 +1,12 @@
+============================================================================================
+DECODE SCALING — the walk is linear, the Boltzmann decode is not
+============================================================================================
+  R=0.6, dt=0.5, k=15, 8192 shots FIXED, 3 centres per row.
+  Both decoders scored by cos(step, direction to the true hypercube
+  argmin), enumerated exactly. spv = shots per vertex = 8192/2^n.
+
+     N   n     2^n      spv  walk_cos  boltz_cos  boltz_ok
+  --------------------------------------------------------
+     4   4      16   512.00    0.7344     0.9058       yes
+     6   6      64   128.00    0.8925     0.8567       yes
+     8   8     256    32.00    0.6942     0.8435       yes

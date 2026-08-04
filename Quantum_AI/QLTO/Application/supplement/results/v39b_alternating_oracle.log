@@ -1,0 +1,30 @@
+====================================================================================================
+ORACLE-DIFFUSER ALTERNATION — the structure v39 was missing
+====================================================================================================
+  R=0.6, dt=0.5, k=15, 16384 shots. Total evolution time equal in
+  every arm (per-step imprint runs at dt*pi/k). Drift identical throughout.
+  Sign errors are against the TRUE hypercube argmin, enumerated exactly.
+
+          problem blk  n    deg1    deg2   once_prod   step_prod   step_glob
+  --------------------------------------------------------------------------
+               H2   0  2  0.1466  0.0002           0           0           0
+               H2   1  2  0.0002  0.0000           1           1           1
+               H2   2  2  0.0027  0.0029           1           1           1
+               H2   3  2  0.0000  0.0026           2           1           2
+       MaxCut N=4   0  4  0.2320  0.0192           0           0           0
+       MaxCut N=4   1  4  0.0052  0.0031           2           2           2
+       MaxCut N=4   2  4  0.0943  0.1297           1           1           1
+       MaxCut N=4   3  4  0.0000  0.0000           2           2           3
+   Heisenberg N=4   0  4  0.4269  0.0904           0           0           0
+   Heisenberg N=4   1  4  0.3697  0.0035           1           0           0
+   Heisenberg N=4   2  4  0.3516  0.3334           3           3           3
+   Heisenberg N=4   3  4  0.6386  0.2516           1           1           1
+  --------------------------------------------------------------------------
+               TOTAL sign errors          14          12          14   of 40
+
+  step_glob below once_prod would mean the missing piece was the
+  ALTERNATION, not the diffuser alone. All three equal would mean the
+  bottleneck is downstream of the walk entirely - most likely the decode,
+  which averages over sampled corners and cannot report a concentration
+  even if one exists. That is the next thing to test, and it is cheap:
+  read the raw param distribution instead of its weighted mean.

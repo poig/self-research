@@ -1,0 +1,17 @@
+============================================================================================
+TRUE ANNEAL-TIME SWEEP — both totals scaled together, k fixed
+============================================================================================
+  R=0.6, k=30, 65536 shots. T scales the drift span AND dt (hence beta)
+  together, so the anneal slows instead of the mixer taking over.
+
+        T   mean corr d1  mean corr d12    enh d1   enh d12    sec
+  ----------------------------------------------------------------
+     0.25         0.6982         0.6826     1.217     1.206      8
+     0.50         0.4382         0.3309     1.139     1.101      9
+     1.00         0.3279         0.1465     1.057     0.974      8
+     2.00         0.5481         0.2159     1.093     0.955      9
+     4.00         0.3020        -0.0288     1.933     1.063      9
+     8.00        -0.5001         0.0192     0.748     0.804      9
+
+  degree-2 rising with T is the prediction. Both flat, or both falling,
+  means the anneal reading describes the circuit but gives no handle.

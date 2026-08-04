@@ -1,0 +1,20 @@
+========================================================================================
+IS merged_walk HARMFUL AT LOW SHOTS? Its validation was at 8192.
+========================================================================================
+  Heisenberg N=4, 6 PAIRED seeds, 20 epochs, k=15, kappa=4.
+  Both arms start each seed from identical parameters.
+  merged_walk was validated at 8192 shots only: -0.0032 +- 0.0101, 0.3s.
+
+     shots   merged=True  merged=False      diff   sigma   better
+  ---------------------------------------------------------------
+       256       -5.1498       -4.9816   -0.1682     0.7      4/6
+      1024       -5.8300       -5.7565   -0.0735     1.7      4/6
+      8192       -5.9224       -5.9760   +0.0535     1.5      2/6
+
+  POSITIVE diff means merged_walk reached HIGHER energy, i.e. is worse.
+  'better' counts seeds where merged won. A positive diff at 256 that
+  vanishes by 8192 means the shipped default is wrong outside the regime
+  it was validated in. Flat across budgets means merged_walk is not the
+  cause of v53b's +0.739 and the stale-log question is still open.
+  Read sigma against this project's record: under ~3 sigma on six seeds
+  has reversed twice before.

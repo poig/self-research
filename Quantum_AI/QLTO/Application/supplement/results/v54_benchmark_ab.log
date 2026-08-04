@@ -1,0 +1,23 @@
+====================================================================================================
+BENCHMARK A/B — walk vs gradstep, full suite
+====================================================================================================
+  3 trials, 20 epochs, seeds 42+t, same harness accounting.
+  gradstep costs 1 circuit/block-epoch, walk 2 - so PARITY IS A WIN.
+
+           problem     exact    walk E    grad E     diff   walk C   grad C  C ratio    sec
+  -------------------------------------------------------------------------------------------
+  MaxCut N=4 (Opt=4.0)   -0.0000    0.0496    0.0117  +0.0379      140       80     1.75    102
+  MaxCut N=6 (Opt=12.0)   -0.0000    0.0148    0.0263  -0.0115      140       80     1.75    232
+       H2 Molecule   -1.8573   -1.7638   -1.8399  +0.0761      180      100     1.80    162
+      LiH Molecule   -8.9497   -8.8344   -8.9428  +0.1084      180      100     1.80    193
+    Heisenberg N=4   -6.4641   -5.9536   -5.9583  +0.0048      180      100     1.80    122
+    Heisenberg N=6   -9.9743   -9.0257   -8.9446  -0.0810      180      100     1.80    209
+    Heisenberg N=8  -13.4997  -11.7868  -12.0411  +0.2543      180      100     1.80   1247
+  -------------------------------------------------------------------------------------------
+  walk better: 0   gradstep better: 2   tie (<0.09): 5   of 7
+
+  POSITIVE diff means gradstep reached lower energy. 'C ratio' is the
+  circuit saving. Since gradstep costs half the circuits, ties count in
+  its favour - the walk must WIN on a clear majority to justify keeping
+  the default. Read the 0.09 threshold as this harness's own null scale,
+  measured by v27 on a provably identical pair of unitaries.

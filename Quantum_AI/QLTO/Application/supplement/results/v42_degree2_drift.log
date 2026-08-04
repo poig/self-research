@@ -1,0 +1,43 @@
+================================================================================================
+DEGREE-2 DRIFT — T7 remeasured on the oracle, not on final energy
+================================================================================================
+  R=0.6, dt=0.5, k=15, 65536 shots. Both degree-1 and degree-2
+  coefficients come from the SAME sensing circuit - no extra circuits.
+  corr(P,-E) is the oracle quality; enhance is what it amplifies.
+
+          problem blk  d1ok  drift  corr(P,-E)  enh_true  enh_deg1  mode=x*  depth
+  --------------------------------------------------------------------------------
+       MaxCut N=4   0     Y   deg1      0.7061     4.784     4.784     True    134
+                            deg1+2      0.1649     0.943     0.943    False    344
+  ................................................................................
+       MaxCut N=4   1     n   deg1      0.4610     1.526     2.326    False    133
+                            deg1+2      0.1293     1.053     3.338    False    343
+  ................................................................................
+       MaxCut N=4   2     n   deg1      0.3349     0.947     5.947    False    134
+                            deg1+2     -0.2128     0.500     1.008    False    344
+  ................................................................................
+       MaxCut N=4   3     n   deg1      0.2623     0.604     0.864    False    133
+                            deg1+2      0.2118     0.631     0.683    False    343
+  ................................................................................
+   Heisenberg N=4   0     Y   deg1      0.6756     4.671     4.671     True    151
+                            deg1+2      0.0694     1.121     1.121    False    361
+  ................................................................................
+   Heisenberg N=4   1     Y   deg1      0.2830     1.950     1.950     True    150
+                            deg1+2      0.3877     1.561     1.561    False    360
+  ................................................................................
+   Heisenberg N=4   2     n   deg1      0.4806     0.778     1.842    False    151
+                            deg1+2     -0.0698     0.471     5.785    False    361
+  ................................................................................
+   Heisenberg N=4   3     n   deg1      0.4242     1.026     1.987    False    151
+                            deg1+2      0.2551     2.090     4.747    False    361
+  ................................................................................
+
+      drift   mean corr      min      max   frac>0
+  ------------------------------------------------
+       deg1      0.4535   0.2623   0.7061   100.0%
+     deg1+2      0.1170  -0.2128   0.3877    75.0%
+
+  A rise in mean corr(P,-E) is the oracle improving. enh_true overtaking
+  enh_deg1 on the blocks marked 'n' is the walk changing what it aims at -
+  which is the claim T7 could not see, because final energy is downstream
+  of the decode and the decode averages the concentration away.

@@ -61,6 +61,600 @@ Note also qpe_margin was tuned for <H> alone; the SECOND moment is far more
 margin-sensitive - see the INTERIOR excited states pivot.
 
 
+## WHAT THE WALK COMPUTES — derived, and validated to 0.00241
+
+
+Everything above describes the SENSING. Until now nothing in this record said
+what the WALK does to its input, and three explanations in a row failed because
+each proposed a mechanism before anyone measured the input-output relation.
+v36 measured it (supplement/results/v36_walk_transfer_function.log) and found the
+map NON-MONOTONIC - at g=-1.0 the step goes the wrong way - non-separable across
+coordinates by up to 0.29 on a step bounded by R=0.6, and unfittable by a
+saturating surrogate at 46% residual. No mechanism in these notes predicted any
+of that.
+
+THE CIRCUIT IS SMALL ENOUGH TO WRITE DOWN, so it was written down
+(supplement/results/v37b_walk_closed_form.log). In the merged walk each step is
+ry(-ph); crz(th); ry(ph) with th = hypot(al, beta), ph = atan2(beta, al). The two
+RY are UNCONTROLLED, so in the anc=0 branch the CRZ is the identity and the RY
+pair cancels within every step:
+
+    THE anc=0 BRANCH IS EXACTLY THE IDENTITY.
+
+In the anc=1 branch RY(ph) RZ(th) RY(-ph) = exp(-i(al Z + beta X)/2), so the walk
+unitary factorises over param qubits, U = tensor_i U_i with U_i a product of k
+single-qubit rotations. The circuit is h(param) -> controlled-U -> h(anc), so
+anc=1 projects param onto (I - U)|psi>/2 with |psi> = |+>^n, and
+_weighted_vertices then gives exactly
+
+    d_theta_i = R (2 P(x_i = 1) - 1)     under the anc=1-conditioned distribution.
+
+VALIDATED, not asserted. supplement/results/v37c_walk_ablation.log runs the same
+circuit with pieces switchable and compares against the closed form:
+
+    arm                       vs closed form   turns   what it adds
+    A  bare                          0.00241     6     -- derivation is CORRECT
+    B  + W gate                      0.06289     4     param-sys entanglement
+    C  + energy imprint (SHIPPED)    0.32490     8     the energy dependence
+
+Arm A agrees to shot noise, so the algebra holds. Arm C reproduces v36's measured
+shipped-walk numbers (at g=-1.0, -0.239 against -0.232; at g=-0.6, +0.337 against
++0.336). The imprint therefore carries the VALUES - it dominates B->C and it
+FLIPS SIGNS - while the bare model carries the STRUCTURE. Use the bare model for
+monotonicity and separability; do NOT use it to predict which way the step goes.
+
+TWO DEFECTS FALL OUT, with different causes.
+
+  THE DRIFT WRAPS. One ancilla controls all k steps, so they compose as a PRODUCT
+  OF ROTATIONS and the angle adds without bound:
+
+      sum_s al_i = g_i * (pi dt k / 2) * 0.5 pi / sqrt(R)  ~  23.9 g_i
+
+  A rotation's Bloch response is periodic, so d_theta is PERIODIC IN g. Measured
+  on the closed form: 10 sign crossings over |g| <= 1.6, where a monotone map
+  allows one. The wrap SPACING is 0.343, not the pi/23.9 = 0.131 the naive sum
+  predicts - beta tilts the rotation axis, so the effective angle is smaller than
+  sum al. The wrap is real; the naive period is wrong by 2.6x.
+
+  IT IS NOT SEPARABLE. U factorises but the anc=1 POST-SELECTION IS GLOBAL, so
+  |(I - tensor U_i)|psi>|^2 does not factorise. One ancilla correlates all n
+  coordinates. This is a property of the DECODE. The su(2)^n DLA argument used
+  elsewhere in these notes describes the GENERATOR ALGEBRA and answers a
+  different question; it does not license separability of the decode.
+
+THE WRAP WAS IN THIS RECORD TWICE, UNRECOGNISED.
+
+  1. The merged_walk note records "the measured max alpha across the suite is H2
+     0.78, Heisenberg N=8 3.11, MaxCut N=6 2.68, Heisenberg N=4 6.53" and files
+     it as a BCH-error risk axis. That is the PER-STEP drift angle. A single step
+     at 6.53 is already past pi.
+  2. The schedule note records that the current schedule's energy shows
+     "non-monotonic wander" in k while the normalised one converges monotonically
+     (-4.122, -4.316, -4.393, -4.400, -4.415), and keeps the wanderer because it
+     scored 0.146 better at one point. The closed form shows base's response
+     ALIASES IN k as well as in g - at g=-0.6, k = 3,5,10,15,25,40 gives -0.411,
+     +0.426, -0.414, +0.417, +0.428, -0.421, while the reset variant converges
+     monotonically to +0.582. "The accidental k-coupling acts as a free adaptive
+     step size" was a free random sign.
+
+WHAT THIS EXPLAINS, that was previously only observed:
+
+  - "direction survives, magnitude does not matter", recorded at least three
+    times from different directions, is a consequence: a wrapped phase carries
+    little beyond sign.
+  - a classical Boltzmann decode TIES the walk because an aliased drift is not
+    carrying much for it to lose to.
+  - raising the walk's Trotter error 158x changes nothing: the drift was already
+    scrambled.
+  - the walk survives ansatz depth (v35c) because it was never using the
+    magnitude that depth degrades.
+
+TWO CANDIDATE FIXES, compared on the bare model
+(supplement/results/v37e_two_fixes.log). Credit for the diagnosis is not mine -
+it came from the observation that the ancilla is never reset between walk steps,
+which is precisely the rotations-vs-channels distinction below.
+
+    fix       crossings  turns  |corr(d,g)|  worst spread  knee   price
+    base             10      6         0.36        0.5371  0.170  --
+    rescale           0      0         0.98        0.1465  1.280  one constant
+    reset             0      2         0.85        0.0672  0.260  reset + k imprints
+
+  RESCALE divides the drift so the total angle stays under pi. Fixes the wrap
+  only - the post-selection is untouched - but that is most of the damage.
+  RESET gives each step a fresh ancilla, so the steps compose as CHANNELS,
+  rho -> (rho + V rho V^dag)/2, which CONTRACT toward the rotation axis instead
+  of rotating past it. Rotations wrap; channels cannot. It fixes the separability
+  too, because discarding the intermediate ancillas removes the conditioning that
+  correlated the coordinates.
+
+  THE KNEE COLUMN DECIDES WHAT EACH FIX IS FOR. It is where the response reaches
+  half its maximum, against a benchmark operating range of |g| = 0.58-0.97.
+  Reset's knee at 0.26 is BELOW that range: inside it the response is flat at
+  +-0.55 regardless of magnitude, i.e. bounded SIGN DESCENT. Rescale's knee at
+  1.28 straddles the range, so magnitude information survives.
+
+  Neither the descent SIGN nor the energy effect can be read off the bare model,
+  since the imprint flips signs (arm A vs arm C above). Both had to be run on the
+  real circuit.
+
+ON THE REAL CIRCUIT, AND THE FIRST TWO ATTEMPTS WERE BOTH CONFOUNDED.
+
+    Heisenberg N=4, 20 epochs, 8192 shots, reps=1, ansatz ceiling ~ -6.12
+    arm            E_final   sigma      E@3      E@5     E@10
+    base           -5.9783  0.0535  -4.4046  -5.4894  -5.9544
+    reset (cheap)  -5.8983  0.0572  -4.9269  -5.1639  -5.7868
+
+  Reset is 0.52 AHEAD at epoch 3 - far outside the 0.03-0.09 null scale - then
+  plateaus and finishes 0.08 behind, which is INSIDE it. Fast off the mark,
+  cannot fine-tune: exactly the signature of the knee at 0.26, i.e. bounded sign
+  descent. The behaviour and the closed form agree without having been fitted to
+  each other.
+
+  The drift-scale sweep (supplement/results/v37f_drift_scale_sweep.log) found
+  monotone collapse below scale 0.25: -5.9846, -5.9552, -5.9714, -5.5147,
+  -5.1974, -4.0719 for scale 1.0, 0.5, 0.25, 0.1315, 0.08, 0.04.
+  *** THAT RUN IS WITHDRAWN AS A TEST OF THE FIX. Scaling the drift down also
+  *** shrinks the STEP - v37e measured |d| at |g|=0.6 as 0.417 for base against
+  *** 0.055 for the rescale - so it compared "same schedule, 7.6x smaller steps"
+  *** over a fixed epoch budget. The schedule entry in OPEN warned about this
+  *** confound in these exact words, and the run reproduced it anyway. The same
+  *** threat applies to the reset result above, whose maximum step is LARGER than
+  *** base's, 0.558 against 0.417.
+  *** Both are re-run with dt swept per arm and the mean per-coordinate |move|
+  *** reported as the control: supplement/v37g_step_matched.py. Read that, not
+  *** the two rows above, for any performance claim.
+
+  THE CONTROLLED ANSWER (supplement/results/v37g_step_matched.log). dt swept 0.5x
+  to 8x per arm, 3 seeds, |move| reported as the control:
+
+    best per arm, each at its own best dt
+      base      dt 8.0   -6.0369 +- 0.0276   E@3 -4.6257   |move| 0.1017
+      rescale   dt 8.0   -5.9875 +- 0.0711   E@3 -4.6991   |move| 0.0712
+      reset     dt 4.0   -5.9645 +- 0.0496   E@3 -4.5124   |move| 0.1675
+
+    at MATCHED |move|
+      base 0.0716 -> -5.9871   rescale 0.0712 -> -5.9875   (d|move| 0.0004)
+      base 0.0935 -> -5.9783   reset   0.0934 -> -5.7232   (d|move| 0.0001)
+
+  REMOVING THE WRAP DOES NOT IMPROVE FINAL ENERGY. Against base at a |move|
+  matched to 0.0004, rescale returns -5.9875 against -5.9871: identical, and the
+  0.146 that v4_schedule2 gave up was step size, exactly as that entry suspected
+  and could not show. So the withdrawal above stands but its implied promise does
+  not - the wrap is real and it is performance-neutral for the endgame.
+
+  WHAT DOES SURVIVE THE CONTROL IS THE EARLY CONVERGENCE. At the matched pair
+  |move| 0.0935 vs 0.0934, E@3 is -4.4046 for base and -4.9714 for reset: reset
+  is 0.567 AHEAD at epoch 3, six times the null scale, with step size pinned to
+  four decimal places. It then finishes worse, -5.7232 against -5.9783, and with
+  NINE TIMES the variance (0.4696 against 0.0535) - so that gap is 0.5 sigma and
+  is not itself a result, but the variance is. Fast, coarse, unreliable in the
+  endgame is the signature of bounded sign descent, which is what the knee at
+  0.26 said it would be.
+
+  ONE ARM IS STILL UNMATCHED, and it is the one that looked best. v37g's reset
+  re-imprints only at step 0 (the "cheap" variant). reset_full - re-imprinting
+  every step, which won every column in v37 at E_final -6.0025 - was not in this
+  sweep because it costs ~1500 s per dt point. Its advantage is therefore still
+  confounded with step size and MUST NOT be quoted as a result until it is run.
+
+  NET: the aliasing belongs in the mechanism section, not the tuning section. It
+  is real, it is now derived and measured, it explains several standing
+  observations, and it is worth no energy at fixed step size.
+
+  THE MECHANISM RESULT DOES NOT DEPEND ON ANY OF THIS. The wrap, the global
+  post-selection, and the 0.00241 validation are properties of the circuit's
+  algebra, established without an optimiser. What is unsettled is only whether
+  removing the wrap BUYS anything, which is a tuning question.
+
+  THE TRANSFER FUNCTION ON THE SHIPPED CIRCUIT also needs no step-size control,
+  being a measurement of the map at a fixed centre with no optimiser at all
+  (supplement/results/v37_ancilla_reset.log, section 2):
+
+      arm            turns   corr(d_theta, g)   small-g slope
+      base               8             -0.376         -0.2763
+      reset_cheap        2             -0.838         -1.3808
+      reset_full         2             -0.857         -1.2424
+
+  Base flips sign twice inside the operating range - at g=-1.00 it returns
+  -0.2299 - and correlates with its own input at only -0.376. Reset is correctly
+  signed at every sampled point and correlates at -0.857. Two independent
+  consistency checks: base's small-g slope -0.2763 matches v36's separately
+  measured -0.2937, and every arm's slope is NEGATIVE on the real circuit where
+  the bare model gave base a POSITIVE slope, which is the sign flip v37c
+  attributed to the energy imprint.
+
+
+### WHAT THE WALK AMPLIFIES, AND SEVEN THINGS THAT DO NOT CHANGE IT
+
+The walk DOES concentrate. Reading the raw parameter distribution rather than its
+decoded mean (supplement/results/v39c_raw_distribution.log) gives enhancement over
+uniform of up to 6.6x, with the mode ON the true corner. Grover-like amplification
+is present and real.
+
+IT AMPLIFIES THE DEGREE-1 ARGMIN. v38 enumerated the full hypercube and found the
+product mixer's reachable target - the sign pattern of the degree-1 Walsh
+coefficients - differs from the true argmin on 7 of 16 blocks, regret up to 0.889
+of the hypercube's energy range, while the degree-<=2 target is EXACT everywhere
+(regret2 = 0.000). v39c then separated the blocks perfectly on that verdict:
+
+    v38 says degree-1 target CORRECT (5 blocks)   enhance 1.5-6.6, mode = x_true
+    v38 says degree-1 target WRONG   (7 blocks)   enhance 0.51-1.55, mode != x_true
+
+AND THE DRIFT IS THE ORACLE, not the energy imprint. With the drift removed the
+distribution goes EXACTLY uniform (H/Hmax = 1.000) and raising the imprint 10x
+does not move it (v41). With the drift on, corr(P,-E) = 0.4535 with the sign
+positive on 100% of blocks; with it off, 0.07 and a coin flip. The imprint
+contributes no coherent marking. An earlier claim in these notes that the imprint
+"carries the values and dominates" conflated decoherence with marking - it moves
+the decoded step (v37c, 0.325) without marking anything.
+
+SEVEN INTERVENTIONS, NONE OF WHICH BEAT THE SHIPPED CONFIGURATION:
+
+    hypothesis                        file    result
+    mixer locality (Grover diffuser)  v39     14/40 -> 14/40, no change
+    missing oracle alternation        v39b    14/40 -> 14/40, no change
+    missing W-dagger                  v41b    identical to 4 decimals, and
+                                              PROVABLY so: W is controlled on
+                                              param, hence block-diagonal there,
+                                              so it cannot move param populations
+    wrong quadrature (missing sdg)    v41c    corr 0.0673 -> 0.0690
+    unbounded phase channel, deg-2    v42b    bounding helps DEGREE-1
+                                              (0.4535 -> 0.5352) and never deg-2
+    degree-2 estimator noise          v42c    FALSIFIED: cos(sampled, exact) is
+                                              0.98-0.9997 on every block with
+                                              appreciable degree-2 weight
+    sin^2 folding of the phase        v43     best 0.4957, below v42b's 0.5352
+
+The shipped walk has the HIGHEST enhancement (2.036) and the most mode hits (3/8)
+of everything tested. Every structural change lowered both.
+
+ON DEGREE-2 SPECIFICALLY, T7'S VERDICT STANDS and is now supported by much more
+than final energy: the target is provably reachable (v38), the coefficients are
+measured essentially exactly and cost NO extra circuits - E_hat({i,j}) =
+mean(e x_i x_j) is another marginal of the same shot record, by T2 - and four
+independent ways of feeding them in all degrade the oracle.
+
+THE ONE QUOTABLE GAIN: bounding the drift's phase SPAN to pi lifts the oracle from
+0.4535 to 0.5352 with 100% sign consistency, at the cost of enhancement
+(2.036 -> 1.177). That is a real tradeoff between FAITHFUL ORDERING and STRONG
+MARKING, and it is the first time either has been measurable.
+
+TWO MORE FOLLOWED, both from the same reading of the schedule. gamma = s pi dt
+ramps UP while beta = (1-s) pi dt ramps DOWN, so the walk is a TROTTERISED
+QUANTUM ANNEAL from the transverse field to the cost function on the parameter
+hypercube - not a Grover search, which is the analogy these notes had used
+throughout. That identification is read off the code and is not in question. The
+prediction drawn from it was:
+
+    degree-1  H(s) = sum_i [gamma phi_i Z_i + beta X_i], n INDEPENDENT
+              Landau-Zener sweeps with an O(1) gap -> flat in anneal time
+    degree-2  transverse-field Ising, needs T >> 1/gap_min^2 -> should RISE
+
+    v44   swept k with the drift span normalised but NOT beta, so total mixing
+          grew with k. Degree-1 collapsed 0.449 -> -0.073. CONFOUNDED - a
+          mixer-strength sweep in disguise, same class as v37f.
+    v44b  scaled BOTH totals together at fixed k. Both degrees DECLINE with
+          anneal time; the prediction is falsified.
+
+BUT v44b PRODUCED THE BEST ORACLE OF THE SESSION, at the SHORTEST anneal:
+
+    T       corr d1   corr d12   enh d1
+    0.25     0.6982     0.6826    1.217     <- best measured, either degree
+    1.00     0.3279     0.1465    1.057
+    4.00     0.3020    -0.0288    1.933
+    8.00    -0.5001     0.0192    0.748
+
+against shipped 0.4535 and bounded-pi 0.5352. Weak drive keeps the
+phase-to-probability map in its linear regime, before sin^2 folding and wrapping
+take over. AND DEGREE-2 IS NOT BROKEN THERE - 0.6826 against 0.6982, essentially
+tied. The pairwise information becomes usable exactly where the drive is weak
+enough not to scramble it; it simply never wins.
+
+What that exposes is a FIDELITY-STRENGTH TRADEOFF: weak drive marks faithfully
+but barely (corr 0.70, enh 1.22), strong drive marks hard but scrambled (corr
+0.45, enh 2.04), and on the product the shipped configuration sits near the
+optimum - which is why nothing beat it.
+
+### THE COMPLETE WALK MODEL — exact, every block, every arm
+
+supplement/results/v49b_exact_statevector.log. Compared against the circuit's
+EXACT statevector rather than by sampling, so there is no shot noise to hide in:
+
+    TVD 0.00000, corr 1.0000, anc=1 branch weight matching to 5 decimals,
+    on all 4 blocks of MaxCut N=4 and Heisenberg N=4, for all three arms
+    (walk only, imprint only, full).
+
+    P(y)  ~  || |psi_y>  -  sum_x V_{yx} U_t |psi_x> ||^2
+
+with V the walk unitary on the param register (a product of 2x2 rotations),
+U_t = e^{-i H_sense dt pi} at the circuit's own LieTrotter(reps=1) synthesis, and
+|psi_x> the ansatz state at vertex x.
+
+THREE THINGS EVERY EARLIER MODEL GOT WRONG, each localised by the arm structure:
+
+  THE GRAM OVERLAPS. <psi_x'|psi_x> is not delta - the vertex states are NOT
+  orthogonal, and that overlap IS the param-sys entanglement. v37b's bare model
+  omitted it, which is the 0.325 v37c measured as "what the imprint adds".
+
+  KRON ORDERING. V must be built V_{n-1} (x) ... (x) V_0 because Qiskit indexes
+  qubit 0 as the LEAST significant bit. Building it forwards silently PERMUTES
+  the whole distribution and shows up as a large TVD with mixed-sign correlation.
+
+  |psi_x> MUST COME FROM THE W GATE, not from assign_parameters. A controlled
+  Z-rotation differs from the assigned one by a global phase e^{-i theta/2}, and
+  a global phase that DEPENDS ON x becomes a RELATIVE phase inside
+  sum_x |x>|psi_x>. RY is real and has no such ambiguity, which is exactly why
+  the RY blocks (0, 2) matched to machine precision while the RZ blocks (1, 3)
+  did not until this was fixed.
+
+WHAT THIS INVALIDATES. Every phase-design result in this session before v49b was
+computed against a model now known to be wrong, so v47's "optimal phase returns
+uniform" and v48's formula are both artefacts of the model rather than facts about
+the circuit. The degree-2 results (v42, v42b, v43) were measured on the circuit
+rather than on a model, so they stand - but the REASONING offered for them was
+built on the bare model and should be redone.
+
+
+### PHASE DESIGN ON THE VALIDATED MODEL — the drift is 2.4x off its own optimum
+
+With the model exact (v49b), the design question becomes an optimisation rather
+than a sweep, and it costs milliseconds (supplement/results/v50_*.log):
+
+    m   shipped   opt d1   opt d2   d1/ship   d2/d1
+    1     2.545    6.164    6.395      2.42    1.04
+    2     1.841    3.591    3.796      1.95    1.06
+    4     1.727    2.282    2.426      1.32    1.06
+
+THE ENERGY TRUNCATION IS A SUBOPTIMAL PHASE. Setting g_i = E_hat({i})/R has been
+the unexamined default since the walk was written; an optimised degree-1 phase is
+2.42x better at m=1. The drift has always been set to a TRUNCATION OF THE ENERGY,
+while the phase that maximises concentration is a different object, and nothing in
+this project had drawn that distinction.
+
+DEGREE-2 IS WORTH 4-6%, WHICH SETTLES T7. Once the degree-1 phase is chosen
+properly the pairwise terms add almost nothing. T7's verdict was right; the
+reasoning offered for it - and for v42/v42b/v43 - was not, and the correct
+statement is that the walk cannot express much beyond an optimised degree-1 phase.
+
+*** SCOPE CORRECTION ON THE CONCENTRATION BOUND BELOW. opt d1 reaches 6.164,
+*** ABOVE the sum_{j<=d} C(n,j) ceiling of n+1 = 5. That bound was derived for
+*** P ~ sin^2(phi/2) and does NOT bound this circuit: the Gram overlaps and the
+*** mixer let the real walk exceed it. The combinatorial result is exact for the
+*** model it describes, and the qualitative point - a phase PROPORTIONAL to
+*** energy cannot concentrate the way a THRESHOLD does - survives. The claim that
+*** it constrains QLTO does not.
+
+NOT DEPLOYABLE AS WRITTEN. Computing the optimal phase needs |psi_x> for all 2^n
+vertices and U_t, i.e. classical simulation of the ansatz - precisely what the
+circuit exists to avoid. Free at n=N=4, impossible at N=30. So this is an
+IN-PRINCIPLE capability result: 2.4x is on the table and the current drift leaves
+it there, with no route to it yet. The well-posed follow-up is whether g* is
+estimable from measurements - a rescaling, a whitening by the Gram matrix, some
+structure - in which case it is a design, or whether it needs the full state, in
+which case it is only a bound.
+
+
+### IS THE WALK NECESSARY? YES, AND THE ARGUMENT IS SHOT COMPLEXITY
+
+This session derived that the walk's phase is PROPORTIONAL TO ENERGY, so
+P ~ sin^2(phi/2) is a Boltzmann reweighting - which finally explains why
+v4_softmin found a classical Boltzmann decode TYING the walk at half the
+circuits. The obvious conclusion is that the walk is redundant and the
+architecture reduces to "sensing estimator plus classical step".
+
+*** THAT CONCLUSION IS WRONG, and boltzmann_step's own docstring predicts the
+*** mistake: "Shipping it as a default would look free at benchmark sizes and
+*** break where it matters." A draft of v52 raced the two at N=4, n=4 - exactly
+*** where it looks free - and would have confirmed the error.
+
+THE TWO DECODERS COMPUTE THE SAME FUNCTIONAL FORM THROUGH ESTIMATORS OF
+DIFFERENT COMPLEXITY CLASS:
+
+    Boltzmann decode   NONLINEAR. Must resolve each vertex's energy before
+                       weighting it, so it needs shots >~ 2^n.
+    the walk           LINEAR. Degree-1 marginals, unbiased at ANY
+                       shots-per-vertex by T1/T2.
+
+So the walk COMPUTES A NONLINEAR FUNCTIONAL OF THE LANDSCAPE USING ONLY LINEAR
+MEASUREMENTS. That - not amplification, not Grover, not the anneal - is where the
+quantum work is, and it is a shot-complexity claim about the DECODE.
+
+AND IT IS INVISIBLE AT EVERY BENCHMARK SIZE. T10 puts the cost-optimal block
+width at n* ~ 0.65 M, so the Boltzmann decode is usable at the optimal width only
+when M <= 15. At N=4 (M=16) it is already at the boundary. The regime where QLTO
+is CHEAPEST is exactly the regime where the classical decode is UNAVAILABLE, so a
+tie at N=4 says nothing about whether the walk is needed.
+
+This also makes every earlier observation cohere instead of indict:
+  ties Boltzmann at small n            -> same functional form
+  scales where Boltzmann cannot        -> linear vs nonlinear estimator
+  "direction survives, magnitude does not" -> the marginal carries direction
+  looks redundant at every benchmark   -> every benchmark is n <= 6
+
+MEASURED: supplement/results/v52_decode_scaling.log sweeps block width at fixed
+shots and scores both decoders against the enumerated hypercube argmin.
+
+
+### THE MIXER SCHEDULE WAS MISTUNED, AND v7 SAID SO
+
+v7_mixer probed non-uniform mixing, found ALL EIGHT nonzero-lambda cells beating
+uniform, and could not close it because both signs helped equally and the effect
+equalled cross-run reproducibility. Its own conclusion was that "the uniform beta
+is simply mistuned and any perturbation of the AVERAGE mixing amount helps",
+needing 20 seeds with an interleaved control to confirm.
+
+The deterministic model removes that blocker entirely - no shot noise, no
+cross-run spread, no seeds - so beta_s can simply be optimised
+(supplement/results/v51_optimise_mixer.log):
+
+    m   shipped  opt drift  opt mixer  opt both  mix/ship  both/drift
+    1     2.545      6.069      4.710     7.207      1.85        1.19
+    2     1.841      3.647      3.131     4.052      1.70        1.11
+    4     1.727      2.279      2.037     2.448      1.18        1.07
+
+v7 WAS RIGHT AND IT IS MATERIAL. Optimising beta_s alone, with the shipped
+energy-truncation drift untouched, is worth 1.85x. The ramp
+beta_s = (1-s) pi dt was never derived from anything and gives up 85%.
+
+AND THE TWO INTERACT. both/drift = 1.19: the mixer still adds 19% AFTER the drift
+is optimal, so drift and mixer cannot be tuned one at a time - which is the
+methodology used throughout this session. Together, 2.83x over shipped at m=1.
+
+*** THIS MAKES v39's VERDICT UNSAFE. The global-reflection test compared two
+*** mixer FAMILIES on the shipped ramp, now known to be 85% off its own optimum.
+*** "The Grover diffuser changes nothing" was measured on a schedule that suited
+*** neither family. It is not refuted, but it is not closed either, and it should
+*** be re-run against optimised schedules before being quoted.
+
+Neither figure is deployable for the same reason as v50's 2.42x: computing the
+optimum needs |psi_x> for all 2^n vertices. These are capability ceilings, and
+what they establish is that the shipped walk leaves 2.8x on the table across two
+independent knobs - not one.
+
+
+### THE CONCENTRATION BOUND — why nine interventions could not have worked
+
+Settled analytically instead of by sweeping (theory_test/phase_degree_bound.log).
+With the drift diagonal in the param basis and the anc=1 post-selection,
+P(x) ~ 4 sin^2(phi(x)/2), so concentrating on one corner requires phi to
+approximate pi * 1[x = x*] - an INDICATOR. Optimising a degree-d Walsh polynomial
+phi to maximise P(x*) gives, exactly:
+
+      n    2^n      d=1      d=2      d=3      d=4      d=5
+      3      8     4.00     7.00     8.00        -        -
+      4     16     5.00    11.00    15.00    16.00        -
+      5     32     6.00    16.00    26.00    31.00    32.00
+      6     64     7.00    22.00    42.00    57.00    63.00
+
+Every cell is an integer and every cell is sum_{j<=d} C(n,j) - the DIMENSION of
+the degree-<=d polynomial space on the hypercube. Checks: n=6,d=3 -> 1+6+15+20 =
+42; n=5,d=2 -> 1+5+10 = 16; n=4,d=3 -> 1+4+6+4 = 15.
+
+    MAX ENHANCEMENT(n, d) = sum_{j=0}^{d} C(n, j)
+
+AT DEGREE 1 THAT IS n+1. Linear in n against a search space of 2^n, so the
+concentration ratio is (n+1)/2^n - exponentially vanishing.
+
+*** AN EARLIER DRAFT OF THIS SECTION CLAIMED THE SHIPPED DRIFT IS "ALREADY AT ITS
+*** OWN OPTIMUM", and that this explained the nine failures. THAT IS WRONG and was
+*** written without checking. Measured (supplement/results/v46_set_target.log),
+*** the walk reaches 2.035 against a degree-1 ceiling of 5.000 at n=4 - 41% of it.
+***
+***     m   achieved   ceil d1   ceil d2   achieved/d1
+***     1      2.035     5.000    11.000          0.41
+***     2      1.557     3.500     6.500          0.44
+***     4      1.532     2.597     3.806          0.59
+***     8      1.210     1.814     2.000          0.67
+***
+*** So there is real headroom - roughly 2.5x at m=1 - and none of the nine
+*** interventions found it. "It was saturating a bound" is not the explanation
+*** for those failures; the explanation is still open.
+
+AND THE SHARPER HALF. A phase proportional to the EXACT energy, phi = lambda(E -
+E_bar), with full degree available, reaches only ~n:
+
+      n    2^n   best enh   free deg-n
+      4     16       5.66        16.00
+      6     64       4.71        64.00
+
+because sin^2 of something proportional to E is a smooth BOLTZMANN-SHAPED
+reweighting and cannot produce a peak. This is the same fact the decoder study
+found from the other side - "ONE decoder ties it: a Boltzmann-weighted average
+over all sampled vertices" - and it now has a cause. THE WALK IS A BOLTZMANN
+REWEIGHTING, structurally, because its phase is proportional to energy.
+
+    Grover reaches 2^n because its phase is a THRESHOLD - pi below the cut, 0
+    above - not a proportional one. A threshold on a degree-2 energy is a
+    high-degree polynomial in x, needing degree Theta(n) by the table.
+
+So the limit was never the mixer, the schedule, the quadrature, the shot budget
+or the coefficient degree. It is that a proportional phase cannot concentrate.
+The per-problem quantity that governs what a low-degree drift can do is the
+APPROXIMATE DEGREE OF THE THRESHOLD INDICATOR 1[E(x) < t] for that landscape -
+the same object the polynomial method (Beals, Buhrman, Cleve, Mosca, de Wolf)
+uses to prove Grover's Omega(sqrt N) lower bound.
+
+*** ON WHAT THESE NINE FAILURES DO AND DO NOT ESTABLISH. They are nine specific
+*** circuits at n=4, one centre, one shot budget. That is weak evidence about a
+*** DESIGN SPACE and it is not a theorem. An earlier draft of this section said
+*** there was "no evidence for a better problem-based design"; that phrasing
+*** treated an absence of successful guesses as a verdict, which it is not. The
+*** mathematical question - does there exist a phase/mixer pair for this circuit
+*** family that beats the fidelity-strength tradeoff - has a definite yes or no,
+*** and nothing here answers it either way. The closed form is available
+*** (v37b, validated to 0.00241), so that question is TRACTABLE ANALYTICALLY and
+*** should be settled that way rather than by more sweeps.
+
+METHOD NOTE, which is the durable part. Everything that survived this session was
+DERIVED IN CLOSED FORM AND VALIDATED against the simulator before being believed -
+the wrap, the axis/angle decomposition, degree-1 targeting. Everything that failed
+was a mechanism proposed first and checked afterward, nine times in a row. The
+ratio is not an accident and it should set the default mode of work here.
+
+
+### WHY THE RESET WORKS — and one framing that was tested and FAILED
+
+THE FAILED ONE FIRST, because it is the one that looked best. The paper's
+asymmetry classification (research_paper/paper1, Prop. "two sufficient
+conditions") says the first-order achievable work interval is symmetric about
+zero if EITHER spec(Y) is symmetric (A) or spec(M_11) is symmetric (B), and that
+a PURE |1> branch forces (B) for every generator. It reads Ref. ding2024single as
+breaking both at once, with "the reset that makes the scheme Lindbladian rather
+than unitary suppl[ying] the mixedness that breaks (B)". QLTO's walk appeared to
+be an instance: one never-reset ancilla makes the walk unitary
+U = P_0 (x) I + P_1 (x) prod_s V_s, which is exactly the paper's class, so
+resetting it should break (B) and give the walk a directed interval.
+
+MEASURED, and it does not (theory_test/walk_symmetry_classification.log):
+
+    Heisenberg (REAL) - the benchmark Hamiltonian
+    variant  cyc   purity   asym(M11)      W_min     W_max
+     shared    4   1.0000   1.318e-16   -0.18485   0.18485
+      reset    4   0.9274   2.273e-16   -0.15933   0.15933
+
+Condition (A) does hold for the walk's own generator - spec asymmetry of Y_eff is
+1.155e-15 at k=15, so the derivation that any SU(2) product has symmetric
+generator spectrum is confirmed. But under a REAL Hamiltonian the reset makes the
+branch mixed (purity 1.000 -> 0.927) and spec(M_11) stays symmetric ANYWAY, so
+(B) survives and the interval stays exactly symmetric. The paper's own real-H
+observation already covers this case. THE CLASSIFICATION DOES NOT EXPLAIN THE
+RESET'S BENEFIT HERE, and the connection is not written into the paper.
+
+Under a COMPLEX Hamiltonian (Heisenberg + Dzyaloshinskii-Moriya) the reset DOES
+break (B), and progressively: asym(M_11) = 5.5e-3, 1.2e-2, 2.4e-2 at cycles
+2, 3, 4 as purity falls 0.925 -> 0.869 -> 0.823. That is a genuine result for the
+paper's open multi-cycle item, and it is a different claim from the one that
+failed.
+
+THE SEPARATION IS THE POINT. The paper bounds what is REACHABLE; the wrap is a
+failure to LAND inside it. Resetting does not enlarge the reachable set - the
+interval above is unchanged in kind - it changes which point of that set the
+control actually selects. A symmetric interval is not even a defect for QLTO,
+which needs both signs available per coordinate.
+
+WHAT DOES EXPLAIN IT, in two standard pieces.
+
+  CONTROL THEORY. The drift angle is a PULSE AREA and its response is a Rabi
+  oscillation. Coherent control on a compact group has a reachable set that is
+  the unitary orbit, so the response to a control amplitude is quasi-periodic -
+  it cannot be monotone. The shipped walk runs several Rabi cycles past the first
+  maximum, which is the wrap. Nothing about this is exotic; it is the reason
+  pulse-area calibration exists in NMR, and it was missed here because the walk
+  was described as a "quantum walk" rather than as a control pulse.
+
+  THERMODYNAMICS. The reset is a Landauer erasure, kT ln2 per ancilla bit per
+  step, and what it buys is CONTRACTION. rho -> (rho + V rho V^dag)/2 is a unital
+  CPTP map, hence contractive in trace distance and entropy-increasing, so the k
+  steps compose as a contraction semigroup instead of a rotation. Rotations are
+  isometries and wrap; contractions saturate. The trade is exact and cheap to
+  state: ENTROPY IS PAID FOR MONOTONICITY. That is a different currency from the
+  paper's asymmetry resource, which is why the classification had nothing to say.
+
+  Note this also places the reset walk in the same family as the Analog_NN
+  direction - dissipative dynamics doing work that unitary dynamics cannot - and
+  is the standard argument for engineered dissipation in state preparation.
+
+
 ## RESULT: 8 problems, 5 trials, every method tuned to an interior optimum
 
 ### CURRENT, on the fixed harness: kappa=4 with term sorting
@@ -832,6 +1426,10 @@ free savings    point-energy is 1 circuit/epoch of logging the optimiser never
                 already existed. Worth taking for the gate count (hardware error
                 budget is per gate) but it is not a depth win, and it matters
                 least in exactly the long-walk regime V3 actually uses.
+                *** The critical-path observation here is now load-bearing for a
+                *** different reason: the ancilla taking part in ALL 2*n*k
+                *** controlled gates is exactly why the drift angle accumulates
+                *** coherently and wraps. See WHAT THE WALK COMPUTES.
 schedule        TESTED, and the coupling turns out to be load-bearing - do NOT
                 normalise it without retuning. sum_step s = k/2 exactly, so the
                 total accumulated angle is LINEAR in k: k_steps is a step-size
@@ -853,6 +1451,21 @@ schedule        TESTED, and the coupling turns out to be load-bearing - do NOT
                 The accidental k-coupling acts as a free adaptive step size, and
                 at the shipping k=15 that is worth more than clean tuning. Keep
                 current; revisit only if k ever needs to be tuned per problem.
+                *** THIS VERDICT IS WITHDRAWN. See WHAT THE WALK COMPUTES. The
+                *** "non-monotonic wander" recorded just above is the drift angle
+                *** WRAPPING, not adaptivity: the closed form gives d_theta at
+                *** g=-0.6 as -0.411, +0.426, -0.414, +0.417, +0.428, -0.421 for
+                *** k = 3,5,10,15,25,40 - the SIGN aliases in k. The normalised
+                *** schedule's monotone convergence was the correct behaviour and
+                *** was rejected on a 0.146 energy difference at one problem,
+                *** which is within this harness's own 0.03-0.09 null scale once
+                *** and arguably twice over. The choice was made on final energy
+                *** without knowing what it was choosing between.
+                *** Note the normalisation tested here scaled gamma AND beta by
+                *** 2/k = 0.133, which shrinks the mixer too; the wrap-only fix
+                *** scales the DRIFT by 0.1315 and leaves beta alone. Numerically
+                *** adjacent, mechanically different - so v4_schedule2 came close
+                *** to the fix by accident and was discarded.
 walk Trotter    TESTED, and the walk is INSENSITIVE to it - reps=1 is already
                 right. The walk evolves at t = dt*pi = 0.942 with LieTrotter
                 reps=1 against the sensing path's tau=0.106 with reps=2, which by
@@ -1424,6 +2037,31 @@ while coherence and search range pull in opposite directions.
 
 
 ## WHY GROVER IS NOT THE NEXT STEP
+
+*** THIS SECTION IS PARTLY WRONG. It closes HARD-THRESHOLD ORACLE SEARCH, which
+*** is correct, and lets the title imply that amplitude amplification as a whole
+*** is closed, which is not. Two corrections, both found later:
+***
+*** 1. AMPLITUDE ESTIMATION IS A DIFFERENT USE AND IS NOT CLOSED. The argument
+***    below is that a hard E<t oracle discards the gradient weighting and that
+***    argmin is free at benchmarked sizes. Both hold. Neither bears on using
+***    amplitude estimation to reduce the VARIANCE of a continuous estimate.
+***    The coherent readout sum_x <psi_x|e^{-iHt}|psi_x> |x>, which needs W^dag
+***    and is already implemented, makes the marginal an AMPLITUDE rather than a
+***    sample mean - and amplitude estimation then gives O(1/eps) where sampling
+***    gives O(1/eps^2). On a plateau that is 2^N queries against 4^N shots: a
+***    genuine quadratic, paid for in coherent depth, and NOT forbidden by
+***    Arrasmith et al., whose bound is on measurement count.
+***
+*** 2. "TWO DIFFERENCES, BOTH DELIBERATE" MISLABELS THE DEFECT. The product CRX
+***    mixer is called a deliberate choice below. It is the limitation: a product
+***    of single-qubit rotations gives the parameter register DLA su(2)^n, so the
+***    walk generates NO entanglement there and is classically simulable - which
+***    is why a Boltzmann decode ties it, and why T7's degree-2 drift did nothing.
+***    Grover's global reflection 2|s><s| - I IS the correlated mixer that T7 asks
+***    for. This section dismisses the primitive that another section requests.
+***
+*** Read the argument below as scoped to hard-threshold search only.
 
 
 THE WALK IS ALREADY A CONTINUOUS AMPLITUDE AMPLIFICATION. Grover alternates a

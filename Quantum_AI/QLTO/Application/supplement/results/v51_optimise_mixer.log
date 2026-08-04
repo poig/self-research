@@ -1,0 +1,53 @@
+================================================================================
+v51_optimise_mixer.py — SUMMARY ONLY
+
+NOTE ON THIS FILE: the run that produced it was launched WITHOUT `| tee`, unlike
+every other result in this directory, so the per-block rows were consumed by a
+`tail -20` and are not recoverable without a 40-minute re-run. What follows is
+the captured tail: the last two blocks and the summary table, which is the
+result. Recorded here rather than re-run. The omission was a lapse in the
+launch command, not in the script, which prints the full table when teed.
+================================================================================
+
+   Heisenberg N=4   2  1    0.420      6.576      4.064     6.632    16.0
+                       2    0.487      3.778      2.600     3.788     8.0
+                       4    1.337      2.329      1.631     2.380     4.0
+  .......................................................................
+   Heisenberg N=4   3  1    1.832      5.619      6.841     7.126    16.0
+                       2    1.296      3.493      3.898     4.121     8.0
+                       4    1.869      2.071      2.408     2.408     4.0
+  .......................................................................
+
+     m   shipped  opt drift  opt mixer  opt both  mix/ship  both/drift
+  ----------------------------------------------------------------
+     1     2.545      6.069      4.710     7.207      1.85        1.19
+     2     1.841      3.647      3.131     4.052      1.70        1.11
+     4     1.727      2.279      2.037     2.448      1.18        1.07
+
+  mix/ship prices the mixer schedule on its own - what the hand-chosen
+  ramp gives up. both/drift says whether optimising the mixer adds
+  anything ONCE the drift is already optimal, which is the question that
+  decides whether every mixer result this session was measured on an
+  arbitrary schedule or on a near-optimal one.
+
+================================================================================
+READING, for the record:
+
+  mix/ship = 1.85 at m=1.  Optimising beta_s ALONE, with the shipped
+  energy-truncation drift untouched, is worth 85%. v7_mixer's suspicion -
+  "more likely the uniform beta is simply mistuned and any perturbation of
+  the AVERAGE mixing amount helps" - was correct and MATERIAL. v7 could not
+  close it because the effect equalled cross-run reproducibility; on the
+  deterministic model there is no reproducibility to fight.
+
+  both/drift = 1.19.  The mixer still adds 19% AFTER the drift is optimal,
+  so drift and mixer INTERACT and cannot be tuned one at a time. That is the
+  methodology used throughout this session.
+
+  opt both / shipped = 2.83 at m=1 (7.207 vs 2.545).
+
+  CONSEQUENCE FOR v39. The global-reflection test compared two mixer FAMILIES
+  on the shipped ramp, now known to be 85% off its own optimum. "The Grover
+  diffuser changes nothing" was measured on a schedule that suited neither
+  family, and should be treated as unsafe rather than as a closed verdict.
+================================================================================

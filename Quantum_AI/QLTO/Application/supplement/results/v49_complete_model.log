@@ -1,0 +1,25 @@
+================================================================================================
+COMPLETE WALK MODEL — mixer + W gate + imprint, exact construction
+================================================================================================
+  R=0.6, dt=0.5, k=15, 65536 shots. P(y) ~ || |psi_y> - sum_x V_yx
+  U_t |psi_x> ||^2, built on the joint param(x)sys space. No fitting.
+  'floor' is TVD between two simulator runs at different seeds - the
+  prediction is validated only if TVD pred is comparable to it.
+
+          problem blk  n  TVD pred    floor  TVD unif    corr   ratio
+  -------------------------------------------------------------------
+       MaxCut N=4   0  4    0.0091   0.0092    0.3090  0.9998    1.00
+       MaxCut N=4   1  4    0.1184   0.0116    0.1958  0.7729   10.20
+       MaxCut N=4   2  4    0.0082   0.0098    0.3355  0.9999    0.84
+       MaxCut N=4   3  4    0.1407   0.0109    0.1596  0.4279   12.93
+   Heisenberg N=4   0  4    0.1214   0.0144    0.2586  0.9935    8.43
+   Heisenberg N=4   1  4    0.3071   0.0150    0.1660  0.4417   20.41
+   Heisenberg N=4   2  4    0.1799   0.0125    0.1413  0.9243   14.40
+   Heisenberg N=4   3  4    0.2818   0.0154    0.2694  0.4785   18.28
+
+  ratio near 1 means the prediction is as close to the simulator as the
+  simulator is to itself - a complete model. Large ratio with high corr
+  means the SHAPE is right and something scales it. Large ratio with low
+  corr means the model is still missing structure, and the next suspect is
+  the walk unitary's ordering or the anc=1 branch algebra rather than the
+  Gram overlaps, since those are now included exactly.

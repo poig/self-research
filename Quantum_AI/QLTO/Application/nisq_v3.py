@@ -283,6 +283,16 @@ class QLTOv3:
         # measured max alpha across the suite is H2 0.78, Heisenberg N=8 3.11,
         # MaxCut N=6 2.68, Heisenberg N=4 6.53 - so validation happened at the
         # LARGEST alpha in the suite and every other problem is 2-8x safer.
+        #
+        # THOSE ALPHA NUMBERS MEAN SOMETHING ELSE TOO, missed when they were
+        # first recorded. alpha is the PER-STEP drift angle, and a single step at
+        # 6.53 is already past pi - so the k-step product wraps. The walk unitary
+        # is a product of rotations about a shared ancilla, so the angle ADDS and
+        # the decoded step is PERIODIC in the gradient. Derived and validated to
+        # 0.00241 against this circuit: see RESEARCH_NOTES / WHAT THE WALK
+        # COMPUTES and supplement/v37b, v37c, v37d, v37e. Read as a BCH risk
+        # axis, this table understated the problem; the risk was not truncation
+        # error, it was aliasing.
         self.merged_walk = bool(merged_walk)
 
         # SKIP DEAD BLOCKS: a block whose gradient is identically zero cannot
@@ -812,6 +822,22 @@ class QLTOv3:
                                           active_indices, powers=(1, 2))
         return mom[2] - 2.0 * float(omega) * mom[1]
 
+    # THE DRIFT COEFFICIENT IS NOT THE OPTIMAL PHASE, and this is the largest
+    # known gap in the walk. sense_gradient returns g_i = E_hat({i})/R, the
+    # degree-1 Walsh TRUNCATION OF THE ENERGY, and _execute_walk writes it
+    # straight into the drift. But the phase that maximises concentration on the
+    # good corners is a different object. Measured against the exact walk model
+    # (supplement/results/v50_design_on_true_model.log), an optimised degree-1
+    # phase beats the shipped truncation by 2.42x at m=1, 1.95x at m=2, 1.32x at
+    # m=4, on the same circuit with the same schedule.
+    #
+    # NOT ACTED ON, because computing that optimum needs |psi_x> for all 2^n
+    # vertices and the imprint unitary - classical simulation of the ansatz,
+    # which is what the circuit exists to avoid. Free at N=4, impossible at N=30.
+    # The open question is whether the optimum is ESTIMABLE from the measured
+    # coefficients; if it is, this is a 2.4x design win, and if not it is a
+    # ceiling. Degree-2 terms add only 4-6% on top of the optimised degree-1
+    # phase, which is why T7 stays closed.
     def _decode_gradient(self, counts, center_params, active_indices,
                          search_radius, tau):
         """g_i ~ <signal | x_i=1> - <signal | x_i=0>, signal = +-1 from the ancilla."""
@@ -889,6 +915,18 @@ class QLTOv3:
                 for i in range(n_active):
                     qc.crx(beta, anc[0], param[i])
 
+        # NO sdg HERE, UNLIKE THE SENSING PATH, and that is not an oversight -
+        # it is tested. _build_sensing_circuit uses sdg;h to read the Y basis,
+        # Im<U> ~ -tau<H>, because a plain h reads Re<U> ~ 1 - tau^2<H^2>/2, the
+        # wrong observable. The walk has only h, so its ancilla reports <H^2>.
+        # Adding the sdg was measured (supplement/results/v41c_walk_quadrature.log)
+        # and moves the oracle quality corr(P,-E) from 0.0673 to 0.0690 - nothing.
+        # The inconsistency is real and inert; do not "fix" it expecting a gain.
+        #
+        # ALSO NOTE uncompute_w CANNOT AFFECT THE PARAM MARGINAL, provably: W is
+        # controlled ON param, hence block-diagonal in the param basis, so W^dag
+        # cannot move param populations. v41b measured the two identical to four
+        # decimals. Its only value is the gate count, as the OPEN section says.
         qc.h(anc)                                    # phase -> population
         if self.uncompute_w:
             qc.append(w.inverse(), list(param) + list(sys))
@@ -970,6 +1008,48 @@ class QLTOv3:
         paired. Call between arms.
         """
         self._shot_index = 0
+
+    def grad_step(self, center_params, search_radius, active_indices, grad,
+                  alpha=0.9):
+        """Bounded classical step on the sensed gradient. 1 circuit per block.
+
+        p_i <- p_i - alpha * R * g_i / max_j|g_j|, so the largest coordinate moves
+        alpha*R and the step lives in the SAME +-R box the walk moves in. Nothing
+        is tuned: alpha is fixed and the scale comes from the schedule's R.
+
+        WHY THIS EXISTS. The walk costs 2 circuits per block-epoch against this
+        one, and it has never been measured ahead of it. At Heisenberg N=4 /
+        256 shots, over four independent runs spanning two implementations and
+        both merged_walk settings:
+            walk      -5.79 (stale log) .. -4.54 .. -5.05 .. -5.15
+            gradstep  -5.81 (stale log) .. -5.39 .. -5.58
+        The walk is behind in every one. See supplement/v20, v53, v53b, v53c.
+
+        AND IT IS IMMUNE TO THE GRADIENT'S WORST DEFECT. anomaly_c measured a
+        converged per-block SCALE bias up to 2.4x, 80 sigma from unity. Because
+        this step normalises by max|g| WITHIN the block, any per-block scale error
+        cancels exactly. A step that used raw magnitudes would not be so lucky.
+
+        WHAT IT KEEPS. Everything that makes QLTO cheap lives in the SENSING, not
+        the walk: T1/T2 (all M components from one circuit, unbiased at any
+        shots-per-vertex), T10 (~1.5 circuits/gradient, constant in M), the
+        difference-cancellation of Trotter error, and the R-annealed bias-variance
+        trade. This decoder keeps all of it and drops the second circuit.
+
+        NOT THE DEFAULT, deliberately. The walk is unbeaten only in regimes nobody
+        has measured: wide R, where v9_globalgrid puts the box's multi-modal onset
+        at R=pi/2 and where a stochastic bounded step is supposed to pay, and
+        N>=6 against this arm. The headline benchmark was also run with the walk,
+        so flipping the default without re-running it would leave the results and
+        the code inconsistent. Flip it when those two gaps are closed.
+        """
+        p = np.asarray(center_params, dtype=float).copy()
+        g = np.asarray(grad)[active_indices]
+        mx = float(np.max(np.abs(g)))
+        if mx < 1e-12:
+            return p
+        p[active_indices] = p[active_indices] - alpha * search_radius * g / mx
+        return p
 
     def boltzmann_step(self, center_params, search_radius, active_indices,
                        t_frac=0.1, min_per_vertex=8):
@@ -1316,6 +1396,10 @@ class QLTOv3:
         decoder='boltzmann' sense only, 1 circuit per block. Ties the walk at half
                             the cost on small blocks and RAISES on wide ones; see
                             boltzmann_step for why that guard is not optional.
+        decoder='gradstep'  sense only, 1 circuit per block. Bounded classical step
+                            on the same marginal, so it is LINEAR and scales where
+                            boltzmann cannot. Never measured behind the walk, and
+                            immune to the per-block scale bias. See grad_step.
         """
         blocks = ([l['params'] for l in self.layers] if layer
                   else [list(range(len(center_params)))])
@@ -1345,6 +1429,9 @@ class QLTOv3:
                 continue
 
             grad = self.sense_gradient(params, search_radius, active)
+            if decoder == 'gradstep':
+                params = self.grad_step(params, search_radius, active, grad)
+                continue
             params = self._execute_walk(params, k_steps, delta_t, search_radius,
                                         active, grad)
 

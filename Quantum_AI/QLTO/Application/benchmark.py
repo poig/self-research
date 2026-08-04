@@ -295,7 +295,7 @@ def block_diagonal_solve(fim, grad, layers, regularization=1e-3):
 class QLTO_Wrapper:
     def __init__(self, ansatz, hamiltonian, backend=None, bits_per_param=1, shot_budget=4096, layer=True, fim_full=False, gradient_reuse=True, coherence=False, k_step=10, use_fim=True, num_ancillas=4, walk_gradient=False, v3_ancillas=1,
                  r0=0.6, r_decay=0.9, dt0=0.5, dt_decay=0.95, tau_scale=1.0,
-                 qpe_margin=2.0):
+                 qpe_margin=2.0, decoder='walk'):
         if walk_gradient:
             # V3 is standalone - it shares no code with V2 and takes its own args.
             # backend is deliberately NOT forwarded: V3 picks statevector vs MPS
@@ -320,6 +320,11 @@ class QLTO_Wrapper:
         self.coherence=coherence
         self.k_step=k_step
         self.walk_gradient=walk_gradient
+        # decoder='walk' is the shipped path: sense + quantum walk, 2 circuits per
+        # block-epoch. decoder='gradstep' senses only and takes a bounded classical
+        # step on the same marginal, 1 circuit. V3 ONLY - the V2 path has no such
+        # option and ignores it.
+        self.decoder=decoder
         self.gradient_reuse=gradient_reuse   # forced False above when walk_gradient
         self.r0=r0
         self.r_decay=r_decay
@@ -350,7 +355,7 @@ class QLTO_Wrapper:
         r = max(self.r0 * (self.r_decay ** (self.epoch - 1)), 1e-4)
         dt = max(self.dt0 * (self.dt_decay ** self.epoch), 0.01)
         if self.walk_gradient:
-            result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer)
+            result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, decoder=self.decoder)
         else:
             result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
         params_new = result[0] if isinstance(result, (tuple, list)) else result
@@ -360,12 +365,22 @@ class CorrectQNG:
     """
     Correct Quantum Natural Gradient using Commuting Block FIM/Grad.
     
-    Uses 'compute_gradient_efficient_simulated' to simulate the cost of the 
-    Efficient Protocol (arXiv:2306.14962) which achieves O(L) gradient measurement.
-    
     Includes Block-Diagonal classical inversion to ensure scalability.
-    
-    NEFV: 2*L (Grad Efficient) + L (FIM) = 3*L per step.
+
+    COST, and this docstring used to be wrong in a way that mattered. It claimed
+    "NEFV: 2*L (Grad Efficient) + L (FIM) = 3*L per step", describing the O(L)
+    protocol of arXiv:2306.14962. That is NOT what runs here and never was after
+    the fix recorded in commute_gradient.py: `step` calls
+    compute_gradient_param_shift, and the engine records `last_nefv = len(pubs)`
+    - the circuits ACTUALLY submitted - which get_nefv_cost returns under
+    'actual_with_cnot'. So the charge is the honest measured one.
+
+    The distinction is not academic. 2B-1 is the paper's count for PURE
+    commuting-generator circuits; with CNOT entanglers W~ becomes qubit-specific
+    and the real count is 1 + sum_{b<B} M_b. Charging the theoretical figure
+    would have subsidised this baseline against V3, which is exactly the class of
+    error the benchmark fairness audit was written to catch. The stale docstring
+    survived the code fix and re-created the belief that the bug was still live.
     """
     def __init__(self, ansatz, hamiltonian, lr=0.1):
         self.ansatz = ansatz
@@ -376,9 +391,10 @@ class CorrectQNG:
         self.nefv = 0
         
     def step(self, params):
-        # 1. Gradient (Efficient Simulation)
-        # Returns correct gradient values but counts O(L) cost
-        # FIX: Use param shift for values, but count cost as efficient (O(L))
+        # 1. Gradient. Charged at the circuits ACTUALLY SUBMITTED, which the
+        # engine records as last_nefv. The two comment lines that used to sit
+        # here - "counts O(L) cost" and "count cost as efficient (O(L))" -
+        # described the superseded behaviour and are removed.
         grad = self.grad_engine.compute_gradient_param_shift(self.estimator, params)
         grad_nefv = self.grad_engine.get_nefv_cost()
         if isinstance(grad_nefv, dict):
@@ -1289,6 +1305,15 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
     
     optimizers_def = {
         'QLTO V3 QPE (k=3)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3),
+        # SAME SENSING, NO WALK. Senses the marginal gradient exactly as the row
+        # above and then takes a bounded classical step instead of the walk
+        # circuit - 1 circuit per block-epoch against the walk's 2. Added because
+        # the walk has never been measured ahead of it: at Heisenberg N=4 the walk
+        # trails in four independent runs across two implementations and both
+        # merged_walk settings (supplement/v20, v53, v53b, v53c). This row is the
+        # test of whether that survives the full suite; if it does, gradstep
+        # should become the default and this row replaces the one above.
+        'QLTO V3 gradstep': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3, decoder='gradstep'),
         # 'QLTO V3 (Hadamard)' REMOVED from the stats suite. Not hidden - it is
         # documented as strictly inferior and the reason is measured: the k=1
         # path loses on shots (1.91x worse than fairly-charged parameter-shift,
