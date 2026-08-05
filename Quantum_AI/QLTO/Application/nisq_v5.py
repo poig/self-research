@@ -122,7 +122,12 @@ class QLTOv5:
 
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
-                 num_ancillas=3, qpe_margin=2.0):
+                 num_ancillas=3, qpe_margin=2.0, block_mode='layered'):
+        try:
+            while any(inst.operation.name not in _CTRL and inst.operation.params for inst in ansatz.data):
+                ansatz = ansatz.decompose()
+        except Exception:
+            pass
         self.ansatz = ansatz
         self.hamiltonian = hamiltonian
         self.shot_budget = int(shot_budget)
@@ -130,6 +135,9 @@ class QLTOv5:
         self.gradient_mode = str(gradient_mode).lower()
         if self.gradient_mode not in ('direct', 'qpe'):
             raise ValueError("gradient_mode must be 'direct' or 'qpe'")
+        self.block_mode = str(block_mode).lower()
+        if self.block_mode not in ('layered', 'global'):
+            raise ValueError("block_mode must be 'layered' or 'global'")
         self.N = ansatz.num_qubits
         self.M = ansatz.num_parameters
         self.sim_seed = sim_seed
@@ -142,7 +150,10 @@ class QLTOv5:
         self.groups = self._group(hamiltonian)
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
-        self.layers = self._layers()
+        if self.block_mode == 'global':
+            self.layers = [{'params': list(range(self.M))}]
+        else:
+            self.layers = self._layers()
         self.num_ancillas = max(1, int(num_ancillas))
         if self.gradient_mode == 'qpe' and self.num_ancillas < 2:
             raise ValueError('QPE mode requires num_ancillas >= 2')
