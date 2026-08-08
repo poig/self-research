@@ -1,0 +1,30 @@
+========================================================================================
+WHAT A DEGREE-d PHASE ORACLE CAN CONCENTRATE
+========================================================================================
+  P(x) ~ sin^2(phi(x)/2). Perfect concentration needs phi to approximate
+  pi * 1[x = x*], so this is the approximate degree of an indicator.
+  Enhancement is 2^n P(x*); 1.0 is uniform, 2^n is a delta function.
+
+     n    2^n       d=1       d=2       d=3       d=4       d=5
+  -------------------------------------------------------------
+     3      8      4.00      7.00      8.00         -         -
+     4     16      5.00     11.00     15.00     16.00         -
+     5     32      6.00     16.00     26.00     31.00     32.00
+     6     64      7.00     22.00     42.00     57.00     63.00
+
+  (2) A PHASE LINEAR IN THE ENERGY — the shipped drift. Best achievable
+      enhancement when phi is CONSTRAINED to phi = lambda (E - E_bar),
+      optimised over lambda, on random landscapes.
+     n    2^n   best enh  at lambda  deg-n free
+  ---------------------------------------------
+     3      8       3.86       0.01        8.00
+     4     16       5.66       0.01       16.00
+     5     32       2.99       0.01       32.00
+     6     64       4.71       0.01       64.00
+
+  The first table is the capability of the circuit family by degree; the
+  second is what the SHIPPED drift can reach, since its phase is linear in
+  E by construction. A large gap between the two columns of table (2) is
+  the price of using a Boltzmann-shaped phase instead of a threshold one,
+  and it is a theorem about polynomials rather than a property of any
+  mixer, schedule or shot budget.

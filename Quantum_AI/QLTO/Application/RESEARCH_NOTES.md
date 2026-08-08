@@ -434,6 +434,84 @@ structure - in which case it is a design, or whether it needs the full state, in
 which case it is only a bound.
 
 
+### THE PLANNING DOCUMENTS, RESOLVED AND RETIRED
+
+Application/ carried four untracked planning files - brainstorm_novel_primitives,
+research_roadmap, research_roadmap_final, implementation_plan - proposing five
+research directions and a four-item action plan. Every one has now been run. This
+section is their surviving content; the files were deleted after it was written.
+
+    proposal                            test        outcome
+    2x2 factorial: deg-2 drift x        v55         T7 FALSIFIED. Both halves
+      correlated mixer                              together do not rescue it:
+                                                    corr 0.37 vs baseline 0.70.
+    Path A: restricted-class theorem    v60         Claim 1 FALSE (below).
+    Path B: model-free pulse control    v57/b/c     FAILED, cos -0.41.
+    AE signal amplitude (item 3)        v61         RESOLVED, P(good) = Theta(1).
+    X-X correlator (item 4)             v59         DEAD, exactly zero.
+    QNG in O(G) circuits                v58, v59    QNG loses on every row;
+                                                    the X-basis route is dead.
+    Landscape Hamiltonian / cooling     v56         FAILED, energy never moves.
+    W gate as quantum kernel oracle     -           dropped, not formalisable.
+    T8 as Barthe sparsity certificate   -           dead, axis mismatch: T8 bounds
+                                                    degree in the ROTATION ANGLES,
+                                                    Barthe's hardness lives in the
+                                                    COMPUTATIONAL BASIS.
+
+PATH A'S THEOREM, REVISED AND NOW WRITEABLE. The claim was "G * ceil(M/n*) ~ 1.5G
+circuits per epoch, constant in M", resting on T10's cost-optimal width
+n* ~ 0.65M. _layers() does not implement that width - it partitions by disjoint
+qubit support, i.e. by the ansatz's own layer structure - so the theorem was
+about a blocking the code does not have. The statement below is about the
+blocking that IS implemented, measured over a 12-point (N, reps) grid in
+supplement/results/v65_blocking_cost_law.log, exact on every row:
+
+    efficient_su2(N, reps=r)      M = 2N(r+1)
+    _layers() yields              L = 2(r+1) blocks of n = N parameters each
+    one gradient costs            C_QLTO = G*L = 2G(r+1) circuits
+    parameter-shift costs         C_PS   = 2MG
+    hence                         C_PS / C_QLTO = 2M/L = 2N,  EXACTLY
+
+So: CONSTANT IN N (at fixed G and r), LINEAR IN REPS, and the advantage over
+parameter-shift is exactly 2N - growing linearly in qubit count, independent of
+reps and of G. G is the only route by which N could re-enter, and it does not for
+either family tested: G = 3 for Heisenberg and G = 1 for MaxCut at N = 4, 6, 8, 10
+alike. (The "hundreds of groups for molecular Hamiltonians" case would make G
+grow, which helps QLTO, and is still undemonstrated.)
+
+THE ADVANTAGE IS IN CIRCUITS AND DOES NOT EXTEND TO SHOTS - see the CORRECTION in
+"IS IT ACTUALLY CHEAPER?". Worth stating the mechanism precisely, because the
+obvious guess is wrong: it is NOT that wider blocks need more shots. For the
+direct path T4 gives b = 0 structurally, and v65's refit (b/a = 0.061, ~1.4 sigma
+from zero at 40 repeats) is consistent with that. The binding constraint is BIAS -
+the estimator is unbiased for the R-smeared gradient, not for grad E, so
+cos(g_hat, grad E) plateaus at ~0.977 while parameter-shift has no floor and
+overtakes near 8k total shots. And the circuits are paid for in depth and
+two-qubit gates (v16). A theorem that claims 2N in circuits is true; one that
+claims it in total cost is not.
+
+Path A's other two claims: depth = ansatz + O(1) holds for direct readout (offset
+7-11) and fails for QPE (274 -> 658 across N); the O(M/(R^2 eps^2)) shot claim
+now checks out at err*sqrt(S) = 6.6-7.2 flat over a 16x sweep, but only after v60
+exposed a G-factor bug in nisq_v5.sense().
+
+ONE MECHANISM KILLED THREE OF THEM, and it is worth stating once. The symmetric
+two-point +-R design makes anything EVEN under a coordinate sign flip invisible:
+
+    free-energy-log curvature   x_i^2 = 1, so the diagonal Hessian is degenerate
+                                with the constant term
+    QFIM diagonal               G_i^2 = I, so Re<psi_a|psi_b> = cos(R) exactly,
+                                independent of the state
+    X-X connectivity witness    summing the four (+-,+-) sign combinations
+                                cancels <G_i G_j> identically; and separately
+                                V^dag V = I, so the overlap cannot see anything
+                                downstream of the block at all
+
+This is the SAME property that makes T1/T2 work - the O(R^2) cross terms
+cancelling under symmetric perturbation. It is not a defect to be fixed; it is
+the price of the estimator's central guarantee.
+
+
 ### VERDICT: THE WALK IS NOT NECESSARY. IT WINS 0 OF 7 ON THE FULL SUITE
 
 supplement/results/v54_benchmark_ab.log, 3 trials, 20 epochs, seeds 42+t, the
@@ -1401,6 +1479,66 @@ UNCHECKED: whether this specific shallow instantiation - parameter superposition
 conversion - is published. The concept space is mapped; this corner may not be.
 
 
+### EVERY GRADIENT METHOD ON ONE SET OF AXES
+
+Per gradient. M parameters, N qubits, G qubit-wise-commuting groups, r reps.
+QLTO's row is v65's measured law, not an estimate.
+
+    method                circuits      anc   depth              bias
+    parameter-shift       2MG            0    ansatz             none
+    finite difference     2MG            0    ansatz             O(h^2)
+    Hadamard-test grad    MG             1    ansatz+controlled  none
+    QNG / QFIM            +O(M)..O(M^2)  1    ansatz+controlled  none
+    SPSA                  2G             0    ansatz             O(c^2)
+    QLTO direct           2G(r+1)=GM/N   1    ansatz+O(1)        O(R^2)
+    QLTO QPE (k)          2(r+1)=M/N     k    ansatz x 2^k       O(R^2)+quant
+    Gilyen et al. 2019    O~(sqrt M/eps) many LCU+coherent QFT   eps
+
+TWO THINGS THIS MAKES VISIBLE that were not stated together before.
+
+Against parameter-shift the win is 2N in CIRCUITS and nothing else - exact on all
+12 rows of v65 - and the shot side is bias-capped (v14, cos plateaus at 0.977).
+Against SPSA, QLTO is BEHIND on circuits by a factor 2G(r+1)/2G = (r+1). The
+existing concession "neither beats SPSA by more than a constant" is, on circuits,
+generous to QLTO.
+
+### QLTO'S MARGINAL *IS* SPSA, EXCEPT IN THE READOUT
+
+Worth stating sharply because it took a wrong experiment to see. v67 set out to
+show QLTO extracts more per energy evaluation than SPSA, and measured a gap of
+EXACTLY 0.0000 at every sample count and both sizes tested (N=4 M=24, N=6 M=36).
+The reason is algebra, not physics: with the displacement radii matched (c = R),
+
+    g_SPSA = ((E+ - E-)/2c) sigma      g_QLTO = (E+ sigma - E- sigma)/2 / R
+
+are the SAME EXPRESSION. The degree-1 Walsh marginal under antithetic sampling
+IS the SPSA estimator - same sigma design, same O(R^2) bias, same cross-talk.
+Classically there is nothing to find, and any comparison run at exact energies
+will keep returning zero.
+
+SO THE ENTIRE DIFFERENCE LIVES IN THE READOUT, and that is exactly what T4 is
+about:
+
+    SPSA   per-sample variance |grad E|^2 - (d_iE)^2. The scalar (grad E . sigma)
+           is assigned to every coordinate, so each component carries the noise of
+           ALL the others. |grad E|^2 grows with M; (d_iE)^2 does not. Theta(M),
+           and intrinsic to the estimator - no shot budget removes it.
+    QLTO   a shot returns a BOUNDED +-1 ancilla bit whose variance cannot exceed 1
+           however much the energy varies across the hypercube. T4 measured the
+           cross-coordinate coefficient at b/a = -0.004. The term is gone.
+
+So the defensible claim against SPSA is: QLTO removes the one variance term SPSA
+structurally cannot, worth Theta(M) in samples, bought with (r+1)x more circuits
+and one ancilla. NOT that it extracts more per evaluation - v67 shows it extracts
+exactly the same.
+
+CAVEAT, unmeasured. The Theta(M) is a large-M limit and assumes tau can be held
+fixed as the system grows; tau ~ 1/||H0|| and ||H0|| grows with N, which pushes
+the other way. Nothing here measures the two effects against each other, and the
+suite's sizes are far too small to separate them. Read the Theta(M) as the
+mechanism, not as a demonstrated rate.
+
+
 ## IMPLEMENTATION TRAPS (each cost a measurement to find)
 
 
@@ -1408,6 +1546,20 @@ tau0 = pi/(margin*||H0||), NOT pi/(2^(k-1)*||H0||). The aliasing constraint bind
     the BASE unitary; the 2^a ancilla times resolve that turn rather than
     relaxing it. Tell: decoded energy doubled per added ancilla. nisq_v2's
     use_qpe_sensing path still carries this error - never enabled, never shown.
+tau0's scale is ||H0||, NOT H_range - and V5 had it wrong until v63. Both scales
+    are argued for inside the same file, which is why the disagreement survived:
+    the aliasing comment says ||H0|| (correct, |E| tau0 <= pi is bounded by
+    max|lambda|), while _sensing_hamiltonian's docstring argues for the range.
+    That docstring's argument is about an IDENTITY term inflating ||H||, and
+    H_sense is already traceless, so it has nothing left to bite on - for a
+    traceless H0, range/2 <= ||H0||_2 <= range. Using the range therefore cannot
+    prevent an alias the norm allows; it only widens the readout window, which is
+    resolved into 2^k bins, so the whole cost lands on resolution. v63, margin=2,
+    k=3: ratio range/||H0|| = 1.46-2.00 across the suite (EXACTLY 2 on MaxCut,
+    TFIM and H2 - a full lost bit), NEITHER convention aliases, and the norm won
+    the gradient cosine 4-0 with 2 ties, 0.9584 vs 0.7389 on MaxCut N=6. The
+    general trap: when two scales differ only by a bounded factor, the wrong one
+    does not fail loudly, it just quietly spends resolution.
 ancilla bit order: read the printed register UNREVERSED, E = -2 pi phi / tau0.
     Verified against exact <H_sense> across all four sign/order combinations;
     the others are 1.2-2.9x worse.
@@ -1420,6 +1572,36 @@ W-gate must not test len(op.params)==1. efficient_su2 decomposes to
     RGate(theta,phi) and that test silently drops every RY-derived rotation -
     the walk then searches a circuit missing half the ansatz.
 simulator by circuit WIDTH, not system size.
+
+
+### V5 vs V3: NOT SUITE-TESTED, AND DELIBERATELY SO
+
+V5's standing was listed open on the grounds that it had one smoke test. The
+suite A/B was started (v64) and abandoned partway on the judgement that it was
+buying a foregone conclusion at several hours' cost, which is the right call and
+worth recording as such rather than leaving the item looking unfinished.
+
+The reason it is foregone: V5-direct and V3-gradstep are the SAME ESTIMATOR over
+the SAME BLOCKING. Both read the degree-1 Walsh marginal off a symmetric +-R
+design, both partition by disjoint qubit support, both take a max-normalised
+bounded step. V5 removed the walk, which v54 had already measured at 0 of 7.
+There is no mechanism by which they could separate.
+
+WHAT WAS ACTUALLY MEASURED before the stop, and it agrees:
+    MaxCut N=4   V3 gradstep 0.0069   V5 direct 0.0049   V5 qpe 0.0068
+    (3 trials x 20 epochs, 8192 shots, shared p0, exact 0.0) - a three-way tie
+    inside the 0.09 null, at an identical 80 circuits each.
+    Heisenberg N=4 smoke, after the v63 tau0 fix, 20 epochs, 4096 shots:
+    V5 direct -5.9554 at 360 circuits, V5 qpe -6.1355 at 120, exact -6.4641.
+
+THE ONE THING IN THAT DATA THAT IS NOT FOREGONE, and is worth a proper test if
+V5 is ever pushed further: the QPE arm reached a BETTER energy at exactly 1/G the
+circuits (120 = L*epochs = 6*20, against direct's 360 = 3*120, G = 3 for
+Heisenberg). QPE reads the energy from one phase estimate in a single measurement
+setting, so the commuting-group loop disappears from the circuit count entirely -
+the G-free property already noted in "IS IT ACTUALLY CHEAPER?", here showing up
+end-to-end in an optimiser run rather than in a cost model. Two data points is
+not a result; the direction is worth one targeted test, not a suite sweep.
 
 
 ## OPEN, RANKED
@@ -2091,6 +2273,34 @@ while coherence and search range pull in opposite directions.
 ***    gives O(1/eps^2). On a plateau that is 2^N queries against 4^N shots: a
 ***    genuine quadratic, paid for in coherent depth, and NOT forbidden by
 ***    Arrasmith et al., whose bound is on measurement count.
+***
+***    THAT PARAGRAPH IS PARTLY WRONG AND THE ERROR MATTERS. Worked through
+***    (see nisq_v5.py, AMPLITUDE ESTIMATION):
+***
+***    (a) THE EXPONENTS ARE SQUARED. "2^N against 4^N" implies eps ~ 2^(-N),
+***        i.e. resolving to VARIANCE scale. The plateau target is the STANDARD
+***        DEVIATION, eps ~ 2^(-N/2), giving 2^N shots against M * 2^(N/2)
+***        queries. The quadratic RELATION is right; these numbers are not.
+***
+***    (b) IT DESTROYS T2, which is the decisive objection. AE's reflection
+***        S_good projects onto x_i = 1, so it runs SEPARATELY PER COORDINATE -
+***        there is no shot record to share. Sampling gives all M coordinates
+***        from Theta(1/eps^2); AE costs Theta(M/eps). The Theta(M) advantage
+***        that is this project's whole asymptotic claim is FORFEITED, leaving
+***        only Theta(G). AE wins only when M < 1/eps.
+***
+***    (c) IT IS NOT SPECIFIC TO THIS METHOD. Any expectation value from a
+***        unitary can be amplitude-estimated, parameter-shift included, so the
+***        gap narrows from Theta(M) to Theta(G) rather than widening. Gilyen,
+***        Arunachalam and Wiebe (2019) give quadratic-or-better quantum
+***        gradient estimation in general; the quadratic is not ours.
+***
+***    What survives: the estimand IS amplitude-encoded (g_i = 2(a_1 - a_0)/R
+***    with a_b = P(anc=1 AND x_i=b), exact since W is controlled on param and
+***    cannot move its populations), and the quadratic in eps is real. It is
+***    just smaller than stated, available to everyone, fault-tolerant in depth,
+***    and in a regime where the classical baseline is DMRG - which has no
+***    plateau and solves gapped 1D chains in polynomial time.
 ***
 *** 2. "TWO DIFFERENCES, BOTH DELIBERATE" MISLABELS THE DEFECT. The product CRX
 ***    mixer is called a deliberate choice below. It is the limitation: a product

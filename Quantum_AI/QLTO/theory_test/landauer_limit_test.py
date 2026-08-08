@@ -22,7 +22,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, partial_trace, entropy, DensityMatrix
-from qiskit.circuit.library import PauliEvolutionGate
+from qiskit.circuit.library import PauliEvolutionGate, UnitaryGate
+from qiskit.synthesis.evolution import LieTrotter
 from qiskit_aer import AerSimulator
 from scipy.stats import linregress
 import warnings
@@ -36,6 +37,24 @@ N_QUBITS = 4
 KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I). Note: Fig 1 uses 0.5
 TAU_STEPS = 20
 MAX_TAU = 1.5
+
+# Landauer cost scale (k_B T) in the same energy units as the Hamiltonian.
+# NOTE: In these scripts the Hamiltonian couplings are dimensionless random numbers,
+# so choosing k_B T is a modeling assumption rather than a derived physical temperature.
+KBT = 1.0
+
+# Time evolution is synthesized (product formula) after transpilation.
+# Default PauliEvolutionGate synthesis is LieTrotter(reps=1). Make it explicit
+# so the approximation can be tightened when needed.
+EVOLUTION_REPS = 1
+
+# FIX: reps=1 is far from converged (trotter_r2_check.py: ordered R^2 moves
+# 0.244 -> 0.651 going reps=1 -> exact at N=7), and every number in the paper
+# was computed at reps=1. The controlled evolution is now built exactly from the
+# eigendecomposition of H; the Trotter path is kept only to reproduce the old
+# figure for comparison.
+EXACT_EVOLUTION = True
+
 
 class LandauerExperiment:
     def __init__(self, n_qubits):
@@ -61,13 +80,23 @@ class LandauerExperiment:
             ops.append(("".join(label[::-1]), h))
             
         self.H = SparsePauliOp.from_list(ops)
-        print(f"[Init] System N={n_qubits}. Landauer Test Ready.")
+        self._spec = np.linalg.eigh(self.H.to_matrix())
+        print(f"[Init] System N={n_qubits}. Landauer Test Ready. "
+              f"Evolution: {'EXACT' if EXACT_EVOLUTION else f'Trotter r={EVOLUTION_REPS}'}")
+
+    def _controlled_evo(self, tau):
+        """|0><0|_anc (x) I + |1><1|_anc (x) e^{-iH tau}, ancilla as gate qubit 0."""
+        evals, evecs = self._spec
+        u_sys = (evecs * np.exp(-1j * evals * tau)) @ evecs.conj().T
+        p0 = np.array([[1.0, 0.0], [0.0, 0.0]])
+        p1 = np.array([[0.0, 0.0], [0.0, 1.0]])
+        return np.kron(np.eye(2 ** self.n), p0) + np.kron(u_sys, p1)
 
     def get_energy(self, state):
         return state.expectation_value(self.H).real
 
     def run_cycle_analysis(self, tau):
-        """Returns (MutualInfo, AncillaEntropy, WorkExtracted)"""
+        """Returns (MutualInfo, AncillaEntropy, WorkExtracted, JointEntropy)"""
         qr_sys = QuantumRegister(self.n, 'sys')
         qr_anc = QuantumRegister(1, 'anc')
         qc = QuantumCircuit(qr_anc, qr_sys)
@@ -77,8 +106,13 @@ class LandauerExperiment:
         qc.h(qr_anc)
         
         # 1. Sensing (Entangle)
-        evo = PauliEvolutionGate(self.H, time=tau)
-        qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
+        if EXACT_EVOLUTION:
+            qc.append(UnitaryGate(self._controlled_evo(tau)),
+                      [qr_anc[0]] + list(qr_sys))
+        else:
+            evo = PauliEvolutionGate(self.H, time=tau,
+                                     synthesis=LieTrotter(reps=EVOLUTION_REPS))
+            qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
         
         # 2. Locking (Measurement Basis)
         qc.h(qr_anc)
@@ -118,7 +152,7 @@ class LandauerExperiment:
         E_after = self.get_energy(rho_S_final)
         extracted_work = E_before - E_after
         
-        return mutual_info, S_A, extracted_work
+        return mutual_info, S_A, extracted_work, S_SA
 
     def run_experiment(self):
         print("="*70)
@@ -130,12 +164,13 @@ class LandauerExperiment:
         data_mi = []
         data_sa = []
         data_work = []
+        data_s_sa = []
         
         print(f"{'Tau':<6} | {'MI (I)':<10} | {'S(A) (Cost)':<12} | {'Ratio I/S':<10} | {'Work':<10}")
         print("-" * 70)
         
         for tau in np.linspace(0.0, MAX_TAU, TAU_STEPS):
-            mi, sa, work = self.run_cycle_analysis(tau)
+            mi, sa, work, s_sa = self.run_cycle_analysis(tau)
             
             ratio = mi / sa if sa > 1e-6 else 0.0
             
@@ -143,6 +178,7 @@ class LandauerExperiment:
             data_mi.append(mi)
             data_sa.append(sa)
             data_work.append(work)
+            data_s_sa.append(s_sa)
             
             print(f"{tau:<6.2f} | {mi:<10.4f} | {sa:<12.4f} | {ratio:<10.2f} | {work:<10.4f}")
 
@@ -156,25 +192,28 @@ class LandauerExperiment:
         
         # 2. Calculate Landauer Cost
         # Cost = k_B T ln(2) * S(A)  [with S(A) in bits]
-        # Since we work in normalized units, we use ln(2) ≈ 0.693
+        # Since we work in normalized units, we use ln(2) ≈ 0.693 and treat k_B T as a modeling parameter.
         LN2 = np.log(2)  # ≈ 0.693
-        landauer_costs = [LN2 * sa for sa in data_sa]  # Assumes k_B T = 1
+        landauer_costs = [KBT * LN2 * sa for sa in data_sa]
         net_works = [w - c for w, c in zip(data_work, landauer_costs)]
         
         max_net_work = max(net_works)
         avg_ratio = np.mean([m/s for m, s in zip(data_mi, data_sa) if s > 0.1])
         
-        print(f"Landauer Cost (ln2 * S_A):     {np.mean(landauer_costs):.4f} (avg)")
+        print(f"Landauer Cost (kBT·ln2·S_A):   {np.mean(landauer_costs):.4f} (avg)")
+        print(f"Assumed k_B T:                {KBT:.3f}")
         print(f"Avg Quantum Ratio (I / S_A):   {avg_ratio:.2f}")
+
+        avg_joint_entropy = float(np.mean(data_s_sa))
+        if avg_joint_entropy < 1e-6:
+            print("\nNote: S(SA) ≈ 0 in statevector simulation, so I(S:A) = 2 S(A) holds as an identity.")
+            print("      Treat I/S(A) ≈ 2 as a regime check (pure joint state), not an empirical advantage claim.")
         
-        if avg_ratio > 1.5:
-            print("\n✓ SUCCESS: QUANTUM ADVANTAGE CONFIRMED.")
-            print(f"  I(S:A)/S(A) ≈ {avg_ratio:.2f} (near theoretical max of 2.0)")
-            print("  Entanglement halves the information cost per unit work.")
-            print("  The demon requires half the entropy production of a classical loop.")
-        else:
-            print("\n? WARNING: BELOW ENTANGLEMENT THRESHOLD.")
-            print(f"  I(S:A)/S(A) = {avg_ratio:.2f} (expected ~2.0 for pure entanglement)")
+        if avg_ratio > 1.5 and avg_joint_entropy >= 1e-6:
+            print("\n✓ Entanglement-like regime detected (I/S(A) near 2).")
+        elif avg_ratio <= 1.5:
+            print("\n? BELOW ENTANGLEMENT THRESHOLD.")
+            print(f"  I(S:A)/S(A) = {avg_ratio:.2f} (expected ~2.0 for pure bipartite entanglement)")
 
         # Plot
         plt.figure(figsize=(10, 6))
@@ -183,7 +222,10 @@ class LandauerExperiment:
         
         plt.xlabel('Sensing Time $\\tau$')
         plt.ylabel('Energy')
-        plt.title(f'Quantum Advantage: I(S:A)/S(A) = {avg_ratio:.2f}\n(Factor-of-2 reduction in information cost)')
+        plt.title(
+            f'Landauer Cost Comparison (I(S:A)/S(A) = {avg_ratio:.2f})\n'
+            f'Note: I/S(A) \u2248 2 when S(SA) \u2248 0 (pure joint state)'
+        )
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.savefig('thermo_landauer_check.png', dpi=150)

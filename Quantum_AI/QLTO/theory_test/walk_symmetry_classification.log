@@ -1,0 +1,47 @@
+==============================================================================================
+DOES THE (A)/(B) CLASSIFICATION EXPLAIN QLTO's WALK?
+==============================================================================================
+
+  (1) CONDITION (A) — is the walk's own generator spectrally symmetric?
+      spec asymmetry of Y_eff (walk, k=15)   : 1.155e-15
+      spec asymmetry of sum_i X_i (paper's Y) : 3.682e-16
+      => (A) HOLDS for the shipped walk generator
+
+  (2) CONDITION (B) — purity and spec(M_11), shared vs reset ancilla.
+
+      Heisenberg (REAL)
+        variant  cyc    purity   asym(M11)     W_min     W_max   asym(W)
+      ------------------------------------------------------------------
+         shared    1    1.0000   1.882e-16  -0.18485   0.18485 7.507e-17
+         shared    2    1.0000   2.778e-16  -0.18485   0.18485 0.000e+00
+         shared    3    1.0000   1.126e-16  -0.18485   0.18485 0.000e+00
+         shared    4    1.0000   1.318e-16  -0.18485   0.18485 0.000e+00
+      ..................................................................
+          reset    1    1.0000   1.882e-16  -0.18485   0.18485 7.507e-17
+          reset    2    0.9733   1.683e-16  -0.17480   0.17480 0.000e+00
+          reset    3    0.9493   4.650e-16  -0.16660   0.16660 0.000e+00
+          reset    4    0.9274   2.273e-16  -0.15933   0.15933 0.000e+00
+      ..................................................................
+
+      Heisenberg + DM (COMPLEX)
+        variant  cyc    purity   asym(M11)     W_min     W_max   asym(W)
+      ------------------------------------------------------------------
+         shared    1    1.0000   4.039e-16  -0.34981   0.34981 7.934e-17
+         shared    2    1.0000   4.025e-16  -0.34811   0.34811 0.000e+00
+         shared    3    1.0000   4.953e-17  -0.34727   0.34727 0.000e+00
+         shared    4    1.0000   2.662e-16  -0.34742   0.34742 0.000e+00
+      ..................................................................
+          reset    1    1.0000   4.039e-16  -0.34981   0.34981 7.934e-17
+          reset    2    0.9250   5.488e-03  -0.29956   0.29956 0.000e+00
+          reset    3    0.8689   1.195e-02  -0.27286   0.27286 0.000e+00
+          reset    4    0.8225   2.357e-02  -0.25350   0.25350 1.095e-16
+      ..................................................................
+
+  (3) VERDICT INPUTS
+      (A) holding for the walk generator means NO choice of state gives an
+      asymmetric interval, and (B) holding means no choice of generator
+      does. Both must fail together. If the reset rows show purity < 1 but
+      asym(M11) still ~1e-15 under the REAL Hamiltonian, then mixedness
+      alone does NOT break (B) here, the paper's real-H observation covers
+      this case, and QLTO's walk improvement needs a different explanation
+      - in which case do NOT write the connection into the paper.

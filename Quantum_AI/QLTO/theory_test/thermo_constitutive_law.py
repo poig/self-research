@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, partial_trace, entropy, DensityMatrix, Statevector
 from qiskit.circuit.library import PauliEvolutionGate
+from qiskit.synthesis.evolution import LieTrotter
 from qiskit_aer import AerSimulator
 from scipy.stats import linregress
 import warnings
@@ -43,6 +44,11 @@ N_QUBITS = 4
 KICK_STRENGTH = 0.2  # θ_gain = 0.2 rad (TABLE I)
 TAU_STEPS = 20       # Number of sensing durations to test
 MAX_TAU = 1.5        # Max sensing time
+
+# Time evolution is synthesized (product formula) after transpilation.
+# Default PauliEvolutionGate synthesis is LieTrotter(reps=1). Make it explicit
+# so the approximation can be tightened when needed.
+EVOLUTION_REPS = 1
 
 # ==============================================================================
 # THERMODYNAMIC ENGINE
@@ -75,14 +81,11 @@ class MaxwellDemonExperiment:
         self.H = SparsePauliOp.from_list(ops)
         print(f"[Init] System N={n_qubits}. Hamiltonian Terms={len(ops)}")
 
-    def get_energy(self, state):
-        """Computes <H> for a given density matrix/statevector."""
-        # E = Tr(rho * H)
-        # For statevector: <psi|H|psi>
-        if isinstance(state, DensityMatrix):
-            return state.expectation_value(self.H).real
-        elif isinstance(state, Statevector):
-            return state.expectation_value(self.H).real
+    def get_energy(self, state, H=None):
+        """Computes ⟨H⟩ for a given density matrix/statevector."""
+        H_use = self.H if H is None else H
+        if isinstance(state, (DensityMatrix, Statevector)):
+            return state.expectation_value(H_use).real
         return 0.0
     
     def run_control_cycle(self, tau):
@@ -90,7 +93,7 @@ class MaxwellDemonExperiment:
         Run the same cycle but with NON-INTERACTING Hamiltonian
         (H_control = sum Zi). No entanglement should mean No Work.
         """
-        qr_sys = QuantumRegister(2, 'sys')
+        qr_sys = QuantumRegister(self.n, 'sys')
         qr_anc = QuantumRegister(1, 'anc')
         qc = QuantumCircuit(qr_anc, qr_sys)
         
@@ -111,7 +114,13 @@ class MaxwellDemonExperiment:
         # Controlled-Evolution: |0> -> I, |1> -> e^{-i H tau}
         # This maps Energy -> Phase
         # Replace H_sys with H_non_interacting (just Z fields)
-        evo = PauliEvolutionGate(SparsePauliOp(["ZI", "IZ"]), time=tau)
+        control_ops = []
+        for i in range(self.n):
+            label = ["I"] * self.n
+            label[i] = "Z"
+            control_ops.append(("".join(label[::-1]), 1.0))
+        H_control = SparsePauliOp.from_list(control_ops)
+        evo = PauliEvolutionGate(H_control, time=tau, synthesis=LieTrotter(reps=EVOLUTION_REPS))
         qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
         
         # --- 2. LOCKING (Information Capture) ---
@@ -131,7 +140,7 @@ class MaxwellDemonExperiment:
         
         # Controlled-RX on all system qubits
         # Fixed strength KICK_STRENGTH
-        for i in range(2):
+        for i in range(self.n):
              qc.crx(KICK_STRENGTH, qr_anc[0], qr_sys[i])
              
         # --- 4. EXHAUST ---
@@ -157,7 +166,7 @@ class MaxwellDemonExperiment:
         
         # Partial Traces
         rho_S = partial_trace(rho_sensing, [0]) # Trace out Ancilla (index 0)
-        rho_A = partial_trace(rho_sensing, range(1, 3)) # Trace out System
+        rho_A = partial_trace(rho_sensing, range(1, self.n + 1)) # Trace out System
         
         S_S = entropy(rho_S, base=2)
         S_A = entropy(rho_A, base=2)
@@ -170,14 +179,14 @@ class MaxwellDemonExperiment:
         # (because the ancilla control hasn't acted on it yet, effectively).
         # Wait, the Controlled-Evolution *entangled* them.
         # The Reduced State rho_S is the correct "System State" at that moment.
-        E_before = self.get_energy(rho_S)
+        E_before = self.get_energy(rho_S, H=H_control)
         
         # E_final (Energy of System after Feedback)
         sv_final = result.data(0)["final"]
         rho_final_full = DensityMatrix(sv_final)
         rho_S_final = partial_trace(rho_final_full, [0]) # Trace out Ancilla (reset)
         
-        E_after = self.get_energy(rho_S_final)
+        E_after = self.get_energy(rho_S_final, H=H_control)
         
         extracted_work = E_before - E_after
         
@@ -209,7 +218,7 @@ class MaxwellDemonExperiment:
         # --- 1. SENSING (The Variable) ---
         # Controlled-Evolution: |0> -> I, |1> -> e^{-i H tau}
         # This maps Energy -> Phase
-        evo = PauliEvolutionGate(self.H, time=tau)
+        evo = PauliEvolutionGate(self.H, time=tau, synthesis=LieTrotter(reps=EVOLUTION_REPS))
         qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
         
         # --- 2. LOCKING (Information Capture) ---

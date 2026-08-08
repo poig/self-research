@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, partial_trace, entropy, DensityMatrix, Statevector
 from qiskit.circuit.library import PauliEvolutionGate
+from qiskit.synthesis.evolution import LieTrotter
 from qiskit_aer import AerSimulator
 from scipy.stats import linregress
 from scipy.optimize import curve_fit
@@ -54,6 +55,11 @@ KICK_STRENGTHS = np.array([0.02, 0.05, 0.08, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5
 # Sensing parameters (to gather sufficient statistics)
 TAU_STEPS = 15
 MAX_TAU = 1.2
+
+# Time evolution is synthesized (product formula) after transpilation.
+# Default PauliEvolutionGate synthesis is LieTrotter(reps=1). Make it explicit
+# so the approximation can be tightened when needed.
+EVOLUTION_REPS = 1
 
 # ==============================================================================
 # THERMODYNAMIC ENGINE WITH VARIABLE COUPLING
@@ -134,7 +140,7 @@ class CarnotBoundExperiment:
         
         # --- 1. SENSING ---
         # Controlled-Evolution: maps Energy -> Phase
-        evo = PauliEvolutionGate(self.H, time=tau)
+        evo = PauliEvolutionGate(self.H, time=tau, synthesis=LieTrotter(reps=EVOLUTION_REPS))
         qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
         
         # --- 2. LOCKING ---

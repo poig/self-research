@@ -1,0 +1,16 @@
+================================================================================================
+EXACT INTERVAL vs THE FIRST-ORDER ONE — is the symmetry an artefact of O(theta)?
+================================================================================================
+  n=3, tau=0.35, real Heisenberg, Y = sum_i X_i (so (A) holds),
+  pure branch (so (B) holds). Theorem 2 therefore predicts a SYMMETRIC
+  interval at first order. Exact endpoints found by optimisation over U(8).
+
+  spectral bounds: W_floor -0.10275, W_ceil 2.89725  (span 3.00000 = lam_max - lam_min)
+  'sat' columns are how far each endpoint has run into its bound. Any row
+  with sat above ~20% is reporting the spectrum, not the protocol.
+
+     theta      W_min      W_max   sat-   sat+      asym   fo_endpt asym/theta
+  ----------------------------------------------------------------------------
+     0.003   -0.00230    0.00232   2.2%   0.1%    0.0053    0.00231     2.1369
+     0.005   -0.00457    0.00467   4.4%   0.2%    0.0107    0.00462     2.1372
+     0.010   -0.00905    0.00944   8.8%   0.3%    0.0214    0.00924     2.1384

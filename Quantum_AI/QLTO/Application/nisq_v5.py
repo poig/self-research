@@ -79,6 +79,22 @@ WHAT IS KEPT AND WHY.
                           anomaly_c measured at up to 2.4x, 80 sigma from unity.
                           A step using raw magnitudes would inherit that error.
 
+  free energy log         USABLE IN 'direct' MODE ONLY. Measured at Heisenberg
+                          N=4, 20 epochs, against the exact energy:
+                              direct  -6.0164 vs -6.0299   gap 0.014
+                              qpe     -4.3918 vs -5.8055   gap 1.41
+                          The QPE gap is BIN QUANTISATION. Bin width is
+                          2*margin*||H0||/2^kappa = 2*2*6.46/8 = 3.23, so a
+                          half-bin is 1.6 and the observed 1.41 sits inside it.
+                          It bites here and not in the gradient for the reason
+                          anomaly_e identified: THE GRADIENT IS A DIFFERENCE, so
+                          rounding cancels between the x_i=1 and x_i=0 marginals;
+                          the degree-0 energy is an ABSOLUTE mean and nothing
+                          cancels. Raising kappa shrinks the bin but doubles the
+                          ladder, which is what kappa was lowered to 3 to avoid.
+                          In 'qpe' mode, use energy_exact() and treat the free log
+                          as a convergence indicator only.
+
   free energy log         The degree-0 Walsh coefficient is the plain mean of the
                           per-vertex energies, so the epoch energy costs NOTHING.
                           It is biased: E_hat(empty) = E(theta_c) + (R^2/2) Tr H
@@ -89,17 +105,74 @@ WHAT IS KEPT AND WHY.
                           MONITORING and call energy_exact() once at the end; that
                           is 1 circuit instead of one per epoch.
 
-COST, at Heisenberg N=4, 20 epochs, 4 blocks:
-    V3 walk + per-epoch log   160 + 20 = 180 circuits
-    V5 gradstep + free log     G*80 + 1
-so V5 is cheaper whenever G < 2.2, and G=3 on Heisenberg - i.e. V5 trades circuit
-count for depth, deliberately. Choose V3 when the hardware is good enough to run
-its ladder and the bill is what hurts; choose V5 when depth is what hurts.
+COST, measured at Heisenberg N=4 (G=3), 20 epochs, 4 blocks, one seed:
+
+    V3 walk + per-epoch log     180 circuits
+    V5 gradient_mode='qpe'       80 circuits, depth 274
+    V5 gradient_mode='direct'   240 circuits, depth   8
+
+The mode is a HARDWARE JUDGEMENT and neither dominates. QPE removes both the M
+dependence (the marginal, T1/T2) and the G dependence (energy from the PHASE of
+exp(-iHt), so H never has to be split into commuting groups) - 1.5 circuits per
+gradient, constant in both. Direct readout pays G in circuits AND G*S in shots,
+which is exactly what v21 measured vendors billing for: circuits x shots, with NO
+depth term. But QPE buys that with the (2^k - 1)*tau0 ladder, and v26 measured
+its survival at 0.098 on hardware at Heisenberg N=6. A circuit that returns noise
+is not cheap at any price.
+
+    bill-limited, good hardware   -> 'qpe'
+    fidelity-limited              -> 'direct'
+
+G-INDEPENDENCE IS WORTH MOST WHERE G IS LARGE, which is chemistry: v30 measured
+T ~ N^4.61 and G ~ N^4.24, so G runs to the thousands at useful sizes, and V3 was
+measured winning chemistry 6.3x at N=12 and widening. On spin chains G=3 and the
+QPE mode is buying much less.
+
+AMPLITUDE ESTIMATION - CONSIDERED, AND IT IS NOT THE WIN IT LOOKS LIKE.
+The estimand here really is amplitude-encoded. With P(x_i = b) = 1/2 exactly (W is
+controlled ON param, so it cannot move param populations), writing
+a_b = P(anc=1 AND x_i=b) gives conditional means m_b = 4 a_b - 1 and
+
+    g_i  ~  (m_1 - m_0) / 2R  =  2 (a_1 - a_0) / R
+
+an affine function of two squared projections of A|0>. So amplitude estimation
+applies, giving Theta(1/eps) where sampling gives Theta(1/eps^2). Three reasons
+that is worth less than it sounds, and the first is decisive:
+
+  IT DESTROYS T2. AE's reflection S_good projects onto x_i = 1, so it must be run
+  SEPARATELY PER COORDINATE - there is no shot record to share. Sampling gives all
+  M coordinates from Theta(1/eps^2); AE costs Theta(M/eps). The Theta(M) advantage
+  that is this method's entire asymptotic claim is FORFEITED, leaving only the
+  Theta(G) one. AE is cheaper only when M < 1/eps.
+
+  IT IS NOT SPECIFIC TO THIS METHOD. Any expectation value obtainable from a
+  unitary can be amplitude-estimated, parameter-shift's E(theta +- pi/2) included.
+  Under sampling this method is Theta(M) ahead; under AE both scale linearly in M
+  and the gap narrows to Theta(G). Gilyen, Arunachalam and Wiebe (2019) already
+  give quadratic-or-better quantum gradient estimation in general.
+
+  THE DEPTH IS FAULT-TOLERANT. Theta(1/eps) coherent Grover iterations, each
+  containing A and A^dag, is depth D/eps. On a plateau with eps ~ 2^(-N/2) that is
+  D * 2^(N/2) and needs per-gate error below 2^(-N/2).
+
+A NOTE ON THE EXPONENTS, since RESEARCH_NOTES quotes "2^N queries against 4^N
+shots": that implies eps ~ 2^(-N), i.e. resolving to VARIANCE scale. The standard
+plateau target is the STANDARD DEVIATION, eps ~ 2^(-N/2), giving 2^N shots against
+M * 2^(N/2) queries. The quadratic relation is right; those particular exponents
+are squared.
+
+AND IT DOES NOT REACH CLASSICAL EITHER WAY. In the plateau regime the ansatz is by
+construction classically hard, so classical VQE fails too - nobody wins there. The
+classical baseline is not classical VQE but DMRG and tensor networks, which attack
+the ground state directly and have no parameterised landscape, hence no plateau,
+and solve gapped 1D chains in polynomial time. The plateau is a self-inflicted
+cost of the variational parameterisation and the classical competition does not
+pay it.
 """
 import numpy as np
 from qiskit import (QuantumCircuit, QuantumRegister, ClassicalRegister,
                     AncillaRegister, transpile)
-from qiskit.circuit import ParameterExpression
+from qiskit.circuit import Parameter, ParameterExpression
 from qiskit.circuit.library import QFT, PauliEvolutionGate
 from qiskit.synthesis import SuzukiTrotter
 from qiskit.quantum_info import SparsePauliOp, Statevector
@@ -150,6 +223,7 @@ class QLTOv5:
         self.groups = self._group(hamiltonian)
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
+        self._direct_template_cache = {}
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
@@ -160,7 +234,25 @@ class QLTOv5:
         self.qpe_margin = float(qpe_margin)
         self.H_sense, self.h_offset, self.H_range = self._sensing_hamiltonian(
             hamiltonian)
-        self.tau0 = np.pi / (self.qpe_margin * self.H_range + 1e-12)
+        # QPE base time. The constraint on tau0 is ALIASING: phi = -E tau0/2pi
+        # must stay inside one turn, so |E| tau0 <= pi, and |E| is bounded by
+        # max|lambda| = the SPECTRAL NORM. H_range is the wrong scale here -
+        # _sensing_hamiltonian argues for the range against an IDENTITY term, but
+        # H_sense is already traceless (the identity went to h_offset), so that
+        # argument has nothing left to bite on and the two collapse to within a
+        # factor of two: range/2 <= ||H0||_2 <= range for a traceless H0.
+        # Using the range therefore cannot prevent an alias that the norm allows,
+        # it only widens the readout window - and the window is resolved into
+        # 2^k bins, so the cost is bin width 2*margin*S/2^k. v63 measured the
+        # ratio at 1.46-2.00 across the suite (exactly 2, a full lost bit, on
+        # MaxCut/TFIM/H2), found NEITHER convention aliases at margin=2, and the
+        # norm won the gradient cosine 4-0 with 2 ties - 0.9584 vs 0.7389 on
+        # MaxCut N=6. This line read H_range until then; V3 line 371 always had
+        # it right.
+        self.H0_norm = (float(np.linalg.norm(self.H_sense.to_matrix(), ord=2))
+                        if self.H_sense.num_qubits <= 14
+                        else float(np.sum(np.abs(self.H_sense.coeffs))))
+        self.tau0 = np.pi / (self.qpe_margin * self.H0_norm + 1e-12)
 
     # ── setup ────────────────────────────────────────────────────────────────
 
@@ -222,6 +314,53 @@ class QLTOv5:
                     f"value and report a zero gradient.")
             qc.append(op.__class__(float(centre[gi]) - R), qs)
             getattr(qc, _CTRL[op.name])(2.0 * R, param[pos[gi]], qs[0])
+
+    def _direct_template(self, active, group):
+        """Cached, parameterized direct-sensing circuit for one block/group pair."""
+        key = (tuple(active), tuple(group.paulis.to_labels()))
+        cached = self._direct_template_cache.get(key)
+        if cached is not None:
+            return cached
+
+        n = len(active)
+        theta = list(self.ansatz.parameters)
+        radius = Parameter(f'R_{len(active)}_{len(self._direct_template_cache)}')
+        pos = {p: i for i, p in enumerate(active)}
+
+        qc = QuantumCircuit(QuantumRegister(n, 'param'),
+                            QuantumRegister(self.N, 'sys'),
+                            ClassicalRegister(n, 'cp'),
+                            ClassicalRegister(self.N, 'cs'))
+        param, sysr = qc.qregs[0], qc.qregs[1]
+        qc.h(param)
+
+        for inst in self.ansatz.data:
+            op = inst.operation
+            qs = [sysr[self.ansatz.find_bit(b).index] for b in inst.qubits]
+            prm = [p for p in op.params
+                   if isinstance(p, ParameterExpression) and p.parameters]
+            if not prm:
+                qc.append(op, qs)
+                continue
+            gi = self._pidx[next(iter(prm[0].parameters))]
+            if gi not in pos:
+                qc.append(op.__class__(theta[gi]), qs)
+                continue
+            if op.name not in _CTRL:
+                raise ValueError(
+                    f"V5 cannot build a controlled form of '{op.name}'. Add it to "
+                    f"_CTRL, or the parameter would silently stay at its centre "
+                    f"value and report a zero gradient.")
+            qc.append(op.__class__(theta[gi] - radius), qs)
+            getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
+
+        self._basis(qc, sysr, group)
+        qc.measure(param, qc.cregs[0])
+        qc.measure(sysr, qc.cregs[1])
+        template = transpile(qc, self.backend, optimization_level=1)
+        cached = (template, theta, radius)
+        self._direct_template_cache[key] = cached
+        return cached
 
     @staticmethod
     def _basis(qc, sysr, group):
@@ -338,22 +477,22 @@ class QLTOv5:
             return self._decode_gradient_qpe(counts, centre, active, R)
 
         n = len(active)
-        num = np.zeros((2, n))
-        den = np.zeros((2, n))
-        e_tot = e_cnt = 0.0
+        # PER-GROUP accumulation, then SUM. Accumulating num/den across all
+        # groups before dividing computes the MEAN over groups where the energy
+        # is the SUM (E = sum_g E_g), which makes the gradient G times too small.
+        # v60 caught it: relative L2 error pinned at 0.68 ~ 2/3 = |t/G - t|/|t|
+        # at G=3, flat across a 64x shot sweep - a factor, not a noise floor.
+        m_sum = np.zeros(n)
+        e_sum = 0.0
 
         for group in self.groups:
-            qc = QuantumCircuit(QuantumRegister(n, 'param'),
-                                QuantumRegister(self.N, 'sys'),
-                                ClassicalRegister(n, 'cp'),
-                                ClassicalRegister(self.N, 'cs'))
-            param, sysr = qc.qregs[0], qc.qregs[1]
-            qc.h(param)
-            self._build_w(qc, param, sysr, centre, R, active)
-            self._basis(qc, sysr, group)
-            qc.measure(param, qc.cregs[0])
-            qc.measure(sysr, qc.cregs[1])
-            counts = self._run(qc)
+            num = np.zeros((2, n))
+            den = np.zeros((2, n))
+            e_tot = e_cnt = 0.0
+            t_qc, theta, radius = self._direct_template(active, group)
+            bind = {theta[i]: float(centre[i]) for i in range(len(theta))}
+            bind[radius] = float(R)
+            counts = self._run_transpiled(t_qc.assign_parameters(bind, inplace=False))
 
             labels = group.paulis.to_labels()
             coeffs = np.real(group.coeffs)
@@ -376,13 +515,16 @@ class QLTOv5:
                     num[b, i] += e * cnt
                     den[b, i] += cnt
 
-        m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
-        m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
+            m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
+            m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
+            m_sum += m1 - m0                      # sum the GROUPS' contributions
+            e_sum += (e_tot / e_cnt) if e_cnt else 0.0
+
         grad = np.zeros(len(centre))
-        grad[active] = (m1 - m0) / (2.0 * R + 1e-12)
+        grad[active] = m_sum / (2.0 * R + 1e-12)
         # degree-0 Walsh coefficient: E(theta_c) + (R^2/2) Tr H + O(R^4). Biased,
         # and provably not correctable from these shots - see the module docstring.
-        return grad, (e_tot / e_cnt if e_cnt else float('nan')) / len(self.groups)
+        return grad, e_sum
 
     # ── step ─────────────────────────────────────────────────────────────────
 
@@ -400,6 +542,16 @@ class QLTOv5:
 
     def _run(self, qc):
         t_qc = transpile(qc, self.backend, optimization_level=1)
+        self.max_circuit_depth = max(self.max_circuit_depth, t_qc.depth())
+        self.nefv += 1
+        kw = {}
+        if self.sim_seed is not None:
+            kw['seed_simulator'] = int(self.sim_seed) + self._shot_index
+            self._shot_index += 1
+        return self.backend.run(t_qc, shots=self.shot_budget,
+                                **kw).result().get_counts()
+
+    def _run_transpiled(self, t_qc):
         self.max_circuit_depth = max(self.max_circuit_depth, t_qc.depth())
         self.nefv += 1
         kw = {}

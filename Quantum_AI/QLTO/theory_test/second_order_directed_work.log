@@ -1,0 +1,81 @@
+============================================================================================
+THE SECOND-ORDER TERM — derivation checked link by link
+============================================================================================
+  n=3, tau=0.35, real Heisenberg, Y = sum_i X_i. Same state as
+  exact_interval_asymmetry.py, which measured A(theta) = 2.137 theta.
+
+  (1) EXPANSION vs EXACT, at the first-order optimising V.
+      W_1 = +0.924262   W_2 = +1.974944
+      theta      W_exact   W1*th+W2*th^2     residual   resid/th^3
+  ----------------------------------------------------------------
+     0.0050     0.004671        0.004671    -1.74e-07      -1.3938
+     0.0100     0.009439        0.009440    -1.40e-06      -1.4011
+     0.0200     0.019264        0.019275    -1.13e-05      -1.4158
+     0.0400     0.040038        0.040130    -9.25e-05      -1.4446
+     0.0800     0.085812        0.086581    -7.68e-04      -1.5007
+      resid/theta^3 constant => the O(theta^3) truncation is what is left,
+      and the two derived coefficients are correct.
+
+  (2) PREDICTING THE MEASURED SLOPE.
+      W_max ~ W1p*th + W2p*th^2   W1p=+0.924262  W2p=+1.974944
+      W_min ~ W1m*th + W2m*th^2   W1m=-0.924262  W2m=+1.974944
+      A(th) = (W_max+W_min)/(W_max-W_min) = c*th,
+              c = (W2p+W2m)/(W1p-W1m) = 2.1368
+      MEASURED (exact_interval_asymmetry.log): 2.1369, 2.1372, 2.1384
+      -> AGREES   (difference 0.0002)
+
+  (3) THE BARE GENERATOR IS DEAD AT EVERY ORDER, and it should be.
+      ||[Y,H]||         = 0.000e+00
+      ||ad_Y^2(H)||     = 0.000e+00
+      Heisenberg has SU(2) symmetry, so [sum_i X_i, H] = 0 EXACTLY and
+      Corollary 1 gives W = 0 to all orders for the unrotated generator.
+      Only the rotated Y~ = V^dag Y V is live, which is why every number
+      in (1), (2) and (4) is computed at a rotated generator.
+
+      sanity, Y=X and H=Z on one qubit: [X,[X,Z]] = 4 Z  (derivation says 4 Z)
+
+  (4) ALIGNMENT DEPENDENCE. Sweep V over the isospectral orbit and
+      compare how much each order moves.
+      W_1 over V : mean +0.00535  sd 0.14424  range [-0.33206, +0.30709]
+      W_2 over V : mean +0.67770  sd 0.41269  range [+0.08613, +2.35671]
+      relative spread: W_1 26.96,  W_2 0.61
+      W_1 changes SIGN over the orbit: True
+      W_2 changes SIGN over the orbit: False
+
+  If W_2 keeps one sign while W_1 sweeps through zero, then a fixed
+  generator has a guaranteed direction at second order and none at first,
+  which is the engineering claim: second-order extraction needs no
+  knowledge of M_11 and therefore no knowledge of the joint state. If W_2
+  also changes sign, that claim fails and the second order buys nothing
+  a first-order protocol could not already get by choosing V.
+
+  (5) ACCUMULATION OVER CYCLES — the engineering question.
+      A blind protocol repeats a FIXED rotated generator. The first-order
+      term has whatever sign the current alignment gives it and that
+      alignment drifts as the state evolves; the second-order term is
+      sign-definite. So does <H> fall monotonically, and does the total
+      track n*W_2*theta^2? Compared against a matched RANDOM-generator arm.
+      ONE random V proves nothing, so 24 are drawn per theta and the
+      FRACTION THAT COOL is reported. The crossover prediction is that a
+      blind generator is directed only once theta exceeds |W_1|/W_2.
+
+      aligned generator: W_1 +0.9243, W_2 +1.9749,  |W_1|/W_2 = 0.468
+      random generators: median |W_1|/W_2 = 0.070   <- predicted crossover theta
+
+     theta  aligned dE  random dE mean  frac cooling  frac monotone
+  -----------------------------------------------------------------
+      0.05    -0.04492        -0.00509         54.2%           0.0%
+      0.10    -0.12855        -0.02017         70.8%           0.0%
+      0.20    -0.30766        -0.07565         83.3%           0.0%
+      0.30    -0.59650        -0.15843         91.7%           8.3%
+      0.40    -0.79471        -0.25681        100.0%           8.3%
+      0.60    -0.89666        -0.47756        100.0%           8.3%
+
+  dE NEGATIVE means cooling. 'frac cooling' rising from ~50% to 100% as
+  theta crosses |W_1|/W_2 is the signature of the second-order term taking
+  over: below it a blind generator is a coin flip, above it the direction
+  is guaranteed without knowing M_11. That would make theta a DESIGN
+  VARIABLE rather than a small parameter, and it would say the protocol
+  should be run hard rather than gently - the opposite of the usual
+  weak-kick instinct. If frac cooling stays near 50% at every theta, the
+  second order is not usable blind and only alignment buys direction.

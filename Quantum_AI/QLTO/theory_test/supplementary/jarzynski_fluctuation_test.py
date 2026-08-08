@@ -82,6 +82,7 @@ import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, partial_trace, entropy, DensityMatrix, Statevector
 from qiskit.circuit.library import PauliEvolutionGate
+from qiskit.synthesis.evolution import LieTrotter
 from qiskit_aer import AerSimulator
 from scipy import stats
 import warnings
@@ -96,6 +97,10 @@ N_TRAJECTORIES = 100  # Number of independent optimization runs
 N_STEPS = 5           # Steps per trajectory
 TAU_SENSING = 0.5     # Fixed sensing time
 KICK_STRENGTH = 0.2   # Feedback strength (TABLE I: θ_gain = 0.2 rad)
+
+# Time evolution is synthesized (product formula) after transpilation.
+# Default PauliEvolutionGate synthesis is LieTrotter(reps=1). Make it explicit
+EVOLUTION_REPS = 1
 
 # ==============================================================================
 # JARZYNSKI EXPERIMENT
@@ -164,6 +169,29 @@ class JarzynskiOptimizationExperiment:
         elif isinstance(state, Statevector):
             return state.expectation_value(self.H).real
         return 0.0
+
+    def _sample_pure_state_from_density_matrix(self, rho: DensityMatrix) -> Statevector:
+        """Sample a pure state from the spectral decomposition of a density matrix.
+
+        This is one consistent way to generate an ensemble trajectory when the
+        system state becomes mixed after tracing out an ancilla.
+        """
+        evals, evecs = np.linalg.eigh(rho.data)
+        evals = np.clip(np.real(evals), 0.0, None)
+        total = float(np.sum(evals))
+        if not np.isfinite(total) or total <= 1e-12:
+            vec = np.ones(2**self.n, dtype=complex) / np.sqrt(2**self.n)
+            return Statevector(vec)
+
+        probs = evals / total
+        idx = int(np.random.choice(len(probs), p=probs))
+        vec = np.ascontiguousarray(evecs[:, idx])
+        norm = np.linalg.norm(vec)
+        if norm <= 1e-12:
+            vec = np.ones(2**self.n, dtype=complex) / np.sqrt(2**self.n)
+        else:
+            vec = vec / norm
+        return Statevector(vec)
     
     def run_single_step(self, initial_state, tau, kick):
         """
@@ -181,7 +209,7 @@ class JarzynskiOptimizationExperiment:
         qc.h(qr_anc)
         
         # SENSING: Controlled evolution
-        evo = PauliEvolutionGate(self.H, time=tau)
+        evo = PauliEvolutionGate(self.H, time=tau, synthesis=LieTrotter(reps=EVOLUTION_REPS))
         qc.append(evo.control(1), [qr_anc[0]] + list(qr_sys))
         
         # LOCKING: Convert phase to population
@@ -223,14 +251,6 @@ class JarzynskiOptimizationExperiment:
         E_after = self.get_energy(rho_S_final)
         work = E_before - E_after
         
-        # Get final system state for next iteration
-        final_state = rho_S_final.data.diagonal()
-        # Normalize and convert to statevector (approximation for mixed states)
-        # For pure state evolution, this is valid
-        final_sv = Statevector(sv_final).evolve(
-            QuantumCircuit(self.n + 1).to_gate()  # Identity
-        )
-        
         return work, mutual_info, rho_S_final
     
     def run_trajectory(self, n_steps, seed=None):
@@ -247,18 +267,7 @@ class JarzynskiOptimizationExperiment:
         initial_psi = amplitudes * np.exp(1j * phases)
         initial_psi = initial_psi / np.linalg.norm(initial_psi)
         
-        # Build initial circuit
-        qr = QuantumRegister(self.n)
-        qc_init = QuantumCircuit(qr)
-        qc_init.initialize(initial_psi, qr)
-        
-        t_qc = transpile(qc_init, self.backend)
-        qc_init_sv = QuantumCircuit(qr)
-        qc_init_sv.initialize(initial_psi, qr)
-        qc_init_sv.save_statevector()
-        t_qc_sv = transpile(qc_init_sv, self.backend)
-        result = self.backend.run(t_qc_sv).result()
-        current_state = result.get_statevector()
+        current_state = Statevector(initial_psi)
         
         work_list = []
         info_list = []
@@ -269,7 +278,7 @@ class JarzynskiOptimizationExperiment:
             kick = KICK_STRENGTH * (1 + 0.1 * np.random.randn())
             
             w, mi, new_rho = self.run_single_step(
-                current_state.data[:2**self.n],  # System part only
+                current_state.data,
                 max(0.1, tau), 
                 kick
             )
@@ -277,13 +286,11 @@ class JarzynskiOptimizationExperiment:
             work_list.append(w)
             info_list.append(mi)
             
-            # Update state for next step (take diagonal as approximation)
-            # This is a simplification - ideally track full density matrix
-            current_state = Statevector(new_rho.data @ np.ones(2**self.n) / 2**self.n)
-            current_state = Statevector(np.ones(2**self.n) / np.sqrt(2**self.n))
-            # Actually, let's restart fresh each step for cleaner statistics
-            phases = np.random.uniform(0, 2*np.pi, 2**self.n)
-            current_state = Statevector(np.exp(1j * phases) / np.sqrt(2**self.n))
+            # Update state for next step.
+            # The system state after tracing out the ancilla is generally mixed.
+            # For this lightweight test we sample a pure-state representative from
+            # the spectral decomposition of the reduced density matrix.
+            current_state = self._sample_pure_state_from_density_matrix(new_rho)
         
         total_work = sum(work_list)
         total_info = sum(info_list)

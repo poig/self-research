@@ -1,0 +1,60 @@
+============================================================================================
+X-X CORRELATOR AS CONNECTIVITY WITNESS
+============================================================================================
+  R=0.6, exact statevector, no shots. cos(R) = 0.825336
+  Prediction 1: <X_i> = cos(R) exactly, for all i - the dead diagonal.
+  Prediction 2: C_ij = <X_iX_j> - <X_i><X_j> tracks entangler topology.
+
+  ===== Heisenberg N=4 | M=16 | 4 blocks =====
+
+  block 0  (n=4, params 0..3)
+    max |<X_i> - cos(R)| over 3 centres : 1.110e-16   -> diagonal DEAD as predicted
+    connected C_ij, mean over 3 centres:
+         0.00000  -0.00000  -0.00000  -0.00000
+        -0.00000   0.00000   0.00000   0.00000
+        -0.00000   0.00000   0.00000  -0.00000
+        -0.00000   0.00000  -0.00000   0.00000
+    |C| by chain distance:
+      d=1: mean |C| = 0.00000   (n=3 pairs)
+      d=2: mean |C| = 0.00000   (n=2 pairs)
+      d=3: mean |C| = 0.00000   (n=1 pairs)
+
+  block 1  (n=4, params 4..7)
+    max |<X_i> - cos(R)| over 3 centres : 1.110e-16   -> diagonal DEAD as predicted
+    connected C_ij, mean over 3 centres:
+         0.00000   0.00000   0.00000   0.00000
+         0.00000   0.00000   0.00000   0.00000
+         0.00000   0.00000   0.00000  -0.00000
+         0.00000   0.00000  -0.00000   0.00000
+    |C| by chain distance:
+      d=1: mean |C| = 0.00000   (n=3 pairs)
+      d=2: mean |C| = 0.00000   (n=2 pairs)
+      d=3: mean |C| = 0.00000   (n=1 pairs)
+
+  block 2  (n=4, params 8..11)
+    max |<X_i> - cos(R)| over 3 centres : 1.110e-16   -> diagonal DEAD as predicted
+    connected C_ij, mean over 3 centres:
+         0.00000  -0.00000  -0.00000   0.00000
+        -0.00000   0.00000   0.00000  -0.00000
+        -0.00000   0.00000   0.00000  -0.00000
+         0.00000  -0.00000  -0.00000   0.00000
+    |C| by chain distance:
+      d=1: mean |C| = 0.00000   (n=3 pairs)
+      d=2: mean |C| = 0.00000   (n=2 pairs)
+      d=3: mean |C| = 0.00000   (n=1 pairs)
+
+  block 3  (n=4, params 12..15)
+    max |<X_i> - cos(R)| over 3 centres : 3.331e-16   -> diagonal DEAD as predicted
+    connected C_ij, mean over 3 centres:
+         0.00000  -0.00000  -0.00000   0.00000
+        -0.00000   0.00000  -0.00000   0.00000
+        -0.00000  -0.00000   0.00000   0.00000
+         0.00000   0.00000   0.00000   0.00000
+    |C| by chain distance:
+      d=1: mean |C| = 0.00000   (n=3 pairs)
+      d=2: mean |C| = 0.00000   (n=2 pairs)
+      d=3: mean |C| = 0.00000   (n=1 pairs)
+
+  ===== Heisenberg N=6 | M=24 | 4 blocks =====
+
+  block 0  (n=6, params 0..5)
