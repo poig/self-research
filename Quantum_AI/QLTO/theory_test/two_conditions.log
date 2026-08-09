@@ -1,0 +1,17 @@
+==================================================================================================
+BOTH CONDITIONS MUST BREAK — spec(Y) asymmetric AND spec(M11) asymmetric
+==================================================================================================
+  A broken?   B broken?   generator     branch                      defect M11      W_lo      W_hi    interval
+  ------------------------------------------------------------------------------------------------
+  no          no          sum X_i       pure                          1.31e-16  -0.36373   0.36373   SYMMETRIC
+  YES         no          projector     pure                          1.31e-16  -0.06062   0.06062   SYMMETRIC
+  no          no          sum X_i       mixed, H real, 4 cyc          4.91e-16  -0.01272   0.01272   SYMMETRIC
+  no          YES         sum X_i       mixed, H complex, 4 cyc       4.37e-02  -0.08953   0.08953   SYMMETRIC
+  YES         YES         projector     mixed, H complex, 4 cyc       4.37e-02  -0.01910   0.01921  ASYMMETRIC
+
+  Only the last row breaks both. If it is the only ASYMMETRIC entry, the
+  manuscript's condition is incomplete: spec(Y) symmetric is sufficient for
+  a symmetric interval, but so is spec(M11) symmetric, and the latter holds
+  automatically for every pure branch by Corollary 3. A protocol that starts
+  pure therefore cannot be repaired by the generator alone, and one that uses
+  a symmetric generator cannot be repaired by the state alone.

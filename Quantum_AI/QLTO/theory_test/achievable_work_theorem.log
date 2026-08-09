@@ -1,0 +1,30 @@
+==============================================================================================
+sum-Z   N = 4   theta = 0.2   tau = 1.042
+==============================================================================================
+  reference:  I(S:A) = 1.99394199   E_N = 0.99848417   W = -0.129026  (1st order -0.129890)
+  spectrum of sum X : [ 4.0e+00  2.0e+00  2.0e+00  2.0e+00  2.0e+00  6.8e-16  6.5e-16  2.1e-16  1.1e-16 -1.1e-16 -3.2e-16 -2.0e+00 -2.0e+00 -2.0e+00 -2.0e+00 -4.0e+00]
+
+  CLOSED FORM   W in [-0.948929, +0.948929]    symmetric: 0.00e+00
+  (a) R_y family        [-0.129890, +0.129890]    saturation:  13.7% of bound
+  (b) 400 Haar V       [-0.249216, +0.316517]    violations: 0
+  (c) constructed max   W_1st = +0.948929   target +0.948929   err 5.55e-16
+      correlations   dI = 2.22e-16   dE_N = 0.00e+00   (exact W = +0.850900)
+  (c) constructed min   W_1st = -0.948929   target -0.948929   err 3.33e-16
+      correlations   dI = 2.22e-16   dE_N = 7.77e-16   (exact W = -0.850900)
+
+==============================================================================================
+paper-fig1   N = 4   theta = 0.2   tau = 1.042
+==============================================================================================
+  reference:  I(S:A) = 1.93681944   E_N = 0.98405852   W = +0.215496  (1st order +0.212099)
+  spectrum of sum X : [ 4.0e+00  2.0e+00  2.0e+00  2.0e+00  2.0e+00  6.8e-16  6.5e-16  2.1e-16  1.1e-16 -1.1e-16 -3.2e-16 -2.0e+00 -2.0e+00 -2.0e+00 -2.0e+00 -4.0e+00]
+
+  CLOSED FORM   W in [-0.578958, +0.578958]    symmetric: 0.00e+00
+  (a) R_y family        [-0.212099, +0.212099]    saturation:  36.6% of bound
+  (b) 400 Haar V       [-0.132222, +0.157451]    violations: 0
+  (c) constructed max   W_1st = +0.578958   target +0.578958   err 1.55e-15
+      correlations   dI = 6.66e-16   dE_N = 1.33e-15   (exact W = +0.565401)
+  (c) constructed min   W_1st = -0.578958   target -0.578958   err 1.33e-15
+      correlations   dI = 2.22e-16   dE_N = 5.55e-16   (exact W = -0.472895)
+
+
+[Saved] achievable_work_theorem.png

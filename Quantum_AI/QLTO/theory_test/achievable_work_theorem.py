@@ -172,10 +172,74 @@ def optimal_V(M11, n, reverse=False):
     return U_X @ U_M.conj().T
 
 
+def make_figure(results):
+    """One panel per family: the theorem as a band, the evidence inside it.
+
+    The point to convey in one look is that the closed form is not a fit. The
+    shaded band IS Theorem 2's prediction, computed from the spectra alone before
+    any V is chosen; the Haar cloud shows 400 random frames landing inside it; and
+    the constructed optimum sits exactly on both edges. Zero sits in the middle
+    because the band is symmetric - which is the protocol's defect, and the reason
+    an unfiltered kick cannot prefer cooling.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    TITLES = {"sum-Z": r"$H=\sum_i Z_i$",
+              "paper-fig1": r"random all-to-all $ZZ$ + transverse field"}
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 3.0))
+    rng = np.random.default_rng(7)
+
+    for ax, fam in zip(axes, ["sum-Z", "paper-fig1"]):
+        r = results[fam]
+        wmin, wmax = r["w_min"], r["w_max"]
+
+        ax.axhspan(wmin, wmax, color="#1f77b4", alpha=0.12, zorder=0)
+        for edge in (wmin, wmax):
+            ax.axhline(edge, color="#1f77b4", linewidth=1.4, zorder=1)
+        ax.axhline(0.0, color="gray", linestyle=":", linewidth=1.0, zorder=1)
+
+        # (a) the one-parameter R_y sweep
+        ax.scatter(rng.normal(1.0, 0.045, len(r["ry"])), r["ry"], s=7,
+                   color="#2ca02c", alpha=0.75, linewidths=0, zorder=3)
+        # (b) 400 Haar-random frames
+        ax.scatter(rng.normal(2.0, 0.075, len(r["haar"])), r["haar"], s=5,
+                   color="#7f7f7f", alpha=0.45, linewidths=0, zorder=2)
+        # (c) the constructed optimum, on both edges
+        ax.scatter([3.0, 3.0], [r["built_max"], r["built_min"]], s=70,
+                   marker="*", color="#d62728", zorder=4)
+
+        ax.set_xlim(0.4, 3.6)
+        ax.set_xticks([1, 2, 3])
+        ax.set_xticklabels([r"$R_y$ sweep", f"Haar\n$n={len(r['haar'])}$",
+                            "constructed"], fontsize=8)
+        pad = (wmax - wmin) * 0.18
+        ax.set_ylim(wmin - pad, wmax + pad)
+        ax.set_title(TITLES[fam], fontsize=9.5)
+        ax.tick_params(labelsize=8)
+        ax.grid(True, axis="y", alpha=0.25)
+        ax.text(0.52, wmax, r"$+W^*$", fontsize=8, color="#1f77b4",
+                va="bottom", ha="left")
+        ax.text(0.52, wmin, r"$-W^*$", fontsize=8, color="#1f77b4",
+                va="top", ha="left")
+        ax.text(3.0, r["built_max"], f"  {r['err_max']:.0e}", fontsize=7,
+                color="#d62728", va="center", ha="left")
+
+    axes[0].set_ylabel(r"first-order work  $W_1$", fontsize=9)
+    fig.text(0.5, -0.02, "shaded band = closed-form reachable interval "
+             r"$[-W^*,+W^*]$ (Theorem 2), computed from spectra alone",
+             ha="center", fontsize=8)
+    plt.tight_layout(rect=(0, 0.04, 1, 1))
+    plt.savefig("achievable_work_theorem.png", dpi=300, bbox_inches="tight")
+    print("\n[Saved] achievable_work_theorem.png")
+
+
 def main():
     K = feedback_generator(N)
     u_fb = expm(-1j * (THETA / 2.0) * K)
     G = sum_y(N) / 2.0
+    results = {}
 
     for fam in ["sum-Z", "paper-fig1"]:
         Hm = build(N, fam)
@@ -220,17 +284,30 @@ def main():
               f"    violations: {viol}")
 
         # (c) constructed optimum
+        built = {}
+        errs = {}
         for tag, rev in [("max", False), ("min", True)]:
             V = optimal_V(M11, N, reverse=rev)
             j, h = post_sensing(Hm, V, N, TAU)
             i_v, e_v, w_v, wfo_v = observables(j, h, K, u_fb, N)
             target = w_max if not rev else w_min
+            built[tag] = wfo_v
+            errs[tag] = abs(wfo_v - target)
             print(f"  (c) constructed {tag}   W_1st = {wfo_v:+.6f}   "
                   f"target {target:+.6f}   err {abs(wfo_v - target):.2e}")
             # (d) correlations must be untouched, else the bound means nothing
             print(f"      correlations   dI = {abs(i_v - info0):.2e}   "
                   f"dE_N = {abs(e_v - en0):.2e}   (exact W = {w_v:+.6f})")
         print()
+
+        results[fam] = dict(w_min=w_min, w_max=w_max, ry=ry, haar=haar,
+                            built_max=built["max"], built_min=built["min"],
+                            err_max=errs["max"], viol=viol)
+
+    try:
+        make_figure(results)
+    except Exception as exc:
+        print(f"\n[figure skipped] {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":

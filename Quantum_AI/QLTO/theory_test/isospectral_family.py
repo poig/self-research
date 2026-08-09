@@ -181,25 +181,65 @@ def main():
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4.6))
+        # SIZED FOR THE PAGE, NOT FOR THE SCREEN. The manuscript is two-column
+        # revtex; this goes in a full-width figure* at \textwidth ~ 7.0in, so the
+        # figure is authored at exactly that width and the font sizes below are
+        # the sizes that actually appear in print. The earlier 12x4.6 version
+        # rendered its 12pt labels at ~3.4pt once scaled into a single column.
+        # TWIN AXES, and the reason is not cosmetic. The correlations sit near
+        # 2.0 and 1.0 while the work sits near +-0.2, so on a shared axis the
+        # work curve - the only thing that MOVES, and the whole argument - is
+        # compressed into the bottom sixth of the panel and its sign change is
+        # invisible. Plotting it on its own right-hand scale lets both render at
+        # full amplitude, which is what the figure is actually claiming: one pair
+        # of quantities pinned, another sweeping through zero.
+        TITLES = {"sum-Z": r"$H=\sum_i Z_i$",
+                  "paper-fig1": r"random all-to-all $ZZ$ + transverse field"}
+        fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.8))
         for ax, fam in zip(axes, ["sum-Z", "paper-fig1"]):
             svals, rows = run(fam)
-            ax.plot(svals, rows[:, 0], color="#1f77b4", linewidth=2.5,
-                    label="$I(S{:}A)$ [bits]")
-            ax.plot(svals, rows[:, 1], color="#17becf", linewidth=1.6,
-                    linestyle="--", label="$E_N$")
-            ax.plot(svals, rows[:, 2], color="#d62728", linewidth=2.5,
-                    label=r"extracted work $-\Delta\langle H\rangle$")
-            ax.axhline(0, color="gray", linestyle=":", alpha=0.7)
-            ax.set_xlabel(r"$s/\pi$", fontsize=12)
-            ax.set_title(fam, fontsize=12)
-            ax.grid(True, alpha=0.3)
-            ax.legend(fontsize=9, loc="center left")
-        axes[0].set_ylabel("bits  /  energy", fontsize=12)
-        fig.suptitle("Correlations held exactly fixed by construction; "
-                     "work sweeps continuously to zero", fontsize=12)
-        plt.tight_layout()
-        plt.savefig("isospectral_family.png", dpi=150, bbox_inches="tight")
+            l1, = ax.plot(svals, rows[:, 0], color="#1f77b4", linewidth=1.8,
+                          label="$I(S{:}A)$ [bits]")
+            l2, = ax.plot(svals, rows[:, 1], color="#17becf", linewidth=1.5,
+                          linestyle="--", label="$E_N$")
+            ax.set_ylim(0.0, 2.35)
+            ax.set_xlabel(r"$s/\pi$", fontsize=9)
+            ax.set_title(TITLES[fam], fontsize=9.5)
+            ax.grid(True, alpha=0.25)
+            ax.tick_params(labelsize=8)
+
+            axw = ax.twinx()
+            l3, = axw.plot(svals, rows[:, 2], color="#d62728", linewidth=2.0,
+                           label=r"work $-\Delta\langle H\rangle$")
+            w = float(np.max(np.abs(rows[:, 2]))) * 1.35
+            axw.set_ylim(-w, w)
+            axw.axhline(0, color="#d62728", linestyle=":", alpha=0.55,
+                        linewidth=1.0)
+            axw.tick_params(labelsize=8, colors="#d62728")
+            axw.spines["right"].set_color("#d62728")
+
+            # mark the sign change: the point the whole construction exists for
+            sgn = np.where(np.sign(rows[:-1, 2]) != np.sign(rows[1:, 2]))[0]
+            if len(sgn):
+                k = int(sgn[0])
+                axw.plot([svals[k]], [rows[k, 2]], marker="o", ms=4.5,
+                         color="#d62728", zorder=5)
+                axw.annotate("work $=0$", xy=(svals[k], rows[k, 2]),
+                             xytext=(svals[k] + 0.06, w * 0.42), fontsize=7.5,
+                             color="#d62728",
+                             arrowprops=dict(arrowstyle="->", color="#d62728",
+                                             lw=0.8))
+            handles = [l1, l2, l3]
+        # ONE legend for the pair, below the axes. Per-panel legends land on the
+        # E_N line in the right panel whichever corner they are put in, because
+        # the work curve occupies the opposite corner in each.
+        axes[0].set_ylabel("correlation  [bits]", fontsize=9)
+        fig.legend(handles=handles, fontsize=8, ncol=3, loc="lower center",
+                   bbox_to_anchor=(0.5, -0.02), frameon=False)
+        fig.text(0.995, 0.58, r"extracted work  $-\Delta\langle H\rangle$",
+                 rotation=270, va="center", fontsize=9, color="#d62728")
+        plt.tight_layout(rect=(0, 0.07, 0.975, 1))
+        plt.savefig("isospectral_family.png", dpi=300, bbox_inches="tight")
         print("\n[Saved] isospectral_family.png")
     except Exception as exc:
         print(f"\n[figure skipped] {type(exc).__name__}: {exc}")

@@ -1,0 +1,8 @@
+import QuantumFeedback.Basic
+open QuantumFeedback
+#print axioms QuantumFeedback.work_eq_conj
+#print axioms QuantumFeedback.work_eq_zero_of_commute
+#print axioms QuantumFeedback.conj_eq_self_of_commute
+#print axioms QuantumFeedback.commute_kron_controlled
+#print axioms QuantumFeedback.neg_mem_reachable
+#print axioms QuantumFeedback.sSup_eq_neg_sInf_of_neg_mem

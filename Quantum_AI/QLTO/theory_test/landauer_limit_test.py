@@ -217,14 +217,23 @@ class LandauerExperiment:
 
         # Plot
         plt.figure(figsize=(10, 6))
-        plt.plot(data_tau, data_work, 'bo-', label='Extracted Work $W = \\eta \\cdot I(S:A)$')
+        # NOTE the work curve is labelled by what it IS, not by a relation it was
+        # once thought to obey. Earlier versions of this figure read
+        # 'W = eta . I(S:A)' and carried the title 'Quantum Advantage ...
+        # Factor-of-2 reduction in information cost'. Both assert the constitutive
+        # relation that isospectral_family.py rules out, and the second reads a
+        # mechanism into I(S:A)/S(A) = 2, which is an identity for a pure joint
+        # state. The figure shipped in versions 1-2 still carries them.
+        plt.plot(data_tau, data_work, 'bo-',
+                 label='Extracted work $-\\Delta\\langle H\\rangle$')
         plt.plot(data_tau, landauer_costs, 'r--', label='Landauer Cost $k_BT\\ln 2 \\cdot S(A)$')
-        
+
         plt.xlabel('Sensing Time $\\tau$')
         plt.ylabel('Energy')
         plt.title(
-            f'Landauer Cost Comparison (I(S:A)/S(A) = {avg_ratio:.2f})\n'
-            f'Note: I/S(A) \u2248 2 when S(SA) \u2248 0 (pure joint state)'
+            f'Extracted work against the Landauer erasure cost, $k_BT = 1$\n'
+            f'I(S:A)/S(A) = {avg_ratio:.2f}, an identity for a pure joint state '
+            f'(S(SA) $\\approx$ 0), not a mechanism'
         )
         plt.legend()
         plt.grid(True, alpha=0.3)

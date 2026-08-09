@@ -1,0 +1,37 @@
+========================================================================================================
+THE DIRECT-READOUT COST LEDGER — replacing v15/v16's QPE numbers
+========================================================================================================
+  basis ['rz', 'sx', 'x', 'cx'], optimisation_level 1, one gradient.
+  'per circ' is one transpiled circuit; 'per grad' multiplies by the
+  circuits each method needs, which is where the 2N shows up.
+
+           problem   M  G circ QL circ PS  dep QL  dep PS  2q QL  2q PS  DEPTH/grad   2Q/grad
+  ------------------------------------------------------------------------------------------------
+                H2  12  2      12      48      26      20      6      2       3.06x     1.33x
+        MaxCut N=4  24  1       6      48      27      21     14      6       6.22x     3.43x
+    Heisenberg N=4  24  3      18     144      29      23     14      6       6.33x     3.43x
+    Heisenberg N=6  36  3      18     216      31      25     22     10       9.65x     5.45x
+
+  DEPTH/grad and 2Q/grad are PS/QLTO — above 1.0 means QLTO uses LESS in
+  total for one gradient. v16 reported the per-circuit ratio on the QPE
+  path and read it as a penalty; per gradient on the direct path is the
+  number that decides whether the circuits fit a device's coherence budget
+  in aggregate.
+
+========================================================================================================
+  BUILD COST: is v15's 535-753 ms artefact removed by the template cache?
+========================================================================================================
+  Cold = empty cache (first gradient, pays transpilation).
+  Warm = median of the next 5 (should pay binding only).
+  v15 measured, on the QPE path: H2 553.8 / MaxCut 535.1 / Heis N=4 753.0
+
+           problem   cold ms   warm ms   speedup   v15 ms   vs v15
+  ----------------------------------------------------------------
+                H2    3181.3       6.2    511.6x    553.8    89.0x
+        MaxCut N=4    1354.0       2.3    598.9x    535.1   236.7x
+    Heisenberg N=4    3359.8       7.5    447.9x    753.0   100.4x
+    Heisenberg N=6    3868.3      16.2    238.7x        -        -
+
+  A warm cost of a few ms would retire the '40-100x worse classical
+  overhead' row for the direct path: v15 already found DECODE cheaper for
+  QLTO (1.1 ms vs 3.4 ms), and build was the entire remaining gap.

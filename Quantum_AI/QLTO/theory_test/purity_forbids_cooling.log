@@ -1,0 +1,52 @@
+========================================================================================
+PURITY FORBIDS DIRECTIONAL COOLING
+========================================================================================
+  Post-sensing |1> branch is rho_p = (1-p)|psi_1><psi_1| + p I/d.
+  p = 0 is the protocol as analysed in the manuscript.
+
+  DEPOLARISING MIXING IS THE WRONG TEST, and it is worth recording why.
+  rho_p = (1-p)|psi_1><psi_1| + p I/d has i[rho_p, H] = (1-p) i[|psi_1><psi_1|, H],
+  because the identity commutes with H. Rank stays 2, everything scales, the
+  interval stays exactly symmetric. Admixing the identity adds no asymmetry -
+  which is the resource theory speaking: the maximally mixed state is FREE.
+  The same argument kills the thermal state: [e^{-beta H}, H] = 0 exactly.
+
+  A mixture must be of states that do NOT commute with H to raise rank(M11).
+
+  MIXTURES THE PROTOCOL ACTUALLY PRODUCES — state after k cycles
+
+  ===== generator: sum_i X_i =====
+    cycle    purity  rank M11       W_lo       W_hi   |hi|-|lo|   asym %
+  ----------------------------------------------------------------------
+        0    1.0000         2   -0.57639    0.57639    0.00e+00     0.00
+        1    0.5217         4   -0.23514    0.23514    0.00e+00     0.00
+        2    0.4534         6   -0.16452    0.16452    0.00e+00     0.00
+        3    0.4210         8   -0.13438    0.13438    0.00e+00     0.00
+        4    0.3986         8   -0.11408    0.11408    0.00e+00     0.00
+        5    0.3809         8   -0.10257    0.10257    0.00e+00     0.00
+
+  ===== generator: X_0 =====
+    cycle    purity  rank M11       W_lo       W_hi   |hi|-|lo|   asym %
+  ----------------------------------------------------------------------
+        0    1.0000         2   -0.14410    0.14410    0.00e+00     0.00
+        1    0.5217         4   -0.05989    0.05989    0.00e+00     0.00
+        2    0.4529         6   -0.04402    0.04402    0.00e+00     0.00
+        3    0.4206         8   -0.03554    0.03554    0.00e+00     0.00
+        4    0.3987         8   -0.03385    0.03385    0.00e+00     0.00
+        5    0.3817         8   -0.03092    0.03092    0.00e+00     0.00
+
+  ===== generator: Pi_low(r=4) =====
+    cycle    purity  rank M11       W_lo       W_hi   |hi|-|lo|   asym %
+  ----------------------------------------------------------------------
+        0    1.0000         2   -0.07205    0.07205    0.00e+00     0.00
+        1    0.5228         4   -0.02930    0.02930    6.94e-18     0.00
+        2    0.4545         6   -0.02153    0.02153    3.47e-18     0.00
+        3    0.4217         8   -0.01722    0.01722   -3.47e-18     0.00
+        4    0.3989         8   -0.01569    0.01569   -3.47e-18     0.00
+        5    0.3808         8   -0.01382    0.01382    0.00e+00     0.00
+
+  If rank(M11) climbs above 2 once the state is genuinely mixed and the
+  interval goes asymmetric, then directionality enters through the RESET,
+  not the kick - and Corollary 3's symmetry is a first-cycle artefact of
+  starting pure. If it stays symmetric, the obstruction is deeper than
+  purity and no single-ancilla unitary feedback can prefer cooling at all.

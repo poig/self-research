@@ -47,12 +47,24 @@ def op(P, i, n):
 
 
 def build_H(n):
-    """Same construction and seed as landauer_limit_test.py."""
+    """Same construction and seed as landauer_limit_test.py.
+
+    CORRECTED. This function previously coupled NEAREST NEIGHBOURS ONLY,
+    `for i in range(n-1)`, while landauer_limit_test.py - which produces the
+    figure this threshold captions - couples ALL PAIRS,
+    `for i in range(n): for j in range(i+1, n)`. At N=4 that is 3 ZZ terms
+    against 6, on a different graph; and because the extra J draws advance the
+    same seeded stream, the transverse fields differed too. The docstring
+    asserted the constructions matched, so the discrepancy never surfaced: the
+    threshold was computed on a chain and quoted against a complete-graph
+    figure, giving peak work 0.063 where the figure shows 0.258.
+    """
     np.random.seed(42)
     H = np.zeros((2 ** n, 2 ** n), dtype=complex)
-    for i in range(n - 1):
-        J = np.random.uniform(-1, 1)
-        H = H + J * (op(Z, i, n) @ op(Z, i + 1, n))
+    for i in range(n):
+        for j in range(i + 1, n):
+            J = np.random.uniform(-1, 1)
+            H = H + J * (op(Z, i, n) @ op(Z, j, n))
     for i in range(n):
         h = np.random.uniform(-0.5, 0.5)
         H = H + h * op(X, i, n)

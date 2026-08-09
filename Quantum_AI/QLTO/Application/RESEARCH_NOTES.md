@@ -1474,9 +1474,79 @@ d=48 that is eps > 0.14, and cosine 0.95 was measured sufficient to reach V2
 parity. Better in eps for them, better in d for V3, and d-dependence is what
 hurts VQE.
 
-UNCHECKED: whether this specific shallow instantiation - parameter superposition
-+ Hamiltonian-native phase kickback + classical marginal readout, no oracle
-conversion - is published. The concept space is mapped; this corner may not be.
+UNCHECKED, NOW CHECKED (literature search, Aug 2026). The specific instantiation -
+parameter superposition + Hamiltonian-native phase kickback + classical marginal
+readout, no oracle conversion - was not found published. But "no one is near the
+budget" is FALSE, and three methods are at or past it:
+
+  Bowles, Wierichs & Park, Quantum 9 1873 (2025), arXiv:2306.14962
+      BACKPROPAGATION SCALING - gradient at roughly the cost of one evaluation,
+      ~2 orders of magnitude training-cost reduction on a 16-qubit task. BEATS
+      QLTO's 2N. Requires parameters feeding into COMMUTING gates. Already cited
+      in these notes for CorrectQNG's 2L figure - it was in the bibliography as a
+      cost reference while being the closest competitor on the gradient claim.
+  Chinzei, Yamano, Tran, Endo & Oshima, npj QI (2025), arXiv:2406.18316
+      Proves a trade-off ON QLTO'S OWN QUANTITY (below), and gives the
+      stabilizer-logical product ansatz (SLPA) that SATURATES it.
+  arXiv:2408.05406, Generalized / Flexible Hadamard Test
+      NOT a competitor on scaling, and I first recorded it here as one. The paper
+      is explicit: "one gradient component per circuit execution", each of M
+      parameters needs its own circuit runs. It is Theta(M), and what it improves
+      is the CONSTANT in front of M - grouping Pauli terms in the GENERATOR
+      against the OBSERVABLE, and choosing per parameter which to group (QAD).
+      Measured at 9x over naive parameter-shift. The "up to an O(N) factor
+      improvement" in the abstract is from QUANTUM-ASSISTED QUANTUM COMPILING,
+      where measurement grouping takes executions from O(N^4) to O(N^3) - a
+      different setting, which I read as if it were the gradient scaling.
+      Heisenberg, reps=2, G=3, circuits per gradient:
+          N=4  M=24   p-shift 144   FHT ~16   QLTO 18
+          N=6  M=36   p-shift 216   FHT ~24   QLTO 18
+          N=8  M=48   p-shift 288   FHT ~32   QLTO 18
+          N=50 M=300  p-shift 1800  FHT ~200  QLTO 18
+      Comparable at N=4, QLTO flat thereafter. FHT reduces the constant; QLTO
+      removes the M dependence. It needs controlled SINGLE-QUBIT GENERATORS plus
+      one ancilla and avoids controlled-O by measuring O directly, so its control
+      structure is comparable to QLTO's - the BATCHING is the difference, not the
+      controls. It remains the right unbiased baseline to benchmark against; it is
+      not the thing that closes QLTO's niche.
+      THE LESSON: an abstract's headline factor may be about a different task in
+      the same paper. Read the complexity claim in the body before filing a paper
+      as a competitor - I filed this one as "QLTO's headline number without the
+      bias", which was wrong in both halves.
+  arXiv:2307.08167, all gradients from a single circuit
+      NOT a competitor on budget: 1 circuit, but s(2n+1) shots, so total shots
+      still scale with M. Circuit-count only.
+
+THE TRADE-OFF THEOREM, and it is the most important thing in this section.
+Chinzei et al., Theorem 1, deep-circuit limit:
+
+    F_eff  <=  X_exp  <=  4^n / F_eff  -  F_eff
+
+    F_eff  = mean number of SIMULTANEOUSLY MEASURABLE gradient components
+    X_exp  = dim of the dynamical Lie algebra
+
+For a hardware-efficient ansatz, X_exp = 4^n - 1, and the bound FORCES F_eff = 1:
+two or more gradient components cannot be measured simultaneously. QLTO uses
+efficient_su2 and reads n = N components per circuit.
+
+THAT IS NOT A CONTRADICTION, AND THE REASON IS WORTH MORE THAN THE THEOREM.
+"Simultaneously measurable" there means gradient operators that COMMUTE FOR ALL
+PARAMETER VALUES. QLTO's components are not commuting observables - they are a
+linear functional of ONE joint (sigma, energy) distribution - and its estimand is
+the R-SMEARED gradient, not grad E.
+
+SO THE BIAS FLOOR MAY BE WHAT BUYS THE BATCHING. cos ~ 0.977 has been treated
+throughout these notes as an implementation wart to be minimised. There is now a
+published theorem saying a price MUST be paid for batching on an expressive
+ansatz, and bias is a price that theorem does not charge for, because it
+constrains only exact simultaneous measurement. Read cos 0.977 as an EXCHANGE
+RATE, not a defect. UNPROVEN - this is a reading of someone else's theorem, not a
+derivation - but it is the first account of the bias floor that explains why it
+should exist rather than merely recording that it does.
+
+WHAT COMPOSES. QLTO batches over PARAMETERS; SLPA batches over commuting gradient
+OPERATORS. Different axes, so they may stack rather than compete. The catch is
+the standing one: low X_exp is also where classical simulability lives.
 
 
 ### EVERY GRADIENT METHOD ON ONE SET OF AXES
@@ -1899,8 +1969,86 @@ linear and unbiased FOR THE SMEARED GRADIENT at any shots-per-vertex, and the
 plateau is consistent with both. What is withdrawn is a cost claim I built on
 top of them by comparing each estimator to its own target.
 
+#### CORRECTION TO THE CORRECTION: THE PLATEAU WAS R HELD FIXED (v69)
+
+The measurement above swept SHOTS at R = 0.6 FROZEN. But the two error terms move
+in opposite directions in R - bias ~ c R^2 (T3), variance ~ a/(R^2 S) (T4) - so
+
+    total^2 ~ c^2 R^4 + a/(R^2 S)   ->   R* ~ S^(-1/6),  error ~ S^(-1/3)
+
+A FIXED R CANNOT FOLLOW THAT AND MUST PLATEAU AT c R^2 WHATEVER THE BUDGET. The
+"floor at cos ~ 0.977" is that constant, not a property of the estimator. Redone
+with R free (oracle-best on a 7-point grid), matched TOTAL shots T, QLTO spending
+T over G*L circuits against parameter-shift's 2MG:
+
+    Heisenberg N=4, M=24    QLTO 18 circuits, p-shift 144  (8x)
+         T        R*     1-cos QLTO   1-cos PS
+      8192      0.60        0.12163    0.12219    tied
+     32768      0.45        0.04276    0.03621
+    131072      0.45        0.01747    0.00962
+    524288      0.45        0.00531    0.00246
+    fitted alpha:  QLTO -0.742   p-shift -0.941
+
+    Heisenberg N=6, M=36    QLTO 18 circuits, p-shift 216  (12x)
+         T        R*     1-cos QLTO   1-cos PS
+      8192      0.60        0.17184    0.26524    QLTO 1.5x BETTER
+     32768      0.60        0.05905    0.08607    QLTO 1.5x BETTER
+    131072      0.45        0.02365    0.02307    tied
+    524288      0.45        0.00700    0.00584
+    fitted alpha:  QLTO -0.759   p-shift -0.921
+
+THREE THINGS, IN ORDER OF HOW MUCH THEY CHANGE.
+
+  1. QLTO DOES NOT PLATEAU. It reaches cos 0.9947 at N=4 - well past the 0.977
+     "floor" this section reported as fundamental. Both fitted exponents match
+     the algebra (1-cos tracks error SQUARED, so predict -2/3 and -1; measured
+     -0.74/-0.76 and -0.94/-0.92).
+  2. AT N=6 QLTO BEATS PARAMETER-SHIFT AT MATCHED TOTAL SHOTS, 1.5x in 1-cos at
+     the two lower budgets. "3.2x fewer total shots" was not simply wrong - it
+     was measured badly, then withdrawn on a second measurement with the same
+     defect.
+  3. THE CROSSOVER BUDGET GROWS WITH M: at or below 8k at M=24, around 131k at
+     M=36. That is the mechanism working - p-shift's circuit count grows with M
+     (144 -> 216) so its shots-per-circuit collapse, while QLTO stays at 18
+     circuits and keeps its shot depth.
+
+WHAT SURVIVES OF THE WITHDRAWAL. Parameter-shift still has the BETTER EXPONENT
+(-0.93 against -0.75), so at any fixed M it wins eventually. But that is a
+different claim from a floor: a floor is unfixable, an exponent says QLTO's
+disadvantage grows only as T^(1/3) while its circuit advantage is 2N outright.
+
+CAVEATS, and the first is the one to attack next. QLTO was given the ORACLE R at
+each budget; parameter-shift has no comparable knob. Mitigating: R* took only TWO
+values on the whole grid (0.60, 0.45), so a fixed two-step schedule captures
+nearly all of it - this is far milder than a tuned hyperparameter. Two sizes, six
+repeats, GRADIENT ACCURACY not optimiser performance. A real R schedule, and a
+third size, are what this needs before it goes in a paper.
+
 
 ## THE PRICE OF THE CIRCUIT SAVING
+
+**SCOPED TO THE QPE PATH BY v68. The table below is the 2^a Trotter ladder, and
+it does not describe the direct readout that now ships as the default.** Same
+basis, same optimisation level, same "one gradient" accounting, direct path:
+
+    problem           per circuit          per GRADIENT (PS / QLTO)
+                    depth QL/PS  2q QL/PS    depth      2q
+    H2                  26 / 20    6 / 2     3.06x    1.33x
+    MaxCut N=4          27 / 21   14 / 6     6.22x    3.43x
+    Heisenberg N=4      29 / 23   14 / 6     6.33x    3.43x
+    Heisenberg N=6      31 / 25   22 / 10    9.65x    5.45x
+
+Per circuit the direct path costs about 30% more depth and 2-3x the entangling
+gates. Per GRADIENT it spends 3.1-9.7x LESS depth and 1.3-5.5x FEWER two-qubit
+gates than parameter-shift, because 2N fewer circuits more than repays the W
+gate's controlled rotations. So "at the shipping default this is not a NISQ
+method" was true of QPE and is FALSE of the direct default - and note the two
+ratios point OPPOSITE WAYS, which is why the per-circuit figure alone was
+misleading. A METHODOLOGICAL TRAP worth keeping: _direct_template transpiles to
+the AER backend, whose basis keeps ry/cry as single gates. Measuring it that way
+made QLTO look SHALLOWER than parameter-shift and hid the controlled rotations
+from a 'cx' count entirely. Both arms must be transpiled to the same hardware
+basis or the comparison is meaningless.
 
 Circuit count is one of three things hardware charges for, and it is the only one
 QLTO wins. supplement/results/v16_hardware_currency.log, basis {rz,sx,x,cx},
@@ -1936,6 +2084,25 @@ is why it was dropped. That is the real trade and it should be stated as one:
 accurate and shallow.**
 
 ## CLASSICAL OVERHEAD: 40-100x WORSE, BUT IN THE FIXABLE HALF
+
+**FIXED, AND MEASURED BY v68.** The fix named below as "UNTESTED - the single
+highest-value fix outstanding" is implemented in nisq_v5._direct_template, which
+builds the sensing circuit with Parameter objects for both the angles AND the
+radius, transpiles ONCE, and caches by (block, group):
+
+    problem           cold ms    warm ms    speedup    v15 ms   vs v15
+    H2                 3181.3        6.2      512x      553.8      89x
+    MaxCut N=4         1354.0        2.3      599x      535.1     237x
+    Heisenberg N=4     3359.8        7.5      448x      753.0     100x
+    Heisenberg N=6     3868.3       16.2      239x          -       -
+
+Warm build is 2.3-16.2 ms against v15's 535-753 ms. With decode already cheaper
+for QLTO (1.1 ms vs 3.4 ms - the T1 batching argument in CPU time), the direct
+path is now at parity-to-better with parameter-shift on total local CPU, not
+40-100x worse. HONEST CAVEAT: the cold build is 1.4-3.9 s, paid once per
+optimiser instance, so amortised over a 20-epoch run it is ~70-210 ms per
+gradient - a 3.6x improvement on v15 over the whole run, not the 239-599x the
+warm column alone suggests. Quote the amortised figure, not the warm one.
 
 A circuit-count win is worthless if it is repaid in local CPU.
 supplement/results/v15_classical_overhead.log, milliseconds per gradient, medians
@@ -2622,6 +2789,95 @@ REPLACEMENT STEER: build nothing. The moments are already in the shot record as
 linear functionals, so excited states, the variance preconditioner and the
 metrology QFI are all reachable by changing the classical decode alone. That is
 the cheapest unlock available and it needs no new circuit element.
+
+
+## THE PRIMITIVE, AND WHAT IS LEFT ON IT — the forward bookmark
+
+The gradient estimator is one READ off a more general object, and that object is
+the part worth carrying forward. Written once, precisely, so this is resumable
+without re-deriving it:
+
+    |Phi(theta,R)> = 2^(-n/2) sum_{sigma in {+-1}^n} |sigma> (x) U(theta + R sigma)|0>
+                  -> |sigma> (x) |readout(E(theta + R sigma))>
+
+A PARAMETER-INDEXED SUPERPOSITION OF OBJECTIVE VALUES. Every result in these
+notes is a functional read off it. The gradient is one such read; the walk was an
+attempt at another; the free-energy log is a third.
+
+WHAT THE PRIMITIVE CAN YIELD, AND WHY IT IS ONE-DIMENSIONAL. Two established
+results fence the space, and neither is a failure of effort:
+
+  LINEARITY IS WHAT SURVIVES FEW SHOTS PER VERTEX (T2/T5). A linear functional of
+  E is unbiased however few shots land on each of the 2^n vertices. Any NONLINEAR
+  functional must first resolve individual vertices, at S/2^n shots each. This is
+  why argmin, top-m and Boltzmann all lose to the marginal - not by measurement,
+  by construction.
+
+  THE SYMMETRIC +-R DESIGN IS BLIND TO EVEN FUNCTIONS. Anything even under a
+  coordinate sign flip cancels identically. Three separate extractions died to
+  this one mechanism: free-energy curvature (x_i^2 = 1, so the diagonal Hessian
+  is degenerate with the constant), the QFIM diagonal (G_i^2 = I, so the overlap
+  is cos(R) independent of the state), and the X-X connectivity witness (exactly
+  zero, and separately V^dag V = I).
+
+Together: with ONE bit per parameter and a CLASSICAL basis readout, this object
+yields functionals LINEAR IN E AND ODD UNDER SIGN FLIP. That space is
+one-dimensional and the gradient spans it. The other reads were not unlucky, they
+were excluded.
+
+THE BOUNDARY IS IN THE READOUT, NOT THE PRIMITIVE, and three design choices
+produce it. Each is a lever, and none has been pulled:
+
+  1. BITS PER PARAMETER, 1 -> b. A finer grid opens higher-order Fourier
+     coefficients. NOTE b>1 was closed for MULTI-BASIN SEEDING, which is a
+     different question and does not close this one.
+  2. SYMMETRIC -> ASYMMETRIC DESIGN. The only route to curvature from THIS
+     object, because it is the sign-flip symmetry itself that forbids it. Costs
+     T1/T2's O(R^2) cancellation, which is the same symmetry.
+     PRICED AND NOT WORTH IT (v70). The trade never needs making, because the
+     curvature is not worth having. Asked the question the cheap way first: hand
+     the optimiser an ORACLE diagonal Hessian, exact, free, zero circuits. If a
+     free oracle does not help, no estimator for it - k-fold Hadamard test or
+     asymmetric design - is worth building.
+         mean gap above ground state, 3 problems x 4 seeds, 20 epochs
+             sensed        0.8549 +- 0.2744
+             sens + oracle diag  0.6087 +- 0.1998
+             exact grad + oracle diag  0.4457 +- 0.1521
+     The mean flatters it. PAIRED per seed, curvature wins 9 of 12 (sign test
+     p ~ 0.07) and the TYPICAL gain is ~0.03; the mean is carried by one rescued
+     catastrophe (Heisenberg N=4 seed 43: plain gradstep stalled at -3.86, the
+     preconditioned run reached -6.01). So curvature buys ROBUSTNESS, not
+     accuracy - a different proposition, and one this test was not built to
+     measure.
+     THE DEEPER READING, and it is the useful part: exact gradient PLUS exact
+     curvature still leaves a 0.45 gap. The binding constraint is the ansatz and
+     the optimiser, not the derivative information - which is T6's degree
+     accounting (deg1+deg2 = 99.6%, direction already at cos 0.977) showing up
+     end to end. Better derivatives are not what this needs.
+     (pi-shift Hessian validated against central differences, 1.19e-07, so the
+     estimator itself is sound - it is the VALUE that is missing.)
+  3. CLASSICAL BASIS READOUT -> COHERENT QFT READOUT. This IS the Jordan /
+     Gilyen-Arunachalam-Wiebe rung. QLTO is the bottom of that ladder and the
+     only rung that is NISQ-shaped.
+
+THE CONCRETE NEXT TEST, if there is only one. The readout choice is a three-corner
+trade surface - measurement settings x evolution depth x variance:
+
+    readout              settings   depth            variance
+    direct marginal          G      ansatz + O(1)    Var(H_g)/S
+    Hadamard test (k=1)      1      Trotter          ~1/(tau^2 S)   loses 1.91x
+    QPE (k ancillas)         1      x 2^k            best
+
+Two corners ship; the interior is unmapped. The open question is whether G-free
+readout is reachable at direct-path depth. One measured data point sits on it: at
+Heisenberg N=4 the QPE arm reached a BETTER energy (-6.1355) at exactly 1/G the
+circuits (120 against 360, G=3). Two points is not a result, but that is the
+direction with an actual observation behind it.
+
+A CORRECTION TO SAVE TIME LATER: iterative / Kitaev QPE reduces ANCILLA WIDTH and
+removes the QFT. It does NOT remove the depth ladder - the a-th bit still needs
+controlled-U^(2^a), so the deepest circuit is unchanged. Do not reach for it
+expecting depth relief.
 
 
 ## NON-CLAIMS
