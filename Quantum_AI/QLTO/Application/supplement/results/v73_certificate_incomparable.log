@@ -1,0 +1,27 @@
+====================================================================================================
+ARE Pi_conc AND Pi_DLA INCOMPARABLE?
+====================================================================================================
+  n = 6. PR = participation ratio of the Pauli spectrum (C1-checkable
+  in O(#terms)); dim g by exact Pauli-label Lie closure, capped at 4096.
+  Var(d_1 E) over 40 random parameter draws as the trainability proxy.
+
+               Hamiltonian  #terms      PR    dim g  capped    Var(d1 E)
+  ----------------------------------------------------------------------
+    A  single global ZZ..Z       1    1.00     4095   False    5.081e-03
+       B  sum of local Z_i       6    5.60       18   False    2.426e-01
+          Heisenberg chain      15   15.00     4095   False    6.279e-01
+            random 2-local      60   13.73     4095   False    1.402e+00
+
+  A: PR = 1.00 (maximally concentrated), dim g = 4095
+  B: PR = 5.60 (spread over 6 terms), dim g = 18
+
+  INCOMPARABLE requires A concentrated with LARGE dim g, and B spread with
+  SMALL dim g. If both hold, neither predicate implies the other and their
+  disjunction certifies strictly more than either alone - outcome (3), the
+  one that makes the catalogue programme non-empty. If instead PR and dim g
+  move together across all four rows, one predicate is a proxy for the
+  other and Pi_conc adds nothing but speed.
+
+  NOTE the variance column is context, not evidence: it says whether the
+  case is trainable at all, not which predicate deserves credit. Soundness
+  of Pi_conc is untouched by this run and remains open.

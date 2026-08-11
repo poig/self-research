@@ -1,0 +1,25 @@
+==================================================================================================
+DOES THE ESCAPE ROUTE SCALE?
+==================================================================================================
+  The theorems already do. These three numbers were measured at one size.
+
+    N   dim             |D| cool% @40cyc  cyc to 80%  samples@90%     gap ratio
+  ------------------------------------------------------------------------------
+    3     8          0.0062        94.5%           9           32          70.7
+    4    16          0.0001        88.4%          24           48         370.4
+    5    32          0.0004        54.6%        None           48       27615.8
+    6    64          0.0345        35.9%        None           48    16886202.1
+
+  READING IT.
+  |D| falling with N   -> the obstruction TIGHTENS at scale; the no-go
+                          becomes asymptotic rather than small-system.
+  min samples ~ poly N -> the filtered repair is viable and the message
+                          stays 'use the filter, here is the price'.
+  min samples blowing  -> the ONLY known repair is itself unscalable, and
+                          the verdict becomes a statement about the whole
+                          protocol family rather than about one design.
+  'gap ratio' is the spectral width divided by the smallest gap: the
+  resolution the filter would need if it had to separate individual
+  levels. If min samples tracks N while the gap ratio explodes, the filter
+  is only making a COARSE positive/negative cut and stays cheap - which is
+  the optimistic outcome and the one worth checking carefully.

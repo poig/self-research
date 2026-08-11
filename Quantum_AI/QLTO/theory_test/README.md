@@ -21,7 +21,9 @@ python isospectral_family.py
 | Thm 2 (`thm:interval`) | reachable work is `[−W*, +W*]`, closed form | `achievable_work_theorem.py` | `.log` |
 | Thm 2, saturation | explicit `V = U_X U_M†` attains the bound | `achievable_work_theorem.py` | err 1.6e-15, 400 Haar V, 0 violations |
 | Thm 2, asymmetry | interval symmetric to machine precision | `exact_interval_asymmetry.py` | `.log` |
+| Prop (`prop:general`) | `Δ⟨A⟩ = (θ/2)Tr(i[ρ,A]G) + O(θ²)`; work and VQE gradient are instances | `general_response_interval.py` | `.log` — gradient matches parameter-shift to 4e-16 |
 | Prop (`prop:twoconditions`) | two independent sufficient causes of symmetry | `two_conditions.py`, `what_breaks_symmetry.py`, `generator_symmetry_rule.py`, `commutator_spectrum_symmetry.py` | `.log` |
+| Sec. "Relation to Cooling" | breaking both conditions buys `\|D\| ≤ 0.0147` | `directional_fraction.py` | `.log` |
 | Cor (`cor:purefixed`) | pure post-sensing branch forces symmetry | `purity_forbids_cooling.py` | `.log` |
 | Prop (`prop:secondorder`) | second-order directed work, `𝒜(θ) = 2.137θ` | `second_order_directed_work.py` | `.log` |
 | Eq. (`eq:landauerthreshold`) | `k_B T* = 0.406` at τ = 1.42 | `landauer_threshold_temperature.py`, `landauer_limit_test.py` | `.log`, `thermo_landauer_check.png` — **Fig. 2** |
@@ -89,3 +91,34 @@ Documented in the manuscript's Methods and repeated here because they cost real 
 
 All current results use exact evolution, dimension-checked observables, and a
 single shared Hamiltonian construction.
+
+### Added in the reach pass
+
+| Paper | Claim | Script | Output |
+|---|---|---|---|
+| `cor:tracenorm` | `W* = (θ/2)·‖Y‖∞·‖M₁₁‖₁` exactly on pure branches | `reach_monotone_and_size.py` | ratio 1.000 pure, 0.905–0.981 mixed |
+| size-independence | `spec(ΣᵢXᵢ)` symmetric at every n, checked to n=11 | `reach_monotone_and_size.py` | defect ~1e-14 vs 1.15–1.85 for generic Hermitian |
+| Scope of the obstruction | symmetric for k=1,2,3 ancillas, non-product `K`, all cycles | `class_extension.py` | all rows `0.0e+00` |
+| Sec. "The filter works" | filtered `K` cools to 94.5%; unfiltered moves energy by exactly zero | `filter_price.py` | `.log` |
+| Sec. "The price" | ~32 Hamiltonian evolutions per cycle; below that it **heats** | `filter_price.py` | `.log` |
+
+Two conventions that cost real time and are worth stating, since both produced
+plausible output rather than an error:
+
+- **Ancilla pairing.** Cooling requires the lowering operator `K` paired with the
+  ancilla *raising* operator `|1><0|`. Getting it backwards makes the protocol
+  heat monotonically, which reads as a physics result rather than a sign error.
+- **Filter discretisation.** An under-resolved time integral does not merely
+  approximate the filter badly — it inverts the sign of the effect. At 8 and 16
+  samples the protocol heats; at 32 it cools.
+
+
+### Not a manuscript claim: the input-model obstruction
+
+| Claim | Script | Output |
+|---|---|---|
+| Simon-structured `H` has Pauli support exactly on the annihilator subgroup — 32/64 strings, all orthogonal to `s`, none otherwise — while the gradient looks statistically ordinary | `shor_hamiltonian_signature.py` | `.log` |
+
+This one supports no result in the paper. It is the sharpest form of why
+hidden-subgroup structure is unreachable for a specified (as opposed to
+oracle-given) Hamiltonian, and lives in the QLTO research notes rather than here.

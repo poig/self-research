@@ -1,0 +1,32 @@
+====================================================================================================
+BLOCK WIDTH AT MATCHED TOTAL SHOTS — is T10's interior optimum real?
+====================================================================================================
+  Total budget T = 131072 per gradient, split over ceil(M/n)*G circuits.
+  Wider block = fewer circuits = more shots each, but more attenuation.
+  Best R taken per width from (0.1, 0.2, 0.3, 0.45, 0.6, 0.9). 5 repeats.
+
+  Heisenberg N=6:  M=36  G=3   (shipped width n=N=6,  T10 predicts n* ~ 23)
+      n    n/M  circuits   S/circ     R*       cos     1-cos
+  ----------------------------------------------------------
+      1   0.03       108     1213   0.90    0.9699   0.03006
+      2   0.06        54     2427   0.90    0.9595   0.04050
+      6   0.17        18     7281   0.60    0.9754   0.02460
+      9   0.25        12    10922   0.45    0.9737   0.02631
+     18   0.50         6    21845   0.30    0.9750   0.02499
+Traceback (most recent call last):
+  File "/home/poig/project/self-research/Quantum_AI/QLTO/Application/supplement/v71_block_width_optimum.py", line 117, in <module>
+    gi, _ = q.sense(theta, R, act)
+            ~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v5.py", line 492, in sense
+    t_qc, theta, radius = self._direct_template(active, group)
+                          ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/poig/project/self-research/Quantum_AI/QLTO/Application/nisq_v5.py", line 360, in _direct_template
+    template = transpile(qc, self.backend, optimization_level=1)
+  File "/home/poig/anaconda3/lib/python3.13/site-packages/qiskit/compiler/transpiler.py", line 264, in transpile
+    _check_circuits_coupling_map(circuits, coupling_map, backend)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/poig/anaconda3/lib/python3.13/site-packages/qiskit/compiler/transpiler.py", line 315, in _check_circuits_coupling_map
+    raise CircuitTooWideForTarget(
+    ...<2 lines>...
+    )
+qiskit.transpiler.exceptions.CircuitTooWideForTarget: 'Number of qubits (29) in circuit-8183 is greater than maximum (28) in the coupling_map'

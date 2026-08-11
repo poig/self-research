@@ -1,0 +1,31 @@
+================================================================================================
+DOES A HIDDEN-SUBGROUP HAMILTONIAN HAVE A GRADIENT SIGNATURE?
+================================================================================================
+  N = 6. Diagonal H = sum_x f(x)|x><x|; fhat(S) ARE H's Pauli-Z coefficients.
+
+  hidden shift s = 101101
+
+    Simon-structured :  32 / 64 Pauli strings nonzero   ( 50.0%)
+                       orthogonal to s :  32    NOT orthogonal :   0
+    generic diagonal :  64 / 64 Pauli strings nonzero   (100.0%)
+                       orthogonal to s :  32    NOT orthogonal :  32
+
+  A Simon-structured H should keep exactly the strings T with T.s = 0,
+  which is half of them, and kill every other. That is the signature.
+
+================================================================================================
+DOES THE GRADIENT INHERIT IT?
+================================================================================================
+                        ||grad||   max |g_i|   min |g_i|  zero comps
+  ------------------------------------------------------------------
+    Simon-structured     0.61935     0.24318    0.00e+00           6
+    generic diagonal     0.66960     0.31134    0.00e+00           6
+
+  READING IT. If the Pauli support collapses to the annihilator subgroup
+  but the GRADIENT looks statistically ordinary, then the structure is
+  real and present in H yet invisible in the quantity an optimiser reads.
+  That is the sharpest form of the obstruction: the periodicity lives in
+  the Pauli list, which you must already know to specify the problem, and
+  the ansatz scrambles it out of the landscape. Shor escapes only because
+  its function arrives as an ORACLE whose period is not written in the
+  circuit that evaluates it.

@@ -1,0 +1,44 @@
+==============================================================================================
+Q1  IS CONDITION (A) SIZE-INDEPENDENT?   spec(Y) symmetric about zero
+==============================================================================================
+     n    dim       sum X_i       sum Z_i       sum Y_i   random Herm
+  -------------------------------------------------------------------
+     2      4      6.94e-18      0.00e+00      6.91e-18      3.09e+00
+     3      8      8.88e-16      0.00e+00      2.22e-15      2.44e+00
+     4     16      5.48e-16      0.00e+00      2.22e-15      2.66e+00
+     5     32      3.55e-15      0.00e+00      5.33e-15      1.47e+00
+     6     64      7.99e-15      0.00e+00      1.78e-15      1.85e+00
+     7    128      9.77e-15      0.00e+00      9.77e-15      1.29e+00
+     8    256      1.42e-14      0.00e+00      1.20e-14      1.74e+00
+     9    512      1.51e-14      0.00e+00      1.91e-14      1.49e+00
+    10   1024      2.84e-14      0.00e+00      4.26e-14      1.15e+00
+    11   2048      5.64e-14      0.00e+00      4.09e-14      1.35e+00
+    12   4096      0.00e+00    (analytic)                            
+    13   8192      0.00e+00    (analytic)                            
+    14  16384      0.00e+00    (analytic)                            
+
+  Sums of single-qubit Paulis have spectrum {n-2k}, symmetric about zero at
+  EVERY n. A generic Hermitian operator is not. So condition (A) holds for
+  the protocol's own generator at all sizes and the no-go is not
+  size-limited; only the quantitative parts need simulation.
+
+==============================================================================================
+Q2  IS W* CONTROLLED BY AN ESTABLISHED MONOTONE?
+==============================================================================================
+  Hoelder:  W* <= (theta/2) ||Y||_inf ||M11||_1.   Skew information
+  S = -(1/2)Tr([A,sqrt(rho)]^2) equals Var(A) on pure states.
+
+    n   branch   purity        W*   Hoelder   ratio  ||M11||_1    skew S    Var(A)   S=Var?
+  -----------------------------------------------------------------------------------------
+    3     pure   1.0000   0.17272   0.17272   1.000    0.57572   0.75236   0.75236  3.5e-09
+    3    mixed   0.5095   0.01546   0.01577   0.981    0.05256   0.03098   0.70026  6.7e-01
+    4     pure   1.0000   0.47296   0.47296   1.000    1.18240   1.78620   1.78620  5.6e-09
+    4    mixed   0.3721   0.11078   0.12238   0.905    0.30595   0.16367   1.49415  1.3e+00
+
+  'S=Var?' near zero on the PURE rows and clearly nonzero on the MIXED rows
+  is the expected signature: skew information coincides with the variance
+  only for pure states. If W*/Hoelder stays in a narrow band across BOTH,
+  the trace norm ||M11||_1 controls the reachable work regardless of purity,
+  and the bound can be quoted in terms of a commutator norm. If the ratio
+  swings, the bound is loose and the honest statement is the spectral
+  pairing itself, with no monotone attached.

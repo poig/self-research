@@ -249,6 +249,22 @@ class QLTOv5:
         # norm won the gradient cosine 4-0 with 2 ties - 0.9584 vs 0.7389 on
         # MaxCut N=6. This line read H_range until then; V3 line 371 always had
         # it right.
+        # SCOPE OF THIS FIX, because the branch below is doing real work. The
+        # spectral norm needs the 2^N matrix, so it is only computable in the
+        # simulable regime; above 14 qubits this falls back to sum|c|, a bound.
+        # Two consequences worth stating rather than discovering later:
+        #   * v63's evidence (cosine 4-0 over the suite) was taken at N=4-6, i.e.
+        #     ENTIRELY inside the exact branch. Nothing was measured about the
+        #     fallback.
+        #   * in the fallback the change is a factor of two and nothing more,
+        #     since _sensing_hamiltonian returns 2*sum|c| for the range at the
+        #     same sizes. So beyond the simulable regime this halves a constant
+        #     rather than correcting a wrong quantity.
+        # The deeper point is a property of the QPE readout, not of this line:
+        # calibrating tau0 exactly requires the spectral norm, which requires the
+        # matrix. QPE therefore carries an exponential CLASSICAL preprocessing
+        # cost unless a bound is accepted, and accepting one costs resolution -
+        # which is the same objection raised against H_range above.
         self.H0_norm = (float(np.linalg.norm(self.H_sense.to_matrix(), ord=2))
                         if self.H_sense.num_qubits <= 14
                         else float(np.sum(np.abs(self.H_sense.coeffs))))

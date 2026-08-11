@@ -1,0 +1,39 @@
+================================================================================================
+(1)  k ANCILLAS  -  is the symmetric interval a one-ancilla artefact?
+================================================================================================
+  Sensing controlled on each ancilla; feedback generator P_1^(x k) (x) sum X.
+    k  joint dim   spec(K) def       W_lo       W_hi    |lo+hi|     verdict
+  -------------------------------------------------------------------------
+    1         16      2.22e-16  -0.520431   0.520431    0.0e+00   SYMMETRIC
+    2         32      2.66e-15  -0.520431   0.520431    0.0e+00   SYMMETRIC
+    3         64      2.66e-15  -0.520431   0.520431    0.0e+00   SYMMETRIC
+
+================================================================================================
+(2)  NON-PRODUCT COUPLING  -  does spec(K) replace spec(Y)?
+================================================================================================
+  K is a random Hermitian on the JOINT space, optionally symmetrised.
+                  K type   spec(K) def       W_lo       W_hi    |lo+hi|     verdict
+  ---------------------------------------------------------------------------------
+     product P1 (x) sumX      2.22e-16  -0.520431   0.520431    0.0e+00   SYMMETRIC
+       random joint Herm      8.12e-01  -1.266589   1.266589    0.0e+00   SYMMETRIC
+     random, symmetrised      6.22e-15  -1.231782   1.231782    0.0e+00   SYMMETRIC
+
+================================================================================================
+(3)  MULTI-CYCLE  -  is symmetry a first-cycle property?
+================================================================================================
+    cycle    purity   spec(M) def       W_lo       W_hi    |lo+hi|     verdict
+  ----------------------------------------------------------------------------
+        1    1.0000      3.33e-16  -0.520431   0.520431    0.0e+00   SYMMETRIC
+        2    0.8010      2.32e-02  -0.316006   0.316006    0.0e+00   SYMMETRIC
+        3    0.7249      1.78e-02  -0.268580   0.268580    0.0e+00   SYMMETRIC
+        4    0.6699      5.63e-03  -0.241046   0.241046    0.0e+00   SYMMETRIC
+        5    0.6158      8.40e-03  -0.212439   0.212439    0.0e+00   SYMMETRIC
+        6    0.5604      3.29e-03  -0.177594   0.177594    0.0e+00   SYMMETRIC
+        7    0.5095      8.22e-03  -0.137952   0.137952    0.0e+00   SYMMETRIC
+        8    0.4700      1.27e-02  -0.096164   0.096164    0.0e+00   SYMMETRIC
+
+  SYMMETRIC on every row of all three blocks means the no-go covers any
+  ancilla count, any coupling with a spectrally symmetric generator, and
+  every cycle of a repeated run - a statement about a CLASS rather than
+  about one protocol. Any 'asym' row narrows it, and the scope sentence in
+  the manuscript then has to name the restriction that is doing the work.

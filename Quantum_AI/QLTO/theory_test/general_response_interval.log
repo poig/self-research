@@ -1,0 +1,42 @@
+==============================================================================================
+GENERAL RESPONSE LEMMA:  Delta<A> = (theta/2) Tr( i[rho,A] G ) + O(theta^2)
+==============================================================================================
+  theta = 0.02. Random Hermitian A and G, random pure rho, no structure imposed.
+
+     d         exact     1st order      |diff|  |diff|/theta^2
+  ------------------------------------------------------------
+     2    0.00320572    0.00323083    2.51e-05           0.063
+     4    0.01690097    0.01675881    1.42e-04           0.355
+     8   -0.01993892   -0.02002997    9.11e-05           0.228
+    16   -0.05627098   -0.05677244    5.01e-04           1.254
+  The last column is bounded, so the difference is genuinely O(theta^2).
+
+==============================================================================================
+THE INTERVAL, on random instances
+==============================================================================================
+     d          lo          hi       sym  Haar viol    sat max    sat min
+  -----------------------------------------------------------------------
+     4   -0.063798    0.063798   0.0e+00          0    0.0e+00    1.4e-17
+     8   -0.071119    0.071119   0.0e+00          0    1.4e-17    1.4e-17
+    16   -0.124190    0.124190   0.0e+00          0    5.6e-17    4.2e-17
+  'sym' is |lo+hi|: the interval is symmetric when spec(G) is.
+  'sat' columns are the distance from the constructed optimum to each edge.
+
+==============================================================================================
+INSTANCE 2: the VQE gradient is the same expression
+==============================================================================================
+  A real circuit: psi(t) = W exp(-i t G/2) V|0>, energy <psi|H|psi>.
+  Compared: (a) parameter-shift gradient, computed independently;
+            (b) the LEMMA with A = H_eff = W^dag H W, rho = |phi><phi|.
+
+     d     param-shift           lemma      |diff|
+  ------------------------------------------------
+     4   -0.0000000000    0.0000000000    1.67e-16
+     8    1.5155789025    1.5155789025    4.44e-16
+    16   -0.9616033814   -0.9616033814    3.33e-16
+
+  Agreement here means the variational gradient IS the general response
+  with A = H_eff, so the zero-gradient rule is a corollary of the interval
+  theorem rather than a separate observation that happens to look similar.
+  In particular [G, H_eff] = 0 gives M commuting with nothing to pair
+  against, Tr(M G) = 0, and the gradient vanishes identically.

@@ -1630,6 +1630,19 @@ tau0's scale is ||H0||, NOT H_range - and V5 had it wrong until v63. Both scales
     the gradient cosine 4-0 with 2 ties, 0.9584 vs 0.7389 on MaxCut N=6. The
     general trap: when two scales differ only by a bounded factor, the wrong one
     does not fail loudly, it just quietly spends resolution.
+    AND THE FIX IS SMALLER THAN IT LOOKS, which is worth recording next to it.
+    ||H0||_2 needs the 2^N matrix, so the corrected line only runs exactly in the
+    simulable regime; past 14 qubits it falls back to sum|c|. v63's 4-0 evidence
+    was taken at N=4-6, entirely inside the exact branch, so nothing at all was
+    measured about the fallback. And in the fallback the change is exactly a
+    factor of two, since _sensing_hamiltonian returns 2*sum|c| for the range at
+    those sizes - a halved constant, not a corrected quantity. The real content
+    is a limitation of the QPE READOUT rather than of one line: calibrating tau0
+    exactly requires a spectral norm, which requires the matrix, so QPE carries
+    an exponential CLASSICAL preprocessing cost unless a bound is accepted, and
+    accepting one costs the resolution the fix was about. That was missed when
+    the fix went in and surfaced only when the change was challenged as "just an
+    if-else for small problems", which is a fair description of what shipped.
 ancilla bit order: read the printed register UNREVERSED, E = -2 pi phi / tau0.
     Verified against exact <H_sense> across all four sign/order combinations;
     the others are 1.2-2.9x worse.
@@ -2374,6 +2387,66 @@ WHAT IS STILL OPEN, ranked by how much it would move the verdict:
                of circuits to BOTH variants, and it changes no ratio between them.
 
 
+## ONE OBJECT: THE PAULI SPECTRUM SEEN THROUGH THE ANSATZ
+
+The results in this file were found separately and read as a list. They are not a
+list. Every one of them is a statement about a single object, and writing it down
+makes the relations between them obvious rather than coincidental.
+
+    E(theta) = sum_x f(x) p_theta(x) = sum_S fhat(S) <Z_S>_theta
+
+THE LANDSCAPE IS THE HAMILTONIAN'S PAULI SPECTRUM, VIEWED THROUGH THE ANSATZ. The
+coefficients fhat(S) are simultaneously the Walsh spectrum of the diagonal
+function and the Pauli-Z coefficients of H; the ansatz determines which of them
+the optimiser can see.
+
+Read that way, the separate findings are one picture:
+
+    SPECTRUM CONCENTRATED       few frequencies, small DLA. Trainable - and
+                                classically simulable by Lie-algebraic methods.
+                                This is the coincidence recorded below: the
+                                condition for exploitable structure and the
+                                condition for classical simulability are the
+                                same condition.
+    SPECTRUM SPREAD             many frequencies, large DLA, barren plateau. Also
+                                a wide CURVATURE spectrum, so no single learning
+                                rate is both fast on the flat directions and
+                                stable on the steep ones. Past that boundary the
+                                update map period-doubles.
+    SPECTRUM ON A SUBGROUP      hidden-subgroup structure, exactly (obstruction 5
+                                below, measured). Present, perfect, and useless,
+                                because it is written in the specification.
+
+WHAT THE FEIGENBAUM RESULT IS AND IS NOT. P(|1>) = sin^2(phi/2) by Born's rule,
+and sin^2 is unimodal with a QUADRATIC MAXIMUM, which is precisely the hypothesis
+of Feigenbaum's theorem. So any loop that feeds a measured probability back
+through a learning rate inherits the period-doubling cascade, with R as the
+bifurcation parameter. THIS IS REAL AND IT IS ALSO CONTENT-FREE ABOUT COMPLEXITY:
+it holds at N = 1, for a single qubit and a trivial Hamiltonian, because the
+nonlinearity is supplied entirely by Born's rule. It cannot be evidence for any
+claim about DLA dimension or hardness. Two consequences, both worth acting on:
+the Lean BQP-NP project cites it as evidence for "NP-hard implies exponential
+DLA", which does not follow; and the chaos is a property of the MAP one chose,
+not of the landscape - halve R and the cascade disappears while the landscape is
+unchanged. Chaos explains algorithm instability, never problem hardness.
+
+THE SALVAGEABLE VERSION OF THE CHAOS ARGUMENT, and it is measurable. Stability
+needs R < 2/lambda_max; progress on the flattest direction goes as R lambda_min;
+so the usable window is set by the curvature spread, which the spectrum sets,
+which the algebra sets. The chain "algebra -> frequency spread -> curvature
+spread -> usable learning rate -> bifurcation onset" has a measurement at every
+link and none of them has been made. That is a real experiment, not a framing.
+
+THE QUESTION THIS FRAME POSES THAT IS NOT ALREADY ANSWERED. DLA dimension is the
+standard trainability predictor. Spectral CONCENTRATION is a different measure of
+the same landscape. DO THEY AGREE? A Hamiltonian with large DLA but concentrated
+spectrum would be trainable against the standard diagnosis, or the reverse; either
+way spectral concentration would be the better predictor and dimension counting
+the cruder proxy. It is computable with what is already here, and nothing in this
+file rules out either answer. That is the one place the threads converge on
+something not yet known rather than on a restatement.
+
+
 ## WHY HIDDEN-SUBGROUP STRUCTURE IS NOT REACHABLE FROM HERE
 
 
@@ -2418,6 +2491,49 @@ quantitative.
    continuous and bin-limited, so the collapse lands on a FUZZY level set, and a
    fuzzy coset does not give clean QFT peaks. Making the bins finer than the
    smallest landscape gap costs ancillas exponentially.
+
+5. THE INPUT MODEL, WHICH IS THE SHARPEST OF THE FIVE AND THE ONLY ONE MEASURED.
+   The four above are about whether the structure EXISTS. This one grants that it
+   exists, perfectly, and shows it is still unreachable.
+
+   For a diagonal H = sum_x f(x)|x><x| the landscape is
+
+       E(theta) = sum_x f(x) p_theta(x) = sum_S fhat(S) <Z_S>_theta
+
+   so THE WALSH COEFFICIENTS OF f ARE EXACTLY THE PAULI-Z COEFFICIENTS OF H -
+   the same numbers written twice. A function with Simon structure, f(x) =
+   f(x XOR s), has fhat supported entirely on the annihilator {T : T.s = 0}.
+   Measured at N=6 (theory_test/shor_hamiltonian_signature.py), s = 101101:
+
+       Simon-structured H   32/64 Pauli strings nonzero (50.0%)
+                            orthogonal to s: 32    NOT orthogonal: 0
+       generic diagonal H   64/64 nonzero
+                            orthogonal to s: 32    NOT orthogonal: 32
+
+   The signature is EXACT - half the strings, every survivor orthogonal to s, no
+   exceptions. And the gradient cannot see it: ||g|| 0.619 against 0.670, max
+   component 0.243 against 0.311, statistically ordinary. (Both show 6 zero
+   components, the terminal RZ layer commuting with a diagonal H, which is the
+   constructive consequence of the theory paper appearing as a consistency check.)
+
+   SO THE STRUCTURE IS PERFECT, PRESENT, AND IN THE WRONG PLACE. It lives in H's
+   Pauli list and the ansatz scrambles it out of the landscape an optimiser reads.
+   The obstruction in its hardest form:
+
+       THE STRUCTURE A QUANTUM OPTIMISER WOULD NEED TO DISCOVER IS STRUCTURE ONE
+       MUST ALREADY POSSESS IN ORDER TO WRITE THE HAMILTONIAN DOWN.
+
+   You cannot specify a diagonal H without specifying its Pauli coefficients, and
+   those coefficients ARE the Walsh spectrum. Any hidden subgroup was handed over
+   with the problem statement.
+
+   THIS IS EXACTLY WHY SHOR IS DIFFERENT, and the difference is the INPUT MODEL
+   rather than the algorithm. Shor's f(x) = a^x mod N arrives as an ORACLE: a
+   circuit that evaluates f without exhibiting r. That is the entire premise -
+   you can compute f(x) for any x and still not know the period. A VQE Hamiltonian
+   arrives as a Pauli list, which is its spectrum written out. ORACLE ACCESS HIDES
+   THE STRUCTURE; SPECIFICATION ACCESS REVEALS IT. No construction on the VQE side
+   can restore the hiding, because there is nothing left to hide.
 
 See also T11, which measures the coherence bound independently: antipodal overlap
 - what a high-weight s would need - is 0.46 at the default R and 0.085 by R=1.0,
@@ -2831,6 +2947,44 @@ produce it. Each is a lever, and none has been pulled:
   1. BITS PER PARAMETER, 1 -> b. A finer grid opens higher-order Fourier
      coefficients. NOTE b>1 was closed for MULTI-BASIN SEEDING, which is a
      different question and does not close this one.
+     RELATED, AND PARTIALLY MEASURED (v71, N=4 only, stopped before N=6). Block
+     WIDTH at matched total shots T = 131072, best R per width, 5 repeats:
+         n     circuits   S/circ    1-cos
+         1        72       1820     0.01265
+         2        36       3640     0.01907
+         4        18       7281     0.01551   <- shipped, n = N
+         6        12      10922     0.01900
+        12         6      21845     0.01491
+        16         6      21845     0.01775
+        18         6      21845     0.01887
+     THE CURVE IS FLAT WITHIN NOISE across the whole range: everything sits in
+     0.0127-0.0191, and the ordering zigzags (n=1 best, n=2 poor, n=4 good, n=6
+     poor, n=12 good), which is the signature of scatter rather than structure.
+     NO INTERIOR OPTIMUM AT 0.65M is visible, so T10's n* does not show up once
+     the shot side is priced.
+
+     REPLICATED AT N=6 (v71b), M=36, same budget:
+         n     circuits   1-cos
+         1       108      0.03006
+         2        54      0.04050
+         6        18      0.02460   <- shipped, n = N
+         9        12      0.02631
+        18         6      0.02499
+     Flat again (0.0246-0.0405), and the practical reading repeats exactly:
+     n = M/2 matches the shipped n = N to within 1.6% of its error while using
+     SIX circuits against EIGHTEEN. Two sizes, same 3x. That is worth taking.
+
+     AND T10'S n* IS NOT MERELY UNIMPLEMENTED, IT IS UNREACHABLE. The run stopped
+     at n = 23 = 0.65M with
+         CircuitTooWideForTarget: 29 qubits > 28
+     because EVERY ACTIVE PARAMETER COSTS A CONTROL QUBIT: a width-n block needs
+     n + N qubits. At N=6, reps=2 that is 0.65*36 + 6 = 29, past the simulator's
+     28. The requirement grows as 0.65*2N(r+1) + N, i.e. LINEARLY IN M, so the
+     cost-optimal width outruns any fixed qubit budget while the shipped n = N
+     costs only 2N. T10 was derived from a classical attenuation fit that prices
+     circuits and shots but not REGISTER WIDTH, which is why it recommends a
+     configuration that cannot be built. Retire n* ~ 0.65M; the usable statement
+     is n = M/2 where the register allows, n = N otherwise.
   2. SYMMETRIC -> ASYMMETRIC DESIGN. The only route to curvature from THIS
      object, because it is the sign-flip symmetry itself that forbids it. Costs
      T1/T2's O(R^2) cancellation, which is the same symmetry.

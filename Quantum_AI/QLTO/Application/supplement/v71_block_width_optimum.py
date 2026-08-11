@@ -69,7 +69,7 @@ print(f"  Wider block = fewer circuits = more shots each, but more attenuation."
 print(f"  Best R taken per width from {RADII}. {REPEATS} repeats.")
 print()
 
-for N in (4, 6):
+for N in (6,):
     ansatz = efficient_su2(N, reps=2)
     H = heis(N)
     M = ansatz.num_parameters

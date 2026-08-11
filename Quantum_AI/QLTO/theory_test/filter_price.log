@@ -1,0 +1,48 @@
+================================================================================================
+(1)  THE FILTERED OPERATOR IS NOT HERMITIAN, AND ONLY LOWERS ENERGY
+================================================================================================
+  ||K - K^dag||_F / ||K||_F      : 1.3981
+  ||A - A^dag||_F                : 0.00e+00  (the unfiltered coupling IS Hermitian)
+  max |K_ij| lowering (lam_i<lam_j): 1.6558
+  max |K_ij| raising  (lam_i>lam_j): 3.88e-03   (suppressed by the filter)
+
+  A non-Hermitian generator is OUTSIDE the class Prop. twoconditions
+  describes. The filter does not satisfy the conditions - it leaves them.
+
+================================================================================================
+(2)  DOES IT COOL?  collision dynamics, ancilla reset each cycle
+================================================================================================
+  E(start) = -0.77690   E(ground) = -1.40640   theta = 0.3, 40 cycles
+
+    cycle    filtered K   unfiltered A
+  ------------------------------------
+        1      -0.90054       -0.77690
+        5      -1.18731       -0.77690
+       10      -1.31382       -0.77690
+       20      -1.36168       -0.77690
+       30      -1.36734       -0.77690
+       40      -1.37148       -0.77690
+
+  filtered   : final -1.37148,  94.5% of the way to the ground state, monotone True
+  unfiltered : final -0.77690,   0.0% of the way to the ground state, monotone True
+
+================================================================================================
+(3)  THE PRICE:  how much Hamiltonian simulation does the filter need?
+================================================================================================
+  K is built from e^{iHs} at a range of s. A discretised filter uses
+  n_times distinct evolution times, EVERY CYCLE. Fidelity of the
+  discretised K against the ideal one, and the cooling it achieves:
+
+    n_times  rel err vs ideal     final E  % to ground
+  ----------------------------------------------------
+          8            1.1255    -0.42674       -55.6%
+         16            0.7310    -0.29631       -76.3%
+         32            0.0031    -1.37062        94.3%
+         64            0.0000    -1.37148        94.5%
+        128            0.0000    -1.37148        94.5%
+
+  Each of those n_times entries is a distinct Hamiltonian evolution, needed
+  once per cycle. The protocol exists because phase estimation was too deep
+  to run; if the repair puts Hamiltonian simulation back inside every cycle,
+  the fix costs the very thing the protocol was avoiding. That is the honest
+  closing statement, and it is stronger than 'use a filter'.
