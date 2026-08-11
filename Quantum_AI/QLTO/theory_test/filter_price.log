@@ -41,6 +41,15 @@
          64            0.0000    -1.37148        94.5%
         128            0.0000    -1.37148        94.5%
 
+  CAVEAT ON READING THE COUNT. This filter is a Gaussian BANDPASS centred on a
+  single negative frequency, not the LOW-PASS of Ding-Chen-Lin, which has
+  support across the whole negative spectrum. A narrow window needs few samples
+  BECAUSE it is narrow, and for the same reason it drives fewer of the available
+  transitions as the spectrum widens with N (scaling_verdict.py: cycles to 80%
+  of the way to the ground state go 9, 24, >400, >400 for N=3..6). The low cost
+  and the failure to converge are the SAME FACT. This count is the cost of a
+  filter at one size, not the cost of one that works at scale.
+
   Each of those n_times entries is a distinct Hamiltonian evolution, needed
   once per cycle. The protocol exists because phase estimation was too deep
   to run; if the repair puts Hamiltonian simulation back inside every cycle,

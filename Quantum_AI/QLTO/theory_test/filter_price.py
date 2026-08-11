@@ -190,16 +190,16 @@ for nt in (8, 16, 32, 64, 128):
           f"{100 * (E0 - e[-1]) / (E0 - Egs):>12.1f}%")
 
 print()
-print("  CAVEAT ON READING THE COUNT. This filter is a Gaussian BANDPASS centred on a
-  single negative frequency, not the LOW-PASS of Ding-Chen-Lin, which has
-  support across the whole negative spectrum. A narrow window needs few samples
-  BECAUSE it is narrow, and for the same reason it drives fewer of the available
-  transitions as the spectrum widens with N (scaling_verdict.py: cycles to 80%%
-  of the way to the ground state go 9, 24, >400, >400 for N=3..6). The low cost
-  and the failure to converge are the SAME FACT. This count is the cost of a
-  filter at one size, not the cost of one that works at scale.
-
-  Each of those n_times entries is a distinct Hamiltonian evolution, needed")
+print("  CAVEAT ON READING THE COUNT. This filter is a Gaussian BANDPASS centred on a")
+print("  single negative frequency, not the LOW-PASS of Ding-Chen-Lin, which has")
+print("  support across the whole negative spectrum. A narrow window needs few samples")
+print("  BECAUSE it is narrow, and for the same reason it drives fewer of the available")
+print("  transitions as the spectrum widens with N (scaling_verdict.py: cycles to 80%")
+print("  of the way to the ground state go 9, 24, >400, >400 for N=3..6). The low cost")
+print("  and the failure to converge are the SAME FACT. This count is the cost of a")
+print("  filter at one size, not the cost of one that works at scale.")
+print()
+print("  Each of those n_times entries is a distinct Hamiltonian evolution, needed")
 print("  once per cycle. The protocol exists because phase estimation was too deep")
 print("  to run; if the repair puts Hamiltonian simulation back inside every cycle,")
 print("  the fix costs the very thing the protocol was avoiding. That is the honest")
