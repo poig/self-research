@@ -22,7 +22,9 @@ python isospectral_family.py
 | Thm 2, saturation | explicit `V = U_X U_M†` attains the bound | `achievable_work_theorem.py` | err 1.6e-15, 400 Haar V, 0 violations |
 | Thm 2, asymmetry | interval symmetric to machine precision | `exact_interval_asymmetry.py` | `.log` |
 | Prop (`prop:general`) | `Δ⟨A⟩ = (θ/2)Tr(i[ρ,A]G) + O(θ²)`; work and VQE gradient are instances | `general_response_interval.py` | `.log` — gradient matches parameter-shift to 4e-16 |
-| Prop (`prop:twoconditions`) | two independent sufficient causes of symmetry | `two_conditions.py`, `what_breaks_symmetry.py`, `generator_symmetry_rule.py`, `commutator_spectrum_symmetry.py` | `.log` |
+| Prop (`prop:criterion`) | symmetry ⟺ `⟨λ↓(M₁₁), λ↓(Y)+λ↑(Y)⟩ = 0`, an identity | `interval_symmetry_criterion.py` | identity to 1.6e-15 up to n=16 |
+| Prop (`prop:criterion`), not exhaustive | a third route: orthogonal with **neither** spectrum symmetric | `interval_symmetry_criterion.py` | 285 of 500 draws |
+| Prop (`prop:twoconditions`) | (A) and (B) are the two degenerate solutions of that criterion | `interval_symmetry_criterion.py`, `two_conditions.py`, `what_breaks_symmetry.py`, `generator_symmetry_rule.py`, `commutator_spectrum_symmetry.py` | `.log` |
 | Sec. "Relation to Cooling" | breaking both conditions buys `\|D\| ≤ 0.0147` | `directional_fraction.py` | `.log` |
 | Cor (`cor:purefixed`) | pure post-sensing branch forces symmetry | `purity_forbids_cooling.py` | `.log` |
 | Prop (`prop:secondorder`) | second-order directed work, `𝒜(θ) = 2.137θ` | `second_order_directed_work.py` | `.log` |
