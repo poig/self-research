@@ -196,9 +196,26 @@ class QLTOv5:
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
                  num_ancillas=3, qpe_margin=2.0, block_mode='layered'):
+        # Decompose until every parameter-bearing gate is one _CTRL knows how to
+        # control. This MUST check for progress: decompose() reaches a fixed point
+        # on gates it cannot reduce further, and the original unbounded `while`
+        # then spun forever rather than falling through. Any circuit carrying a
+        # parameterised gate outside _CTRL hangs the constructor, which includes
+        # anything with a non-parameterised data-encoding prefix such as `cry`.
+        # Behaviour is unchanged for circuits that already terminated: the loop
+        # still exits on exactly the same condition, only now it also exits when
+        # decomposition stops changing anything.
         try:
-            while any(inst.operation.name not in _CTRL and inst.operation.params for inst in ansatz.data):
+            _prev_ops = None
+            for _ in range(16):
+                if not any(inst.operation.name not in _CTRL and inst.operation.params
+                           for inst in ansatz.data):
+                    break
                 ansatz = ansatz.decompose()
+                _ops = ansatz.count_ops()
+                if _ops == _prev_ops:
+                    break
+                _prev_ops = _ops
         except Exception:
             pass
         self.ansatz = ansatz
