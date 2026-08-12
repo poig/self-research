@@ -1,0 +1,41 @@
+====================================================================================================
+Does resolution V recover v88's lost cosine, and what does it cost?
+====================================================================================================
+  shipped = _design_spec's Gray columns at minimum width (what v88 ran)
+  res-V   = greedy columns with no 3-term and no 4-term confounding
+  min |S| = smallest parameter subset whose columns XOR to zero
+
+    N   M  design    m_row  width  min|S|      cos  linear w
+  --------------------------------------------------------------
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_dsolve/linsolve.py:606: SparseEfficiencyWarning: splu converted its input to CSC format
+  return splu(A).solve
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_matfuncs.py:707: SparseEfficiencyWarning: spsolve is more efficient when sparse b is in the CSC matrix format
+  return spsolve(Q, P)
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/_index.py:168: SparseEfficiencyWarning: Changing the sparsity structure of a csr_matrix is expensive. lil and dok are more efficient.
+  self._set_intXint(row, col, x.flat[0])
+    4   8  shipped       4     11       3  0.90195        12
+    4   8  res-V         6     13       5  0.97915        12
+
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_dsolve/linsolve.py:606: SparseEfficiencyWarning: splu converted its input to CSC format
+  return splu(A).solve
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/linalg/_matfuncs.py:707: SparseEfficiencyWarning: spsolve is more efficient when sparse b is in the CSC matrix format
+  return spsolve(Q, P)
+/home/poig/anaconda3/lib/python3.13/site-packages/scipy/sparse/_index.py:168: SparseEfficiencyWarning: Changing the sparsity structure of a csr_matrix is expensive. lil and dok are more efficient.
+  self._set_intXint(row, col, x.flat[0])
+    5  12  shipped       4     12       3  0.94027        17
+    5  12  res-V         8     16       5  0.99123        17
+
+    6  16  shipped       5     14       3  0.71383        22
+    6  16  res-V         8     17       5  0.92660        22
+
+====================================================================================================
+READING IT
+====================================================================================================
+  If res-V's cosine recovers toward 1 while its width stays well under
+  the linear register's M+N, the aliasing diagnosis is confirmed AND the
+  fix is worth porting into _design_spec as an optional extra-rows knob.
+  If the cosine does not move, aliasing was the wrong diagnosis and v88's
+  degradation has another cause that is still unidentified.
+  If the cosine recovers but width reaches M+N, the log register has no
+  advantage left on this task and the honest conclusion is that the
+  linear register is the right choice for Hamiltonian learning.
