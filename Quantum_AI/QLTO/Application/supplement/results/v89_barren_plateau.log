@@ -1,0 +1,69 @@
+============================================================================================
+PART 1.  (*) on functions of KNOWN Fourier degree - it must be exact here
+============================================================================================
+  f_d(theta) = cos(theta_0 + theta_1 + ... + theta_{d-1}) is pure degree d.
+  (*) predicts E_s[s_0 f_d(theta+Rs)] = sin(R) cos^(d-1)(R) d_0 f_d.
+  A machine-precision match here validates the DEGREE-WISE law; the
+  earlier cos^(M-1) claim fails precisely because a real ansatz mixes
+  degrees and each degree carries its own exponent.
+
+     M  degree d     R       predicted        measured      |diff|
+  ----------------------------------------------------------------
+     8         1  0.40     0.028898415     0.028898415    3.82e-17
+     8         2  0.40    -0.084202092    -0.084202092    5.55e-17
+     8         3  0.40     0.204844185     0.204844185    5.55e-17
+    10         4  0.50     0.109941997     0.109941997    3.05e-16
+    10         6  0.50    -0.241613206    -0.241613206    5.83e-16
+
+  Now the same check on a real ansatz, where the degree mixture is not
+  controlled. The residual against the naive cos^(M-1) law is the size of
+  the error that falsified ATTEMPT 2.
+
+    N  reps   M     R   cos(walsh,grad)  rel err vs cos^(M-1)
+  -----------------------------------------------------------
+    2     1   8  0.30       0.998649794                 0.204
+    2     1   8  0.70       0.993168604                 0.703
+    2     2  12  0.40       0.994344716                 0.377
+    3     1  12  0.50       0.992173751                 0.653
+
+============================================================================================
+PART 2.  |grad E_R| <= |grad E| :  the plateau claim, by enumeration
+============================================================================================
+  Every cos^(|T|-1)(R) lies in [0,1], so smoothing attenuates every
+  Fourier component and amplifies none. Measured, not asserted: the
+  smoothed gradient is computed by full enumeration at each init.
+
+    N   M     R    mean|grad|   mean|grad_R|/R     ratio   max ratio
+  ------------------------------------------------------------------
+    2   8  0.40      0.869023         0.669046    0.7699      0.8310
+    2  12  0.40      1.073613         0.679483    0.6329      0.6849
+    3  12  0.40      0.774892         0.561885    0.7251      0.7802
+    2  12  0.80      1.125180         0.178763    0.1589      0.1999
+
+  max ratio <= 1 on every row means no init anywhere gained signal from
+  smoothing. A barren plateau in grad E is a barren plateau in grad E_R.
+  R-smoothing estimates a plateau more cheaply; it does not escape one.
+
+============================================================================================
+PART 3.  SNR-optimal radius for effective degree d
+============================================================================================
+  Walsh shot noise is independent of R and the 1/R division cancels, so
+  SNR ~ sin(R) cos^(d-1)(R) sqrt(T). Maximised at tan^2 R* = 1/(d-1).
+
+    degree d       R*    attenuation   cos(R*)
+  --------------------------------------------
+           2    0.7854    5.0000e-01    0.7071
+           4    0.5236    3.2476e-01    0.8660
+           8    0.3614    2.2156e-01    0.9354
+          16    0.2527    1.5407e-01    0.9682
+          24    0.2056    1.2512e-01    0.9789
+          32    0.1777    1.0807e-01    0.9843
+          64    0.1253    7.6115e-02    0.9922
+
+  v8_attenuation fitted the signal ratio to base 0.9697 (M=24) and 0.9764
+  (M=32) without naming the base. (*) says it is cos(R) PER FOURIER
+  DEGREE, so those bases invert to R = 0.246 and 0.218 - which is a
+  statement about the effective degree the ansatz carries, not about M.
+  The tuned r0 = 0.6 sits above every R* here and decays at 0.95/epoch,
+  so the schedule sweeps the optimum rather than sitting on it. Whether
+  starting nearer R* converges faster is UNTESTED.
