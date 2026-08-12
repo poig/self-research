@@ -195,7 +195,8 @@ class QLTOv5:
 
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
-                 num_ancillas=3, qpe_margin=2.0, block_mode='layered'):
+                 num_ancillas=3, qpe_margin=2.0, block_mode='layered',
+                 decoder='marginal'):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and the original unbounded `while`
@@ -241,6 +242,31 @@ class QLTOv5:
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
         self._direct_template_cache = {}
+        # DECODER. 'marginal' is the shipped estimator: condition on each register
+        # bit and difference the two conditional means. 'wls' regresses the same
+        # shot record on the realised design matrix instead.
+        #
+        # The marginal decoder discards information. It treats the block's other
+        # coordinates as noise, so it carries the cross term C = sum_{j!=i} g_j^2
+        # (v75) which is exactly what v72 identified as dragging the advantage over
+        # SPSA toward 2 as the parameter count grows. The design matrix is known
+        # EXACTLY, shot by shot, so least squares on it is best linear unbiased and
+        # removes that term rather than averaging over it.
+        #
+        # Measured on a synthetic landscape (v77), MSE at matched shots, n=15:
+        #     degree-2 weight   marginal   wls
+        #                0.00    0.00178   0.00060
+        #                0.25    0.00275   0.00073
+        #                1.00    0.00514   0.00298
+        # so wls wins at every weight tested. It is NOT the default, because every
+        # log committed before this change was produced by 'marginal' and flipping
+        # the default would silently invalidate all of them. Pass decoder='wls'
+        # deliberately, and re-baseline before making it standard.
+        #
+        # No circuit change: same template, same shots, same counts dictionary.
+        if decoder not in ('marginal', 'wls'):
+            raise ValueError(f"decoder must be 'marginal' or 'wls', got {decoder!r}")
+        self.decoder = decoder
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
@@ -521,6 +547,7 @@ class QLTOv5:
         for group in self.groups:
             num = np.zeros((2, n))
             den = np.zeros((2, n))
+            rows, ys, ws = [], [], []
             e_tot = e_cnt = 0.0
             t_qc, theta, radius = self._direct_template(active, group)
             bind = {theta[i]: float(centre[i]) for i in range(len(theta))}
@@ -547,10 +574,34 @@ class QLTOv5:
                     b = 1 if (i < len(xbits) and xbits[i] == '1') else 0
                     num[b, i] += e * cnt
                     den[b, i] += cnt
+                if self.decoder == 'wls':
+                    rows.append([1.0 if (i < len(xbits) and xbits[i] == '1')
+                                 else -1.0 for i in range(n)])
+                    ys.append(e)
+                    ws.append(float(cnt))
 
-            m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
-            m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
-            m_sum += m1 - m0                      # sum the GROUPS' contributions
+            if self.decoder == 'wls' and len(rows) > n:
+                # Weighted least squares of E on [1, sigma]. beta_i = R * g_i, so
+                # 2*beta matches the marginal convention (m1 - m0 = 2 R g_i) and
+                # the shared /(2R) below is left untouched. Weights are the shot
+                # counts, applied as sqrt(w) on both sides.
+                X = np.hstack([np.ones((len(ys), 1)), np.asarray(rows)])
+                w = np.sqrt(np.asarray(ws))
+                beta, _, rank, _ = np.linalg.lstsq(X * w[:, None],
+                                                   np.asarray(ys) * w, rcond=None)
+                if rank == n + 1:
+                    m_sum += 2.0 * beta[1:]
+                else:
+                    # Rank-deficient: too few distinct register outcomes to
+                    # identify every coordinate. Fall back rather than return a
+                    # least-norm solution that would silently bias the block.
+                    m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
+                    m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
+                    m_sum += m1 - m0
+            else:
+                m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
+                m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
+                m_sum += m1 - m0                  # sum the GROUPS' contributions
             e_sum += (e_tot / e_cnt) if e_cnt else 0.0
 
         grad = np.zeros(len(centre))

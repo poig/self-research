@@ -1,0 +1,25 @@
+========================================================================================================
+DOES THE v76 WIN SURVIVE A REGISTER THAT IS MEASURED RATHER THAN ALLOCATED?
+========================================================================================================
+  n = 15, T = 8192, R = 0.45, readout var = 1.0, 300 repeats.
+  Design rows 32 on 5 qubits, against 15 qubits for the random hypercube.
+
+  rand+OLS is the control that decides ATTRIBUTION: least squares is best
+  linear unbiased for any known design, so if it matches samp+OLS then the
+  variance win belongs to the DECODER and the design buys only qubits.
+
+    deg-2   rand+marg    rand+OLS   samp+marg    samp+OLS    det+marg  best realisable
+  --------------------------------------------------------------------------------------
+     0.00     0.00178     0.00060     0.00165     0.00059     0.00058         samp+OLS
+     0.25     0.00275     0.00073     0.00271     0.00069     0.00062         samp+OLS
+     1.00     0.00514     0.00298     0.00635     0.00407     0.00060         rand+OLS
+
+  'det+marg' is v76's deterministic allocation and is NOT realisable by
+  measuring a superposed register; it is here only as the reference the
+  other columns are trying to reach.
+
+  If samp+OLS matches or beats rand+marg, the encoding is strictly better:
+  same accuracy on 5 qubits instead of 15, which is what
+  lifts the block-width cap. If every sampled column sits at rand+marg, the
+  design buys qubits and nothing else, and v76's 5x was an artefact of an
+  allocation hardware cannot perform.
