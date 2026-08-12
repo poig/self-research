@@ -1,0 +1,54 @@
+========================================================================================================
+(1)  CORRECTNESS:  does the design encoding reproduce the gradient?
+========================================================================================================
+  Scored against exact parameter-shift at the same theta. R = 0.45,
+  16384 shots per circuit, 3 seeds, layered blocks for both.
+
+    N   M  encoding  reg qubits  blocks  cos vs exact
+  ---------------------------------------------------
+    4  24    onehot           4       6        0.9810
+    4  24    design           4       6        0.9872
+  ...................................................
+    6  36    onehot           6       6        0.9796
+    6  36    design           4       6        0.9782
+  ...................................................
+
+  The two encodings must land on the same cosine. A gap means the sign
+  convention is wrong, and a wrong sign is silent rather than loud.
+
+========================================================================================================
+(2)  WHAT IT UNLOCKS:  all M parameters in ONE block
+========================================================================================================
+  block_mode='global' sets L = 1, so circuits per gradient fall from G*L to
+  G. Register need under one-hot is M qubits; under the design it is
+  ceil(log2(M+1)) + 1.
+
+    N   M  onehot reg  design reg  circuits  cos vs exact
+  -------------------------------------------------------
+    4  24          24           6         3        0.7605
+    6  36          36           7         3        0.7740
+
+  One-hot at N=6 would need 36 register qubits plus 6 system, which is not
+  simulable here; that row exists only because of the encoding.
+
+========================================================================================================
+(3)  WHAT IT COSTS:  transpiled depth and two-qubit gates per GRADIENT
+========================================================================================================
+  Common hardware basis ['rz', 'sx', 'x', 'cx'], so neither arm is flattered by a
+  simulator basis that keeps cry as one gate.
+
+    N                config  circuits  depth/circ   2q/circ  2q per gradient
+  -------------------------------------------------------------------------
+    4        onehot/layered        18          32        14              252
+    4        design/layered        18          70        32              576
+    4         design/global         3         320       210              630
+  .........................................................................
+    6        onehot/layered        18          34        22              396
+    6        design/layered        18          99        52              936
+    6         design/global         3         494       334             1002
+  .........................................................................
+
+  '2q per gradient' is the number that matters: circuits times two-qubit
+  gates each. The design trades a control qubit per parameter for parity
+  CNOTs, so per circuit it should cost MORE, and only wins if the circuit
+  count falls faster than the per-circuit cost rises.

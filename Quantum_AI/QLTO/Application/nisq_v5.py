@@ -185,6 +185,34 @@ from qiskit_aer import AerSimulator
 _CTRL = {'rx': 'crx', 'ry': 'cry', 'rz': 'crz', 'p': 'cp', 'u1': 'cp'}
 
 
+def _design_spec(n):
+    """Register layout for the resolution-IV design encoding.
+
+    The one-hot encoding spends ONE QUBIT PER PARAMETER, which is what caps block
+    width and therefore caps the 2n advantage over parameter-shift. Indexing rows
+    of a Sylvester-Hadamard matrix instead costs log2(n) qubits for the same n
+    parameters.
+
+    Parameter j takes column j+1; column 0 is all-ones and carries the intercept,
+    so it is skipped. A row index needs m_row = ceil(log2(n+1)) bits, and one
+    further qubit carries the FOLDOVER: including it in every parity flips all
+    signs together, which is what makes the design resolution IV and clears main
+    effects of two-factor interactions. The sign for parameter j at register value
+    (d, f) is
+
+        sigma_j = (-1)^(popcount(d AND c_j) + f)
+
+    Returns (m_row, cols). Total register width is m_row + 1.
+    """
+    m_row = max(1, int(np.ceil(np.log2(n + 1))))
+    return m_row, [j + 1 for j in range(n)]
+
+
+def _design_sign(d, f, c):
+    """sigma for one parameter at one measured register value."""
+    return -1.0 if ((bin(d & c).count('1') + f) & 1) else 1.0
+
+
 class QLTOv5:
     """One-circuit-per-group gradient + bounded classical step.
 
@@ -196,7 +224,7 @@ class QLTOv5:
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
                  num_ancillas=3, qpe_margin=2.0, block_mode='layered',
-                 decoder='marginal'):
+                 decoder='marginal', encoding='onehot'):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and the original unbounded `while`
@@ -267,6 +295,23 @@ class QLTOv5:
         if decoder not in ('marginal', 'wls'):
             raise ValueError(f"decoder must be 'marginal' or 'wls', got {decoder!r}")
         self.decoder = decoder
+        # ENCODING. 'onehot' is the shipped layout, one register qubit per active
+        # parameter. 'design' indexes rows of a resolution-IV Hadamard design on
+        # ceil(log2(n+1)) + 1 qubits instead, so a block of n parameters costs
+        # LOG rather than LINEAR register width. Measured accuracy-neutral at
+        # matched shots (v77, n=15: 0.00165 design against 0.00178 one-hot) with a
+        # penalty only at high degree-2 weight (0.00635 against 0.00514).
+        #
+        # The point is not the qubits saved at n=15, it is that block width stops
+        # being capped by the register: 36 parameters need 7 qubits rather than 36,
+        # which is what makes block_mode='global' reachable at all.
+        #
+        # Costs parity CNOTs per parameter in place of the control qubit, so it is
+        # a genuine trade and not a free win. Price it on a hardware basis before
+        # believing it.
+        if encoding not in ('onehot', 'design'):
+            raise ValueError(f"encoding must be 'onehot' or 'design', got {encoding!r}")
+        self.encoding = encoding
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
@@ -386,11 +431,22 @@ class QLTOv5:
         radius = Parameter(f'R_{len(active)}_{len(self._direct_template_cache)}')
         pos = {p: i for i, p in enumerate(active)}
 
-        qc = QuantumCircuit(QuantumRegister(n, 'param'),
-                            QuantumRegister(self.N, 'sys'),
-                            ClassicalRegister(n, 'cp'),
-                            ClassicalRegister(self.N, 'cs'))
+        design = self.encoding == 'design'
+        if design:
+            m_row, cols = _design_spec(n)
+            nreg = m_row + 1                   # row index bits plus foldover
+            regs = [QuantumRegister(nreg, 'param'), QuantumRegister(self.N, 'sys'),
+                    QuantumRegister(1, 'par'),     # parity scratch, never measured
+                    ClassicalRegister(nreg, 'cp'), ClassicalRegister(self.N, 'cs')]
+        else:
+            m_row, cols = None, None
+            nreg = n
+            regs = [QuantumRegister(nreg, 'param'), QuantumRegister(self.N, 'sys'),
+                    ClassicalRegister(nreg, 'cp'), ClassicalRegister(self.N, 'cs')]
+
+        qc = QuantumCircuit(*regs)
         param, sysr = qc.qregs[0], qc.qregs[1]
+        anc = qc.qregs[2][0] if design else None
         qc.h(param)
 
         for inst in self.ansatz.data:
@@ -411,7 +467,25 @@ class QLTOv5:
                     f"_CTRL, or the parameter would silently stay at its centre "
                     f"value and report a zero gradient.")
             qc.append(op.__class__(theta[gi] - radius), qs)
-            getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
+            if not design:
+                getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
+            else:
+                # Compute parity(d AND c_j) XOR f into the scratch qubit, then
+                # control off it. The X inverts the sense so the rotation fires on
+                # sigma = +1, matching the theta - R baseline just applied.
+                # Everything is uncomputed so the scratch is clean and the register
+                # stays unentangled with it at measurement.
+                c = cols[pos[gi]]
+                bits = [b for b in range(m_row) if (c >> b) & 1]
+                for b in bits:
+                    qc.cx(param[b], anc)
+                qc.cx(param[m_row], anc)
+                qc.x(anc)
+                getattr(qc, _CTRL[op.name])(2.0 * radius, anc, qs[0])
+                qc.x(anc)
+                qc.cx(param[m_row], anc)
+                for b in reversed(bits):
+                    qc.cx(param[b], anc)
 
         self._basis(qc, sysr, group)
         qc.measure(param, qc.cregs[0])
@@ -543,6 +617,8 @@ class QLTOv5:
         # at G=3, flat across a 64x shot sweep - a factor, not a noise floor.
         m_sum = np.zeros(n)
         e_sum = 0.0
+        design = self.encoding == 'design'
+        m_row, cols = _design_spec(n) if design else (None, None)
 
         for group in self.groups:
             num = np.zeros((2, n))
@@ -570,13 +646,22 @@ class QLTOv5:
                     e += c * s
                 e_tot += e * cnt
                 e_cnt += cnt
+                if design:
+                    # Register holds a design ROW INDEX plus the foldover bit, not
+                    # one bit per parameter, so sigma has to be reconstructed.
+                    d = sum(1 << b for b in range(m_row)
+                            if b < len(xbits) and xbits[b] == '1')
+                    f = 1 if (m_row < len(xbits) and xbits[m_row] == '1') else 0
+                    sg = [_design_sign(d, f, c) for c in cols]
+                else:
+                    sg = [1.0 if (i < len(xbits) and xbits[i] == '1') else -1.0
+                          for i in range(n)]
                 for i in range(n):
-                    b = 1 if (i < len(xbits) and xbits[i] == '1') else 0
+                    b = 1 if sg[i] > 0 else 0
                     num[b, i] += e * cnt
                     den[b, i] += cnt
                 if self.decoder == 'wls':
-                    rows.append([1.0 if (i < len(xbits) and xbits[i] == '1')
-                                 else -1.0 for i in range(n)])
+                    rows.append(sg)
                     ys.append(e)
                     ws.append(float(cnt))
 
