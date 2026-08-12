@@ -160,6 +160,7 @@ def pauli_groups(hamiltonian):
 #
 # Note V2 buys its lead with DEPTH: k=45 triples its walk depth versus k=15.
 TUNED = {
+    'QLTO V6': 0.6,               # r0, the initial sensing radius
     'QLTO V3 QPE (k=3)': 15,      # k_step
     'QLTO V3 (Hadamard)': 20,     # k_step
     'QLTO V2 (engine-grad)': 45,  # k_step
@@ -360,6 +361,57 @@ class QLTO_Wrapper:
             result = self.optimizer.run_walk(params, k_steps=self.k_step, delta_t=dt, search_radius=r, layer=self.layer, gradient_reuse=self.gradient_reuse, coherence=self.coherence)
         params_new = result[0] if isinstance(result, (tuple, list)) else result
         return params_new
+
+class QLTOv6_Wrapper:
+    """V6: log-width design register, one global block, G circuits per gradient.
+
+    Standalone in nisq_v6.py - it shares no code with V2, V3 or V5, so nothing
+    here can drift those. backend is deliberately NOT forwarded, matching the V2
+    and V3 wrappers: V6 picks its own simulator by width, and the suite's MPS
+    default is far slower for these narrow-but-entangled circuits.
+
+    CIRCUIT MULTIPLIER IS 1, unlike every estimator-driven row. Those bill one
+    expectation value as one NEFV and need a separate circuit per qubit-wise
+    commuting group, hence the pauli_groups(h) stamp. V6 loops over the groups
+    ITSELF inside sense() and counts a circuit for each, so its nefv is already
+    the true circuit count and multiplying again would triple-charge it. Measured
+    at Heisenberg N=6: 3 circuits per gradient against parameter-shift's 216.
+
+    The radius schedule is the same annealing shape the other QLTO wrappers use:
+    R matters directly, since the sensed signal is 2R*dE while the estimator's
+    bias is O(R^2), so R trades signal against bias. V6 additionally rescales R
+    internally by sqrt(N/n) for its wider block - passing the same r0 a V5 caller
+    would use is therefore correct, and NOT doing so costs cos 0.975 -> 0.886.
+    """
+
+    def __init__(self, ansatz, hamiltonian, backend=None, shot_budget=4096,
+                 r0=0.6, r_decay=0.9, n_scratch=3):
+        from nisq_v6 import QLTOv6
+        self.optimizer = QLTOv6(ansatz, hamiltonian,
+                                shot_budget=SHOTS or shot_budget,
+                                n_scratch=n_scratch)
+        self.epoch = 0
+        self.r0 = r0
+        self.r_decay = r_decay
+
+    @property
+    def nefv(self):
+        return self.optimizer.nefv
+
+    @property
+    def circuit_depth(self):
+        return self.optimizer.max_circuit_depth
+
+    @property
+    def max_circuit_depth(self):
+        return self.optimizer.max_circuit_depth
+
+    def step(self, params):
+        self.epoch += 1
+        r = max(self.r0 * (self.r_decay ** (self.epoch - 1)), 1e-4)
+        p, _ = self.optimizer.run_epoch(params, r)
+        return p
+
 
 class CorrectQNG:
     """
@@ -1055,11 +1107,10 @@ def run_benchmark(save=True):
     # mode k must scale with M. Worth replacing with k = 3 * params_per_walk
     # once the scaling is confirmed at N=6/N=8.
     optimizers_def = {
-        # V3: gradient read off the sensing circuit. No CommutingBlockGradient
-        # circuits at all - see nisq_v3.py.
-        'QLTO V3 (walk-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=15, bits_per_param=1, layer=True, backend=backend, walk_gradient=True),
-        # V2: same walk, gradient from the commuting-block engine (2M-N circuits).
-        'QLTO V2 (engine-grad)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=15, bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, backend=backend, coherence=True, use_fim=False),
+        # V6: log-width design register, one global block, G circuits per
+        # gradient. Compared against the COMPETING methods below rather than
+        # against older QLTO versions - those are superseded and V5 is frozen.
+        'QLTO V6': lambda a, h, backend=None: QLTOv6_Wrapper(a, h, r0=TUNED['QLTO V6']),
         'QAOA': lambda a, h, backend=None: QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20),
         'Correct QNG': lambda a, h, backend=None: CorrectQNG(a, h, lr=TUNED['Correct QNG']),
         # PennyLane QNG removed: it optimises its own qml circuit but the harness
@@ -1304,16 +1355,24 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
         problems.append(get_heisenberg_problem(12))
     
     optimizers_def = {
-        'QLTO V3 QPE (k=3)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3),
-        # SAME SENSING, NO WALK. Senses the marginal gradient exactly as the row
-        # above and then takes a bounded classical step instead of the walk
-        # circuit - 1 circuit per block-epoch against the walk's 2. Added because
-        # the walk has never been measured ahead of it: at Heisenberg N=4 the walk
-        # trails in four independent runs across two implementations and both
-        # merged_walk settings (supplement/v20, v53, v53b, v53c). This row is the
-        # test of whether that survives the full suite; if it does, gradstep
-        # should become the default and this row replaces the one above.
-        'QLTO V3 gradstep': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3, decoder='gradstep'),
+        # V6 AGAINST THE FIELD, not against older QLTO versions. The suite used to
+        # run several QLTO rows against each other, which answered "which of ours
+        # is best" and never "is ours better than theirs". V5 is frozen, V2 and V3
+        # are superseded, so the comparison that remains is against AdamW
+        # (parameter-shift), Correct QNG, SPSA and QAOA.
+        #
+        # Cost context, measured in supplement/v86 at Heisenberg N=6, M=36, all
+        # transpiled to rz/sx/x/cx, circuits and total two-qubit gates per
+        # gradient:
+        #     V6                  3 circuits,   402 gates
+        #     parameter-shift   216 circuits,  2160 gates
+        #     Bowles LCU         36 circuits,  9144 gates
+        # so the rows below are the ones V6 has to beat on ENERGY, having already
+        # beaten them on cost.
+        'QLTO V6': lambda a, h, backend=None: QLTOv6_Wrapper(a, h, r0=TUNED['QLTO V6']),
+        # Superseded QLTO rows, kept reachable and off by default:
+        # 'QLTO V3 QPE (k=3)': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3),
+        # 'QLTO V3 gradstep': lambda a, h, backend=None: QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, backend=backend, walk_gradient=True, v3_ancillas=3, decoder='gradstep'),
         # 'QLTO V3 (Hadamard)' REMOVED from the stats suite. Not hidden - it is
         # documented as strictly inferior and the reason is measured: the k=1
         # path loses on shots (1.91x worse than fairly-charged parameter-shift,
@@ -1559,14 +1618,31 @@ def optimizer_circuits(opt):
 
 
 def _optimizer_factories():
+    """V6 against the COMPETING METHODS, not against older QLTO versions.
+
+    The suite used to run three QLTO rows against each other, which answered
+    "which of ours is best" and never "is ours better than theirs". V5 is frozen
+    and V2/V3 are superseded, so the question is now V6 against the field:
+
+        AdamW        parameter-shift gradients, 2M NEFV per step. The baseline.
+        Correct QNG  natural gradient, quantum Fisher information.
+        SPSA         2 NEFV per step, stochastic perturbation.
+        QAOA         a different ansatz family, kept for reference.
+
+    The older rows stay reachable below rather than deleted, since their TUNED
+    entries and measured behaviour are recorded in the notes and re-enabling one
+    is a one-line uncomment.
+    """
     return {
-        'QLTO V3 QPE (k=3)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=3), 1),
-        'QLTO V3 (Hadamard)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1), 1),
-        'QLTO V2 (engine-grad)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False), pauli_groups(h)),
+        'QLTO V6': lambda a, h, b: _mult(QLTOv6_Wrapper(a, h, r0=TUNED['QLTO V6']), 1),
         'QAOA': lambda a, h, b: _mult(QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20), pauli_groups(h)),
         'Correct QNG': lambda a, h, b: _mult(CorrectQNG(a, h, lr=TUNED['Correct QNG']), pauli_groups(h)),
         'AdamW': lambda a, h, b: _mult(AdamW(a, h, lr=TUNED['AdamW']), pauli_groups(h)),
         'SPSA': lambda a, h, b: _mult(SPSA(a, h, lr=TUNED['SPSA']), pauli_groups(h)),
+        # Superseded QLTO versions, kept reachable and off by default:
+        # 'QLTO V3 QPE (k=3)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 QPE (k=3)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=3), 1),
+        # 'QLTO V3 (Hadamard)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V3 (Hadamard)'], bits_per_param=1, layer=True, walk_gradient=True, v3_ancillas=1), 1),
+        # 'QLTO V2 (engine-grad)': lambda a, h, b: _mult(QLTO_Wrapper(a, h, k_step=TUNED['QLTO V2 (engine-grad)'], bits_per_param=1, layer=True, fim_full=False, gradient_reuse=True, coherence=True, use_fim=False), pauli_groups(h)),
     }
 
 
