@@ -170,10 +170,16 @@ class QLTOv6:
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
         self._direct_template_cache = {}
+        # The natural layer partition is kept EVEN IN GLOBAL MODE, because the
+        # measurement block and the step block are different objects. The gradient
+        # is measured over one global block, which is where the G-circuit cost
+        # comes from; the step is applied layer by layer, which is where the
+        # scaling has to be local. See grad_step.
+        self.step_layers = self._layers()
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
-            self.layers = self._layers()
+            self.layers = self.step_layers
 
     # ── setup ────────────────────────────────────────────────────────────────
 
@@ -376,17 +382,53 @@ class QLTOv6:
     # ── step ─────────────────────────────────────────────────────────────────
 
     def grad_step(self, centre, R, active, grad):
-        """Bounded, max-normalised, scale-free within the block.
+        """Bounded step, max-normalised PER LAYER rather than per block.
 
-        Uses the SAME rescaled radius the gradient was measured at, or the step
-        size and the smoothing scale disagree.
+        V5 divides by max|g| over the active block and calls it scale-free within
+        the block, which is right when the block IS a layer: each layer then gets
+        its own scale and advances at full step size whatever the other layers'
+        gradient magnitudes are. That is what made it immune to the per-block
+        scale bias measured at up to 2.4x, 80 sigma from unity.
+
+        Under a GLOBAL measurement block the same line means something else. One
+        max|g| taken over all M parameters divides every coordinate, so any
+        parameter whose gradient is small next to the single largest component
+        anywhere in the circuit barely moves. The normalisation that removed
+        cross-block scale bias in V5 imposes it in V6. Measured consequence at
+        Heisenberg N=4, 180 NEFV: -5.62 +/- 0.55 against V3's -6.00 +/- 0.03,
+        with the spread being stalled runs rather than estimator noise.
+
+        So the scale is taken per LAYER while the gradient is still measured over
+        the whole block. Costs nothing: the gradient is already in hand, this only
+        changes how it is consumed. Uses the same rescaled radius the gradient was
+        measured at, or the step size and the smoothing scale disagree.
         """
         p = np.asarray(centre, dtype=float).copy()
-        g = np.asarray(grad)[active]
-        mx = float(np.max(np.abs(g)))
-        if mx < 1e-12:
-            return p
-        p[active] = p[active] - self.alpha * self._radius(R, len(active)) * g / mx
+        g_all = np.asarray(grad)
+        # THE SCHEDULED RADIUS, NOT THE RESCALED ONE. _radius() shrinks R by
+        # sqrt(n/N) so the LINEARISATION stays valid across a wider block; that is
+        # a property of the estimator, not a statement about how far the optimiser
+        # should walk. Using the reduced value here made a global block step at
+        # sqrt(N/M) of V5's size on top of taking one step per epoch instead of L,
+        # i.e. about an eighth of the movement. Measured at Heisenberg N=4, 60
+        # NEFV, per-trial best: reduced gave -5.97 -4.59 -5.44 -5.92 -5.98,
+        # scheduled gives -5.99 -4.67 -6.06 -6.09 -5.97, so two seeds cross V3's
+        # -6.0030 at a third of its circuits.
+        Rv = float(R)
+        aset = set(int(i) for i in active)
+
+        parts = [[i for i in lay['params'] if i in aset]
+                 for lay in self.step_layers]
+        parts = [q for q in parts if q]
+        if not parts:                      # no layer structure: fall back to one
+            parts = [list(aset)]
+
+        for q in parts:
+            g = g_all[q]
+            mx = float(np.max(np.abs(g)))
+            if mx < 1e-12:
+                continue                   # inert layer, e.g. a commuting RZ block
+            p[q] = p[q] - self.alpha * Rv * g / mx
         return p
 
     # ── driver ───────────────────────────────────────────────────────────────
