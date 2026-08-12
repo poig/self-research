@@ -1,0 +1,47 @@
+====================================================================================================
+REGIME: per-component fixed
+====================================================================================================
+  g_j ~ N(0,1), so |grad E|^2 grows as M: a WIDER ansatz.
+  G=3, T=200000, R=0.45, readout var=1.0, both at matched TOTAL shots.
+
+      M      tr V6      tr PS   tr/M V6   tr/M PS   lmax V6  |corr| V6   PS/V6
+  ----------------------------------------------------------------------------
+      8    0.00041    0.00039  0.000052  0.000049   0.00011     0.1392    0.94
+     16    0.00141    0.00156  0.000088  0.000097   0.00019     0.1109    1.10
+     32    0.00624    0.00623  0.000195  0.000195   0.00085     0.1232    1.00
+     64    0.01937    0.02490  0.000303  0.000389   0.00195     0.1101    1.29
+    128    0.09330    0.09960  0.000729  0.000778   0.00320     0.0608    1.07
+
+  fitted tr(Cov) ~ M^alpha :   V6 alpha = +1.940     parameter-shift alpha = +2.000
+
+====================================================================================================
+REGIME: total norm fixed
+====================================================================================================
+  g rescaled to |grad E| = 1 at every M: the SAME problem, finer.
+  G=3, T=200000, R=0.45, readout var=1.0, both at matched TOTAL shots.
+
+      M      tr V6      tr PS   tr/M V6   tr/M PS   lmax V6  |corr| V6   PS/V6
+  ----------------------------------------------------------------------------
+      8    0.00023    0.00039  0.000029  0.000049   0.00004     0.0339    1.67
+     16    0.00047    0.00156  0.000029  0.000097   0.00004     0.0334    3.30
+     32    0.00094    0.00623  0.000029  0.000195   0.00004     0.0216    6.60
+     64    0.00190    0.02490  0.000030  0.000389   0.00005     0.0188   13.13
+    128    0.00378    0.09960  0.000030  0.000778   0.00006     0.0133   26.34
+
+  fitted tr(Cov) ~ M^alpha :   V6 alpha = +1.006     parameter-shift alpha = +2.000
+
+====================================================================================================
+READING IT
+====================================================================================================
+  Parameter-shift splits T over 2MG circuits, so its per-component variance
+  rises linearly in M and tr(Cov) rises as M^2. That is the baseline.
+
+  V6's exponent is the result. If it is BELOW parameter-shift's, the
+  one-shot-informs-all-M property is genuine information reuse. If the two
+  match, V6 has moved variance rather than removed it and the circuit
+  advantage is a billing advantage only.
+
+  The two regimes are expected to DISAGREE, and that disagreement is the
+  point: with per-component magnitude fixed the cross term |grad E|^2 grows
+  as M and eats the amortisation, while at fixed total norm it does not.
+  Any claim about V6 scaling therefore has to state which regime it means.
