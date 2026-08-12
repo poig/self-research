@@ -11,13 +11,56 @@ testing, and the withdrawals are documented alongside the claims — read the
 
 ```
 QLTO/
-├── Application/    the optimizer — V3, V5, benchmarks, research notes  ← start here
+├── Application/    the optimizer — V3, V5, V6, benchmarks, research notes  ← start here
 │   └── supplement/     ~70 numbered experiments, each with its log
 ├── theory_test/    numerics behind the theory paper, mapped claim-by-claim
 │   └── QuantumFeedback/  Lean 4 + Mathlib proofs of the algebraic core
 ├── paper/          manuscripts
 └── Feigenbaum/     earlier exploratory work
 ```
+
+## Application — QLTO V6
+
+A gradient estimator on a **logarithmic** parameter register: `⌈log₂(M+1)⌉+1`
+qubits carry a resolution-IV Hadamard design over all `M` parameters at once, so
+one gradient costs `G` circuits — the number of qubit-wise-commuting groups in
+`H` — and nothing in that count depends on `M`.
+
+The cost is **three numbers, not one**, and quoting only the first is the claim
+most open to attack:
+
+| cost | V6 | parameter-shift | measured in |
+|---|---|---|---|
+| circuits per gradient | **`G`** | `2MG` | v87 — exactly `G` on all 7 problems, 16–64× under |
+| width | `N + ⌈log₂(M+1)⌉ + 4` | `N` | v87 — 2.25×–5× at these sizes, **additive**, ratio falls with `N` |
+| classical per gradient | `O(M)` decode | `O(M)` | v87 — no exponential term |
+
+`Θ(G)` circuits is a **construction-level** fact: V6 issues `G` circuits whatever
+`M` is, at any problem size, and needs no measurement. What the benchmark
+establishes is the *separate* claim that it still converges competitively at that
+cost, and that is measured only to `N = 8`.
+
+On the 8-problem suite at 5 trials, one global setting, matched 8192-shot
+budgets: **1st on 2, 2nd on 5, 3rd on 1** (Heisenberg N=4, 0.0045 behind AdamW
+for 32× the circuits), cheapest on all 8. Sharpest row is Heisenberg N=8 —
+**−11.6222 at 60 circuits against AdamW's −11.6133 at 3840**.
+
+**Two caveats belong beside the cost claim, both already measured.** At matched
+*total shots* in the wide-ansatz regime, V6's variance exponent is 1.94 against
+parameter-shift's 2.00 (v82) — there the advantage is circuits, not shots, and
+that is also why V6 does not contradict the backpropagation lower bound of Abbas
+et al. (NeurIPS 2023), which forbids backprop scaling for single-copy
+measurement. And the R-bias costs an exponent: gradient error falls as `T^(−1/3)`
+against the unbiased `T^(−1/2)` (v69, fitted −0.742/−0.759 against −2/3
+predicted).
+
+Against the shadow-tomography line the separation is classical, not quantum:
+QSGD (arXiv:2310.06935) carries a `3^k` variance factor that becomes `3^N` once
+the gradient observable is conjugated through the remaining entangling layers,
+and Abbas et al.'s Theorem 9 needs quantum memory, two-copy Bell measurements and
+`M·2^Õ(n)` classical storage while still spending `Õ(mM)` quantum operations.
+Neither reaches `Θ(G)` circuits in this setting. Full ledger in
+[`supplement/results/v87_cost_ledger.log`](Application/supplement/results/v87_cost_ledger.log).
 
 ## Application — QLTO V3 / V5
 

@@ -1,0 +1,59 @@
+====================================================================================================
+THE THREE COSTS, PER GRADIENT.  measured columns unless marked cited.
+====================================================================================================
+  problem                 N   M  G  V6 circ  p-shift  ratio  base w  V6 w   w x  V6 decode
+  ------------------------------------------------------------------------------------------------
+  MaxCut N=4 (Opt=3.2)    4  16  1        1       32   32.0       4    13  3.25         32
+  MaxCut N=6 (Opt=9.1)    6  24  1        1       48   48.0       6    15  2.50         32
+  H2 Molecule             2   8  2        2       32   16.0       2    10  5.00         16
+  LiH Molecule            4  16  3        3       96   32.0       4    13  3.25         32
+  Heisenberg N=4          4  16  3        3       96   32.0       4    13  3.25         32
+  Heisenberg N=6          6  24  3        3      144   48.0       6    15  2.50         32
+  Heisenberg N=8          8  32  3        3      192   64.0       8    18  2.25         64
+
+====================================================================================================
+WIDTH IS ADDITIVE, NOT MULTIPLICATIVE
+====================================================================================================
+  V6 width = N + ceil(log2(M+1)) + 1 + n_scratch = N + log2(M+1) + 4.
+  The excess is O(log M) ADDITIVE, so w6/N falls monotonically in N:
+       N     w6/N
+       2     5.00   H2 Molecule
+       4     3.25   MaxCut N=4 (Opt=3.2)
+       4     3.25   LiH Molecule
+       4     3.25   Heisenberg N=4
+       6     2.50   MaxCut N=6 (Opt=9.1)
+       6     2.50   Heisenberg N=6
+       8     2.25   Heisenberg N=8
+  A reader who only sees Theta(G) will assume width parity. It is 5.00x
+  at H2 and 2.25x at Heisenberg N=8, and tends to 1 - all three facts
+  belong in the claim, not just the last one.
+
+====================================================================================================
+CLASSICAL WORK PER GRADIENT
+====================================================================================================
+  method                    classical                              at Heisenberg N=8
+  ----------------------------------------------------------------------------------
+  parameter-shift / AdamW   O(M) arithmetic                                       32
+  Correct QNG               O(M) + O(L b^3) block inverse                       ~416
+  SPSA                      O(M) arithmetic                                       32
+  QLTO V6                   O(2^m_row) = O(M) decode                              64
+  QSGD  (cited, adapted)    O(4^N) shadow matrices / layer                     65536
+  Abbas Thm 9 (cited)       M * 2^Otilde(N) hypothesis state                    8192
+
+  V6 carries NO exponential classical term. That is the column where the
+  shadow-tomography methods lose outright, and it has never been claimed.
+
+====================================================================================================
+WHAT THIS LEDGER DOES NOT SAY
+====================================================================================================
+  Theta(G) circuits per gradient is a CONSTRUCTION-level fact: V6 issues G
+  circuits whatever M is, at any problem size. It needs no measurement.
+  What the 8-qubit suite establishes is the separate claim that V6 still
+  CONVERGES competitively at that cost, and that is measured only to N=8.
+
+  Two size-dependent caveats belong beside it, both already measured:
+    v82  wide-ansatz regime, V6 variance exponent 1.94 vs p-shift 2.00 -
+         at matched TOTAL SHOTS the advantage is circuits, not shots.
+    v69  gradient error ~ T^(-1/3) for V6 against T^(-1/2) unbiased,
+         fitted -0.742 / -0.759 against the predicted -2/3. The R-bias
+         is the price and it does not vanish with more shots.
