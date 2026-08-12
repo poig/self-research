@@ -1,0 +1,35 @@
+====================================================================================================
+V6 vs BOWLES, counted from the implementations
+====================================================================================================
+  Both transpiled to ['rz', 'sx', 'x', 'cx']. Circuit counts read from Bowles'
+  own get_nefv_cost(), not from the paper's abstract.
+
+  N=4, M=24, G=3, Bowles blocks B=24
+                              method  circuits  depth/c   2q/c  2q total
+  ----------------------------------------------------------------------
+                                  V6         3       91    116       348
+              Bowles, as implemented        24      449    158      3792
+            Bowles, theoretical 2B-1        47      449    158      7426
+                     parameter-shift       144       20      6       864
+
+    V6 circuits vs Bowles-as-implemented : 8.0x fewer
+    V6 2q total vs Bowles-as-implemented : 10.9x fewer
+  ......................................................................
+  N=6, M=36, G=3, Bowles blocks B=36
+                              method  circuits  depth/c   2q/c  2q total
+  ----------------------------------------------------------------------
+                                  V6         3      102    134       402
+              Bowles, as implemented        36      709    254      9144
+            Bowles, theoretical 2B-1        71      709    254     18034
+                     parameter-shift       216       22     10      2160
+
+    V6 circuits vs Bowles-as-implemented : 12.0x fewer
+    V6 2q total vs Bowles-as-implemented : 22.7x fewer
+  ......................................................................
+
+  'Bowles, theoretical 2B-1' is the figure the paper quotes and the notes
+  repeated. It requires no CNOTs in the future block, which EfficientSU2
+  violates by construction, so the row above it is the applicable one.
+
+  The LCU circuits carry two CONTROLLED copies of the future ansatz, which
+  is why their per-circuit cost is not comparable to a bare ansatz run.
