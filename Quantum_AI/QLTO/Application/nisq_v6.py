@@ -84,8 +84,56 @@ from qiskit_aer import AerSimulator
 _CTRL = {'rx': 'crx', 'ry': 'cry', 'rz': 'crz', 'p': 'cp', 'u1': 'cp'}
 
 
-def _design_spec(n, k=1):
+def _resv_cols(n, m):
+    """Greedy resolution-V columns in GF(2)^m, or None if m is too small.
+
+    Resolution IV (what the foldover alone buys) clears main effects of
+    TWO-factor interactions but leaves them confounded with THREE-factor ones.
+    v90 measured that directly: the shipped Gray columns have min|S| = 3 at every
+    size tested - three parameters whose columns XOR to zero - and on a loss with
+    real degree-3 content the gradient cosine falls to 0.714 at M=16.
+
+    Two conditions lift it to resolution V:
+      (a) no column equals the XOR of two others   -> no 3-term relation
+      (b) all pairwise XORs are distinct           -> no 4-term relation
+    """
+    cols, pair = [], set()
+    for c in range(1, 1 << m):
+        if c in pair or c in cols:
+            continue
+        new, ok = set(), True
+        for d in cols:
+            x = c ^ d
+            if x == 0 or x in pair or x in new or x in cols:
+                ok = False
+                break
+            new.add(x)
+        if ok:
+            cols.append(c)
+            pair |= new
+            if len(cols) == n:
+                return cols
+    return None
+
+
+def _design_spec(n, k=1, resolution=4):
     """Column assignment for a block of n parameters over k scratch wires.
+
+    RESOLUTION selects the width/fidelity trade, and neither setting is
+    universally right - which is why this is a knob and not a new default.
+
+      4 (default)  minimum width, m_row = ceil(log2(n+1)), Gray-ordered. What
+                   every result up to v89 was measured on. Correct whenever the
+                   caller is WIDTH-bound.
+      5            no 3-term and no 4-term confounding. Costs m ~ 2 log2(n)
+                   against the minimum log2(n) - measured m_row 6, 8, 8 at
+                   n = 8, 12, 16 - and recovers the cosine to 0.979 / 0.991 /
+                   0.927 against 0.902 / 0.940 / 0.714 (v90). Correct whenever
+                   the caller is FIDELITY-bound and the loss is non-linear over
+                   the sensing radius.
+
+    The crossover against a LINEAR register moves with this choice: minimum
+    width pays from about n=8, resolution V only from about n=12.
 
     Parameter j takes column c_j; column 0 is all-ones and carries the intercept,
     so it is skipped. Row indices need m_row = ceil(log2(n+1)) bits and one further
@@ -107,6 +155,16 @@ def _design_spec(n, k=1):
     """
     m_row = max(1, int(np.ceil(np.log2(n + 1))))
     gray = lambda t: t ^ (t >> 1)
+    if resolution >= 5:
+        # Grow the register until a resolution-V set exists. Bounded: the
+        # pairwise-XOR condition needs C(n,2) <~ 2^m, so m ~ 2 log2(n) suffices
+        # and the loop terminates well before m_row + 8.
+        for m in range(m_row, m_row + 9):
+            cols = _resv_cols(n, m)
+            if cols is not None:
+                return m, cols
+        # No set found in range: fall through to the resolution-IV design rather
+        # than fail, since a correct-but-aliased gradient beats no gradient.
     if k > 1:
         per = -(-n // k)
         m_lo = max(1, int(np.ceil(np.log2(per + 1))))
@@ -128,7 +186,7 @@ class QLTOv6:
 
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, block_mode='global',
-                 n_scratch=3, scale_radius=True):
+                 n_scratch=3, scale_radius=True, design_resolution=4):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and an unbounded `while` here spins
@@ -163,6 +221,10 @@ class QLTOv6:
         self.max_circuit_depth = 0
         self.last_energy = None
         self.n_scratch = max(1, int(n_scratch))
+        # 4 = minimum-width Gray columns, every result up to v89. 5 = no 3-term
+        # or 4-term confounding, costing m ~ 2 log2(n) and recovering the cosine
+        # v90 measured collapsing to 0.714 at n=16. See _design_spec.
+        self.design_resolution = int(design_resolution)
         self.scale_radius = bool(scale_radius)
 
         self.backend = backend or AerSimulator()
@@ -244,7 +306,7 @@ class QLTOv6:
 
         n = len(active)
         ns = max(1, min(self.n_scratch, n))
-        m_row, cols = _design_spec(n, ns)
+        m_row, cols = _design_spec(n, ns, self.design_resolution)
         nreg = m_row + 1
         theta = list(self.ansatz.parameters)
         radius = Parameter(f'R_{n}_{len(self._direct_template_cache)}')
@@ -324,7 +386,7 @@ class QLTOv6:
         n = len(active)
         Rv = self._radius(R, n)
         ns = max(1, min(self.n_scratch, n))
-        m_row, cols = _design_spec(n, ns)
+        m_row, cols = _design_spec(n, ns, self.design_resolution)
 
         # PER-GROUP accumulation, then SUM. Accumulating across groups before
         # dividing computes a MEAN where the energy is a SUM (E = sum_g E_g),
