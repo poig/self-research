@@ -54,6 +54,20 @@ measurement. And the R-bias costs an exponent: gradient error falls as `T^(−1/
 against the unbiased `T^(−1/2)` (v69, fitted −0.742/−0.759 against −2/3
 predicted).
 
+**On quantum data the cost claim is sharper, and the fidelity claim is weaker.**
+For Hamiltonian learning the loss is a return probability — one bit from one
+measurement setting — so `G = 1` *structurally* and `Θ(G) → Θ(1)`. v88 recovers a
+16-term device Hamiltonian carrying all 16 coefficients on a **6-qubit** design
+register, one circuit per epoch, 32× under parameter-shift. But the gradient
+cosine against the enumerated smeared reference falls from 0.997 at `M=5` to 0.83
+at `M=12` — real, not shot noise, since `M=12` enumerates its hypercube exactly.
+The likely cause is degree-3 aliasing in a saturated resolution-IV design, which
+predicts an untested fix: more design rows than the `⌈log₂(M+1)⌉` minimum, buying
+fidelity back with width. Recovery survives the loss because the step is
+max-normalised and needs direction, not magnitude — but it oscillates at the
+floor rather than converging. The width crossover is honest too: at `M=5` the
+design register is *worse* than a linear one, 10 qubits against 9.
+
 Against the shadow-tomography line the separation is classical, not quantum:
 QSGD (arXiv:2310.06935) carries a `3^k` variance factor that becomes `3^N` once
 the gradient observable is conjugated through the remaining entangling layers,
