@@ -1,0 +1,21 @@
+====================================================================================================
+RICHARDSON ON V6:  does the T^(-1/3) exponent move?
+====================================================================================================
+  Both arms get the best R from a grid at every budget, so neither is
+  handicapped by a frozen radius. Richardson spends its budget 26/74 across
+  the two radii, and costs 2G circuit executions against G.
+
+    N   T total  circuits  1-cos plain  R* plain  1-cos rich  R* rich   gain
+  --------------------------------------------------------------------------
+    4      4096     3 / 6      0.25835      0.60     0.30722     0.90   0.84
+    4     16384     3 / 6      0.07809      0.60     0.20487     0.90   0.38
+    4     65536     3 / 6      0.05174      0.60     0.09918     0.90   0.52
+    4    262144     3 / 6      0.01688      0.45     0.03113     0.90   0.54
+       fitted 1-cos ~ T^beta:   plain -0.620   richardson -0.548
+       predicted:               plain -0.667      richardson -0.800
+  ..........................................................................
+
+  1-cos tracks error SQUARED, so the predicted exponents are twice those on
+  the error itself: -2/3 for the T^(-1/3) estimator and -4/5 after the bias
+  is cancelled. 'gain' is plain error over Richardson error at equal TOTAL
+  shots, already charging Richardson its doubled circuit count.
