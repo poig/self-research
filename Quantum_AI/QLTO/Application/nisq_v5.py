@@ -185,72 +185,6 @@ from qiskit_aer import AerSimulator
 _CTRL = {'rx': 'crx', 'ry': 'cry', 'rz': 'crz', 'p': 'cp', 'u1': 'cp'}
 
 
-def _design_spec(n, k=1):
-    """Register layout for the resolution-IV design encoding.
-
-    The one-hot encoding spends ONE QUBIT PER PARAMETER, which is what caps block
-    width and therefore caps the 2n advantage over parameter-shift. Indexing rows
-    of a Sylvester-Hadamard matrix instead costs log2(n) qubits for the same n
-    parameters.
-
-    Parameter j takes column j+1; column 0 is all-ones and carries the intercept,
-    so it is skipped. A row index needs m_row = ceil(log2(n+1)) bits, and one
-    further qubit carries the FOLDOVER: including it in every parity flips all
-    signs together, which is what makes the design resolution IV and clears main
-    effects of two-factor interactions. The sign for parameter j at register value
-    (d, f) is
-
-        sigma_j = (-1)^(popcount(d AND c_j) + f)
-
-    Columns are assigned in GRAY-CODE order, c_j = gray(j+1) = (j+1) XOR ((j+1)>>1),
-    not the obvious c_j = j+1. Both are valid column sets, but consecutive Gray
-    codes differ in exactly ONE BIT, so a running parity can be advanced from one
-    parameter to the next with a single CNOT instead of being uncomputed and
-    rebuilt. That is the difference between O(M log M) and O(M) two-qubit gates
-    across the block: with c_j = j+1 the first build cost 334 CNOTs per circuit at
-    M=36 and made the encoding 2.5x more expensive than one-hot despite using 6x
-    fewer circuits.
-
-    Correctness does not depend on the ordering. The circuit advances the parity by
-    XOR-ing whatever bits differ from the previous column, so any assignment gives
-    the right signs; only the gate count changes.
-
-    With k scratch wires the parameters are dealt round-robin, so wire s carries
-    parameters s, s+k, s+2k, ... Plain Gray ordering then fails for the same reason
-    it succeeded: those are k apart in the sequence, their columns differ in
-    several bits, and each update stops being one CNOT. Measured cost of that at
-    N=6, k=4: two-qubit gates per gradient rose 372 -> 522 while depth fell
-    229 -> 101, i.e. the parallelism gave back more than it bought.
-
-    So each wire gets its OWN slice of the column space: the high bits identify the
-    wire and the low bits run a private Gray sequence, so every wire walks
-    one-bit transitions independently. This costs nothing in register width when
-    the slices fit, since ceil(log2(k)) + ceil(log2(n/k + 1)) is about log2(n)
-    either way. When they do not fit, fall back to the plain sequence, which is
-    correct and merely more gates.
-
-    Returns (m_row, cols). Total register width is m_row + 1.
-    """
-    m_row = max(1, int(np.ceil(np.log2(n + 1))))
-    gray = lambda t: t ^ (t >> 1)
-    if k > 1:
-        per = -(-n // k)                       # parameters on the busiest wire
-        m_lo = max(1, int(np.ceil(np.log2(per + 1))))
-        m_hi = int(np.ceil(np.log2(k)))
-        if m_lo + m_hi <= m_row:
-            cols = [0] * n
-            for p in range(n):
-                cols[p] = ((p % k) << m_lo) ^ gray(p // k + 1)
-            if len(set(cols)) == n and 0 not in cols:
-                return m_row, cols
-    return m_row, [gray(j + 1) for j in range(n)]
-
-
-def _design_sign(d, f, c):
-    """sigma for one parameter at one measured register value."""
-    return -1.0 if ((bin(d & c).count('1') + f) & 1) else 1.0
-
-
 class QLTOv5:
     """One-circuit-per-group gradient + bounded classical step.
 
@@ -261,8 +195,7 @@ class QLTOv5:
 
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
-                 num_ancillas=3, qpe_margin=2.0, block_mode='layered',
-                 decoder='marginal', encoding='onehot', n_scratch=1):
+                 num_ancillas=3, qpe_margin=2.0, block_mode='layered'):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and the original unbounded `while`
@@ -308,64 +241,6 @@ class QLTOv5:
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
         self._direct_template_cache = {}
-        # DECODER. 'marginal' is the shipped estimator: condition on each register
-        # bit and difference the two conditional means. 'wls' regresses the same
-        # shot record on the realised design matrix instead.
-        #
-        # The marginal decoder discards information. It treats the block's other
-        # coordinates as noise, so it carries the cross term C = sum_{j!=i} g_j^2
-        # (v75) which is exactly what v72 identified as dragging the advantage over
-        # SPSA toward 2 as the parameter count grows. The design matrix is known
-        # EXACTLY, shot by shot, so least squares on it is best linear unbiased and
-        # removes that term rather than averaging over it.
-        #
-        # Measured on a synthetic landscape (v77), MSE at matched shots, n=15:
-        #     degree-2 weight   marginal   wls
-        #                0.00    0.00178   0.00060
-        #                0.25    0.00275   0.00073
-        #                1.00    0.00514   0.00298
-        # so wls wins at every weight tested. It is NOT the default, because every
-        # log committed before this change was produced by 'marginal' and flipping
-        # the default would silently invalidate all of them. Pass decoder='wls'
-        # deliberately, and re-baseline before making it standard.
-        #
-        # No circuit change: same template, same shots, same counts dictionary.
-        if decoder not in ('marginal', 'wls'):
-            raise ValueError(f"decoder must be 'marginal' or 'wls', got {decoder!r}")
-        self.decoder = decoder
-        # ENCODING. 'onehot' is the shipped layout, one register qubit per active
-        # parameter. 'design' indexes rows of a resolution-IV Hadamard design on
-        # ceil(log2(n+1)) + 1 qubits instead, so a block of n parameters costs
-        # LOG rather than LINEAR register width. Measured accuracy-neutral at
-        # matched shots (v77, n=15: 0.00165 design against 0.00178 one-hot) with a
-        # penalty only at high degree-2 weight (0.00635 against 0.00514).
-        #
-        # The point is not the qubits saved at n=15, it is that block width stops
-        # being capped by the register: 36 parameters need 7 qubits rather than 36,
-        # which is what makes block_mode='global' reachable at all.
-        #
-        # Costs parity CNOTs per parameter in place of the control qubit, so it is
-        # a genuine trade and not a free win. Price it on a hardware basis before
-        # believing it.
-        if encoding not in ('onehot', 'design'):
-            raise ValueError(f"encoding must be 'onehot' or 'design', got {encoding!r}")
-        self.encoding = encoding
-        # SCRATCH COUNT. With one scratch qubit every parity is computed on the
-        # same wire, so none of them overlap and the block's depth is the sum of
-        # all of them. That is why the design encoding measured 229 depth per
-        # circuit against one-hot's 34: not gate count, which Gray ordering already
-        # fixed, but serialisation.
-        #
-        # Round-robin over several scratch qubits lets the parity CNOT for the NEXT
-        # parameter sit on a different wire from the CURRENT parameter's controlled
-        # rotation. The two then touch disjoint qubits and the transpiler schedules
-        # them in the same layer.
-        #
-        # The gain is not linear in the count: register qubits are shared controls
-        # and a qubit can only take part in one two-qubit gate at a time. It also
-        # costs gates, since parameters sharing a scratch are k apart in the Gray
-        # sequence and their columns differ in more than one bit.
-        self.n_scratch = max(1, int(n_scratch))
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
@@ -485,35 +360,12 @@ class QLTOv5:
         radius = Parameter(f'R_{len(active)}_{len(self._direct_template_cache)}')
         pos = {p: i for i, p in enumerate(active)}
 
-        design = self.encoding == 'design'
-        if design:
-            m_row, cols = _design_spec(n, max(1, min(self.n_scratch, n)))
-            nreg = m_row + 1                   # row index bits plus foldover
-            ns = max(1, min(self.n_scratch, n))
-            regs = [QuantumRegister(nreg, 'param'), QuantumRegister(self.N, 'sys'),
-                    QuantumRegister(ns, 'par'),    # parity scratch, never measured
-                    ClassicalRegister(nreg, 'cp'), ClassicalRegister(self.N, 'cs')]
-        else:
-            m_row, cols = None, None
-            nreg = n
-            regs = [QuantumRegister(nreg, 'param'), QuantumRegister(self.N, 'sys'),
-                    ClassicalRegister(nreg, 'cp'), ClassicalRegister(self.N, 'cs')]
-
-        qc = QuantumCircuit(*regs)
+        qc = QuantumCircuit(QuantumRegister(n, 'param'),
+                            QuantumRegister(self.N, 'sys'),
+                            ClassicalRegister(n, 'cp'),
+                            ClassicalRegister(self.N, 'cs'))
         param, sysr = qc.qregs[0], qc.qregs[1]
-        scr = qc.qregs[2] if design else None
         qc.h(param)
-        if design:
-            # Each scratch qubit carries its OWN running parity across the block,
-            # rebuilt for none of its parameters. Seed each once: X so it reads
-            # NOT(parity), which makes the controlled rotation fire on sigma = +1
-            # without an X around every rotation, then fold in the foldover bit,
-            # which contributes identically to every parameter and so is applied
-            # once per scratch rather than 2n times.
-            for s in range(ns):
-                qc.x(scr[s])
-                qc.cx(param[m_row], scr[s])
-        prev_col = [0] * (ns if design else 1)
 
         for inst in self.ansatz.data:
             op = inst.operation
@@ -533,33 +385,7 @@ class QLTOv5:
                     f"_CTRL, or the parameter would silently stay at its centre "
                     f"value and report a zero gradient.")
             qc.append(op.__class__(theta[gi] - radius), qs)
-            if not design:
-                getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
-            else:
-                # ADVANCE the running parity to this parameter's column instead of
-                # rebuilding it. Under Gray ordering consecutive columns differ in
-                # one bit, so this is a single CNOT; under any other assignment it
-                # is still correct, just more gates.
-                p = pos[gi]
-                s = p % ns                     # round-robin over the scratch wires
-                c = cols[p]
-                for b in range(m_row):
-                    if (c ^ prev_col[s]) >> b & 1:
-                        qc.cx(param[b], scr[s])
-                prev_col[s] = c
-                getattr(qc, _CTRL[op.name])(2.0 * radius, scr[s], qs[0])
-
-        if design:
-            # Return every scratch qubit to |0>, once for the whole block. Leaving
-            # them set would not change the measured statistics, since each is a
-            # function of the register that is itself measured, but clean ancillas
-            # keep the template composable and the qubits reusable.
-            for s in range(ns):
-                for b in range(m_row):
-                    if prev_col[s] >> b & 1:
-                        qc.cx(param[b], scr[s])
-                qc.cx(param[m_row], scr[s])
-                qc.x(scr[s])
+            getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
 
         self._basis(qc, sysr, group)
         qc.measure(param, qc.cregs[0])
@@ -691,13 +517,10 @@ class QLTOv5:
         # at G=3, flat across a 64x shot sweep - a factor, not a noise floor.
         m_sum = np.zeros(n)
         e_sum = 0.0
-        design = self.encoding == 'design'
-        m_row, cols = (_design_spec(n, max(1, min(self.n_scratch, n))) if design else (None, None))
 
         for group in self.groups:
             num = np.zeros((2, n))
             den = np.zeros((2, n))
-            rows, ys, ws = [], [], []
             e_tot = e_cnt = 0.0
             t_qc, theta, radius = self._direct_template(active, group)
             bind = {theta[i]: float(centre[i]) for i in range(len(theta))}
@@ -720,47 +543,14 @@ class QLTOv5:
                     e += c * s
                 e_tot += e * cnt
                 e_cnt += cnt
-                if design:
-                    # Register holds a design ROW INDEX plus the foldover bit, not
-                    # one bit per parameter, so sigma has to be reconstructed.
-                    d = sum(1 << b for b in range(m_row)
-                            if b < len(xbits) and xbits[b] == '1')
-                    f = 1 if (m_row < len(xbits) and xbits[m_row] == '1') else 0
-                    sg = [_design_sign(d, f, c) for c in cols]
-                else:
-                    sg = [1.0 if (i < len(xbits) and xbits[i] == '1') else -1.0
-                          for i in range(n)]
                 for i in range(n):
-                    b = 1 if sg[i] > 0 else 0
+                    b = 1 if (i < len(xbits) and xbits[i] == '1') else 0
                     num[b, i] += e * cnt
                     den[b, i] += cnt
-                if self.decoder == 'wls':
-                    rows.append(sg)
-                    ys.append(e)
-                    ws.append(float(cnt))
 
-            if self.decoder == 'wls' and len(rows) > n:
-                # Weighted least squares of E on [1, sigma]. beta_i = R * g_i, so
-                # 2*beta matches the marginal convention (m1 - m0 = 2 R g_i) and
-                # the shared /(2R) below is left untouched. Weights are the shot
-                # counts, applied as sqrt(w) on both sides.
-                X = np.hstack([np.ones((len(ys), 1)), np.asarray(rows)])
-                w = np.sqrt(np.asarray(ws))
-                beta, _, rank, _ = np.linalg.lstsq(X * w[:, None],
-                                                   np.asarray(ys) * w, rcond=None)
-                if rank == n + 1:
-                    m_sum += 2.0 * beta[1:]
-                else:
-                    # Rank-deficient: too few distinct register outcomes to
-                    # identify every coordinate. Fall back rather than return a
-                    # least-norm solution that would silently bias the block.
-                    m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
-                    m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
-                    m_sum += m1 - m0
-            else:
-                m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
-                m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
-                m_sum += m1 - m0                  # sum the GROUPS' contributions
+            m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
+            m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
+            m_sum += m1 - m0                      # sum the GROUPS' contributions
             e_sum += (e_tot / e_cnt) if e_cnt else 0.0
 
         grad = np.zeros(len(centre))

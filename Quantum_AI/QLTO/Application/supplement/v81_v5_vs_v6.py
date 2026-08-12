@@ -119,8 +119,12 @@ for N in (4, 6):
         tt = transpile(t, basis_gates=BASIS, optimization_level=1)
         two = int(tt.count_ops().get('cx', 0))
         nb = max(len(b) for b in blocks)
-        reg = nb if q0.encoding == 'onehot' else \
-            int(np.ceil(np.log2(nb + 1))) + 1 + min(q0.n_scratch, nb)
+        # V5 spends one register qubit per parameter; V6 spends log2(n)+1 for the
+        # design row plus its scratch wires.
+        if isinstance(q0, nisq_v6.QLTOv6):
+            reg = int(np.ceil(np.log2(nb + 1))) + 1 + min(q0.n_scratch, nb)
+        else:
+            reg = nb
         cs = []
         for s in range(REPS):
             with contextlib.redirect_stdout(io.StringIO()):
