@@ -134,9 +134,13 @@ print("  block_mode='global' sets L = 1, so circuits per gradient fall from G*L 
 print("  G. Register need under one-hot is M qubits; under the design it is")
 print("  ceil(log2(M+1)) + 1.")
 print()
-print(f"  {'N':>3}{'M':>4}{'onehot reg':>12}{'design reg':>12}{'circuits':>10}"
-      f"{'cos vs exact':>14}")
-print("  " + "-" * 55)
+print("  Compared at MATCHED TOTAL SHOTS. Global runs 6x fewer circuits, so it gets")
+print("  6x the shots on each; comparing at equal shots-per-circuit would hand")
+print("  layered six times the budget and mean nothing.")
+print()
+print(f"  {'N':>3}{'M':>4}{'config':>18}{'reg':>6}{'circuits':>10}"
+      f"{'shots/circ':>12}{'T total':>10}{'cos vs exact':>14}")
+print("  " + "-" * 82)
 for N in (4, 6):
     ansatz = efficient_su2(N, reps=2)
     H = heis(N)
@@ -144,17 +148,72 @@ for N in (4, 6):
     Hm = H.to_matrix()
     theta = np.random.RandomState(31).uniform(-np.pi, np.pi, M)
     g_ex = exact_grad(ansatz, Hm, theta)
-    reg_d = int(np.ceil(np.log2(M + 1))) + 1
-    cs = []
-    for s in range(REPS):
-        q = build(ansatz, H, 'design', 'global', 'wls', 700 + s, SHOTS)
-        gh, L = measure(q, theta, R, M)
-        cs.append(cosine(gh, g_ex))
-    print(f"  {N:>3}{M:>4}{M:>12}{reg_d:>12}{len(q.groups) * L:>10}"
-          f"{float(np.mean(cs)):>14.4f}")
+
+    ref = build(ansatz, H, 'onehot', 'layered', 'marginal', 700, SHOTS)
+    n_lay = len(ref.groups) * len([b for b in ref.layers if b['params']])
+    total = n_lay * SHOTS
+
+    for enc, blk, dec in (('onehot', 'layered', 'marginal'),
+                          ('design', 'global', 'marginal'),
+                          ('design', 'global', 'wls')):
+        probe = build(ansatz, H, enc, blk, dec, 700, SHOTS)
+        ncirc = len(probe.groups) * len([b for b in probe.layers if b['params']])
+        per = max(1, total // ncirc)
+        blocks = [b['params'] for b in probe.layers if b['params']]
+        nb = max(len(b) for b in blocks)
+        reg = nb if enc == 'onehot' else int(np.ceil(np.log2(nb + 1))) + 1
+        cs = []
+        for s in range(REPS):
+            q = build(ansatz, H, enc, blk, dec, 700 + s, per)
+            gh, _ = measure(q, theta, R, M)
+            cs.append(cosine(gh, g_ex))
+        print(f"  {N:>3}{M:>4}{enc + '/' + blk + '/' + dec:>18}{reg:>6}"
+              f"{ncirc:>10}{per:>12}{ncirc * per:>10}"
+              f"{float(np.mean(cs)):>14.4f}")
+    print("  " + "." * 82)
 print()
 print("  One-hot at N=6 would need 36 register qubits plus 6 system, which is not")
 print("  simulable here; that row exists only because of the encoding.")
+
+print()
+print("=" * 104)
+print("(2b) IS THE GLOBAL-BLOCK DEFICIT BIAS, AND IS R THE CAUSE?")
+print("=" * 104)
+print("  A block of n parameters displaces the state by ~sqrt(n)*R, so the radius")
+print("  that is right for a 6-parameter block over-displaces a 36-parameter one by")
+print("  about 2.4x and the linearisation E ~ E0 + R sum_j g_j sigma_j degrades.")
+print("  WLS cannot help with that: it removes cross terms, which is VARIANCE, and")
+print("  this would be BIAS. If sweeping R recovers the accuracy, the global deficit")
+print("  is a radius that was never re-tuned for the wider block, not a property of")
+print("  wide blocks. If it does not, wide blocks genuinely cost accuracy.")
+print()
+print(f"  {'N':>3}{'R':>8}{'cos global':>12}{'cos layered @ R=0.45':>22}")
+print("  " + "-" * 45)
+for N in (4, 6):
+    ansatz = efficient_su2(N, reps=2)
+    H = heis(N)
+    M = ansatz.num_parameters
+    Hm = H.to_matrix()
+    theta = np.random.RandomState(31).uniform(-np.pi, np.pi, M)
+    g_ex = exact_grad(ansatz, Hm, theta)
+    ref = build(ansatz, H, 'onehot', 'layered', 'marginal', 700, SHOTS)
+    n_lay = len(ref.groups) * len([b for b in ref.layers if b['params']])
+    total = n_lay * SHOTS
+    cs_ref = []
+    for s in range(REPS):
+        q = build(ansatz, H, 'onehot', 'layered', 'marginal', 700 + s, SHOTS)
+        gh, _ = measure(q, theta, 0.45, M)
+        cs_ref.append(cosine(gh, g_ex))
+    ref_cos = float(np.mean(cs_ref))
+    for Rg in (0.05, 0.10, 0.18, 0.30, 0.45):
+        cs = []
+        for s in range(REPS):
+            q = build(ansatz, H, 'design', 'global', 'marginal', 700 + s,
+                      max(1, total // 3))
+            gh, _ = measure(q, theta, Rg, M)
+            cs.append(cosine(gh, g_ex))
+        print(f"  {N:>3}{Rg:>8.2f}{float(np.mean(cs)):>12.4f}{ref_cos:>22.4f}")
+    print("  " + "." * 45)
 
 print()
 print("=" * 104)

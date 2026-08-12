@@ -202,10 +202,23 @@ def _design_spec(n):
 
         sigma_j = (-1)^(popcount(d AND c_j) + f)
 
+    Columns are assigned in GRAY-CODE order, c_j = gray(j+1) = (j+1) XOR ((j+1)>>1),
+    not the obvious c_j = j+1. Both are valid column sets, but consecutive Gray
+    codes differ in exactly ONE BIT, so a running parity can be advanced from one
+    parameter to the next with a single CNOT instead of being uncomputed and
+    rebuilt. That is the difference between O(M log M) and O(M) two-qubit gates
+    across the block: with c_j = j+1 the first build cost 334 CNOTs per circuit at
+    M=36 and made the encoding 2.5x more expensive than one-hot despite using 6x
+    fewer circuits.
+
+    Correctness does not depend on the ordering. The circuit advances the parity by
+    XOR-ing whatever bits differ from the previous column, so any assignment gives
+    the right signs; only the gate count changes.
+
     Returns (m_row, cols). Total register width is m_row + 1.
     """
     m_row = max(1, int(np.ceil(np.log2(n + 1))))
-    return m_row, [j + 1 for j in range(n)]
+    return m_row, [((j + 1) ^ ((j + 1) >> 1)) for j in range(n)]
 
 
 def _design_sign(d, f, c):
@@ -448,6 +461,16 @@ class QLTOv5:
         param, sysr = qc.qregs[0], qc.qregs[1]
         anc = qc.qregs[2][0] if design else None
         qc.h(param)
+        if design:
+            # The scratch qubit carries a RUNNING parity, held across the whole
+            # block rather than rebuilt per parameter. Seed it once: X so that it
+            # reads NOT(parity), which makes the controlled rotation fire on
+            # sigma = +1 without an X around every rotation, then fold in the
+            # foldover bit, which contributes identically to every parameter and so
+            # is applied once rather than 2n times.
+            qc.x(anc)
+            qc.cx(param[m_row], anc)
+        prev_col = 0
 
         for inst in self.ansatz.data:
             op = inst.operation
@@ -470,22 +493,27 @@ class QLTOv5:
             if not design:
                 getattr(qc, _CTRL[op.name])(2.0 * radius, param[pos[gi]], qs[0])
             else:
-                # Compute parity(d AND c_j) XOR f into the scratch qubit, then
-                # control off it. The X inverts the sense so the rotation fires on
-                # sigma = +1, matching the theta - R baseline just applied.
-                # Everything is uncomputed so the scratch is clean and the register
-                # stays unentangled with it at measurement.
+                # ADVANCE the running parity to this parameter's column instead of
+                # rebuilding it. Under Gray ordering consecutive columns differ in
+                # one bit, so this is a single CNOT; under any other assignment it
+                # is still correct, just more gates.
                 c = cols[pos[gi]]
-                bits = [b for b in range(m_row) if (c >> b) & 1]
-                for b in bits:
-                    qc.cx(param[b], anc)
-                qc.cx(param[m_row], anc)
-                qc.x(anc)
+                for b in range(m_row):
+                    if (c ^ prev_col) >> b & 1:
+                        qc.cx(param[b], anc)
+                prev_col = c
                 getattr(qc, _CTRL[op.name])(2.0 * radius, anc, qs[0])
-                qc.x(anc)
-                qc.cx(param[m_row], anc)
-                for b in reversed(bits):
+
+        if design:
+            # Return the scratch qubit to |0>, once for the whole block. Leaving it
+            # set would not change the measured statistics, since it is a function
+            # of the register that is itself measured, but a clean ancilla keeps the
+            # template composable and the qubit reusable.
+            for b in range(m_row):
+                if prev_col >> b & 1:
                     qc.cx(param[b], anc)
+            qc.cx(param[m_row], anc)
+            qc.x(anc)
 
         self._basis(qc, sysr, group)
         qc.measure(param, qc.cregs[0])
