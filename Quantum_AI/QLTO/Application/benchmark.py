@@ -172,6 +172,22 @@ TUNED = {
     'Correct QNG': 0.3,           # lr
     'AdamW': 0.5,                 # lr
     'SPSA': 0.5,                  # lr
+    # SWEPT, on the same protocol as the rest: lr over 0.001..3.0 crossed with
+    # perturbation over 0.02..0.3, H2 / MaxCut N=4 / Heisenberg N=4, 2 trials.
+    # The first grid's optimum landed on its lower EDGE at lr=0.03, so it was
+    # extended down to 0.001 and the optimum is now bracketed - below 0.03 the
+    # score degrades monotonically to 0.4522 at lr=0.001, above it to 0.3003 at
+    # lr=3.0.
+    #
+    #   QN-SPSA best   score 0.17-0.24  at nefv 263
+    #   QLTO V6        score 0.0254     at nefv  60
+    #
+    # REPEATABILITY, and it is worse than any other row here: the identical cell
+    # (lr=0.03, eps=0.05) scored 0.1707 and 0.2421 on two runs, because the
+    # estimator's shot noise is not seeded. 2-trial noise is therefore ~0.07 and
+    # cells closer than that are tied. The V6 gap is 7-10x and survives it; no
+    # conclusion should be drawn from any single cell.
+    'QN-SPSA': 0.03,              # lr
 }
 
 # Round 2. Round 1 used [10,15,20] / [2,3,4] / [0.01,0.05,0.1] / [0.05,0.1,0.5]
@@ -436,6 +452,51 @@ class QLTOv6_Wrapper:
         r = max(self.r0 * (self.r_decay ** (self.epoch - 1)), 1e-4)
         p, _ = self.optimizer.run_epoch(params, r)
         return p
+
+
+class QNSPSA_Wrapper:
+    """QN-SPSA (Gacon et al., Quantum 5, 567 (2021)) wired to the shared budget.
+
+    The closest competitor to V6 that exists: constant circuits per step,
+    independent of M, AND the metric preconditioning that beats V6 on MaxCut
+    N=6, where QNG reaches 0.0047 against V6's 0.0904 for 52x the circuits.
+
+    CIRCUIT MULTIPLIER IS 1, like the V6 row and unlike the other
+    estimator-driven rows, because this class bills its own mixed cost. The
+    paper's 6 function evaluations are not 6 circuits on a Pauli sum: the 2 loss
+    evaluations need a circuit per commuting group, while the 4 fidelity
+    evaluations are compute-uncompute circuits measured once in the
+    computational basis and cost exactly one each. So the true count is 2G + 4
+    per step, plus the blocking condition's loss checks - 10 at Heisenberg
+    against V6's 3, 6 at MaxCut against V6's 1. Stamping pauli_groups(H) on top
+    would charge the fidelity circuits G times over.
+    """
+
+    counts_groups_internally = True
+
+    def __init__(self, ansatz, hamiltonian, lr=0.1, perturbation=0.1, seed=None):
+        from qnspsa import QNSPSA
+        self.optimizer = QNSPSA(ansatz, hamiltonian, lr=lr,
+                                perturbation=perturbation,
+                                shots=SHOTS or 8192,
+                                estimator=make_estimator(),
+                                n_groups=pauli_groups(hamiltonian),
+                                seed=seed)
+
+    @property
+    def nefv(self):
+        return self.optimizer.nefv
+
+    @property
+    def circuit_depth(self):
+        return self.optimizer.max_circuit_depth
+
+    @property
+    def max_circuit_depth(self):
+        return self.optimizer.max_circuit_depth
+
+    def step(self, params):
+        return self.optimizer.step(params)
 
 
 class CorrectQNG:
@@ -1658,6 +1719,12 @@ def _optimizer_factories():
         AdamW        parameter-shift gradients, 2M NEFV per step. The baseline.
         Correct QNG  natural gradient, quantum Fisher information.
         SPSA         2 NEFV per step, stochastic perturbation.
+        QN-SPSA      the sharpest test here. Gacon et al., Quantum 5, 567
+                     (2021): QNG's metric preconditioning at 2G+4 circuits per
+                     step, independent of M. It is the ONLY method in the suite
+                     that matches V6's cost scaling AND carries the geometry
+                     that beats V6 on MaxCut N=6. If it wins there cheaply, V6's
+                     niche is smaller than the other seven rows suggest.
         QAOA         a different ansatz family, kept for reference.
 
     The older rows stay reachable below rather than deleted, since their TUNED
@@ -1668,6 +1735,7 @@ def _optimizer_factories():
         'QLTO V6': lambda a, h, b: _mult(QLTOv6_Wrapper(a, h, r0=TUNED['QLTO V6']), 1),
         'QAOA': lambda a, h, b: _mult(QAOA(a, h, n_qubits=a.num_qubits, p_layers=TUNED['QAOA'], maxiter_per_step=20), pauli_groups(h)),
         'Correct QNG': lambda a, h, b: _mult(CorrectQNG(a, h, lr=TUNED['Correct QNG']), pauli_groups(h)),
+        'QN-SPSA': lambda a, h, b: _mult(QNSPSA_Wrapper(a, h, lr=TUNED['QN-SPSA']), 1),
         'AdamW': lambda a, h, b: _mult(AdamW(a, h, lr=TUNED['AdamW']), pauli_groups(h)),
         'SPSA': lambda a, h, b: _mult(SPSA(a, h, lr=TUNED['SPSA']), pauli_groups(h)),
         # Superseded QLTO versions, kept reachable and off by default:
