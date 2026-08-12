@@ -160,6 +160,10 @@ def pauli_groups(hamiltonian):
 #
 # Note V2 buys its lead with DEPTH: k=45 triples its walk depth versus k=15.
 TUNED = {
+    # r0 is the WEAKER of the two radius knobs and was the only one exposed. The
+    # reachable set is D = alpha*r0/(1-d), so the decay d moves it far harder:
+    # halving 1-d doubles D, while r0 scales it linearly. d lives on the V6
+    # wrapper at 0.95; see the derivation there before changing either.
     'QLTO V6': 0.6,               # r0, the initial sensing radius
     'QLTO V3 QPE (k=3)': 15,      # k_step
     'QLTO V3 (Hadamard)': 20,     # k_step
@@ -384,8 +388,20 @@ class QLTOv6_Wrapper:
     would use is therefore correct, and NOT doing so costs cos 0.975 -> 0.886.
     """
 
+    # r_decay=0.95, NOT the 0.9 inherited from the V2/V3 wrappers. The decay sets
+    # the REACHABLE SET, not the convergence rate: a layer's dominant coordinate
+    # travels D = alpha*r0*(1-d^E)/(1-d) over E epochs, which for d=0.9 is 4.74
+    # rad at E=20 and 5.40 in the limit. The series has converged by E~40, so
+    # extra epochs buy 14% and nothing more - the decay is the only lever.
+    #     d=0.90 -> D= 5.4    d=0.95 -> D=10.8    d=0.98 -> D=27.0
+    # Measured over 5 seeds, best energy, 60 NEFV:
+    #     Heis N=4   0.90 -5.7548+/-0.545   0.95 -5.9353+/-0.049   0.98 -5.6781
+    #     Heis N=6   0.90 -8.5522+/-0.820   0.95 -8.9680+/-0.088   0.98 -8.2343
+    # 0.95 removes the collapsing seed that the 0.90 standard deviations were
+    # hiding, and at N=6 beats V3 QPE's -8.9545 at a third of its 180 circuits.
+    # 0.98 overshoots and degrades everywhere, so the optimum is interior.
     def __init__(self, ansatz, hamiltonian, backend=None, shot_budget=4096,
-                 r0=0.6, r_decay=0.9, n_scratch=3):
+                 r0=0.6, r_decay=0.95, n_scratch=3):
         from nisq_v6 import QLTOv6
         self.optimizer = QLTOv6(ansatz, hamiltonian,
                                 shot_budget=SHOTS or shot_budget,
@@ -393,6 +409,15 @@ class QLTOv6_Wrapper:
         self.epoch = 0
         self.r0 = r0
         self.r_decay = r_decay
+
+    # Read by the measurement loops instead of a name test. The estimator-driven
+    # rows bill one expectation value as one NEFV and need a circuit per
+    # qubit-wise commuting group, so they get stamped with pauli_groups(H). V6
+    # loops those groups ITSELF inside sense() and counts a circuit for each, so
+    # stamping G again charges it G-squared. That is not hypothetical: it is what
+    # produced 180 NEFV in the first V6 CSV where the true count is 60, and it
+    # inflated every V6 cost in that table by exactly G.
+    counts_groups_internally = True
 
     @property
     def nefv(self):
@@ -1157,7 +1182,9 @@ def run_benchmark(save=True):
                     if opt is None:
                         print(f"    Skipped (not available)")
                         continue
-                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
+                    _mult(opt, 1 if ('V3' in name
+                                    or getattr(opt, 'counts_groups_internally', False))
+                               else pauli_groups(H))
                     # Better QAOA initialization
                     p = opt.p_layers
                     gammas = np.linspace(0.3, 0.6, p) * np.pi
@@ -1173,7 +1200,9 @@ def run_benchmark(save=True):
                     if opt is None:
                         print(f"    Skipped (not available)")
                         continue
-                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
+                    _mult(opt, 1 if ('V3' in name
+                                    or getattr(opt, 'counts_groups_internally', False))
+                               else pauli_groups(H))
                 except Exception as e:
                     print(f"    Failed to init {name}: {e}")
                     continue
@@ -1425,7 +1454,9 @@ def run_benchmark_with_stats(n_trials=5, include_n12=False):
                     # carry their OWN optimizers_def, so stamping in
                     # _optimizer_factories() reached only the tuning path and left
                     # both measurement paths undercounting by G.
-                    _mult(opt, 1 if 'V3' in name else pauli_groups(H))
+                    _mult(opt, 1 if ('V3' in name
+                                    or getattr(opt, 'counts_groups_internally', False))
+                               else pauli_groups(H))
                     # QAOA uses its own param count
                     if 'QAOA' in name:
                         params = np.random.uniform(0, 2*np.pi, opt.n_params)
