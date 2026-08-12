@@ -185,7 +185,7 @@ from qiskit_aer import AerSimulator
 _CTRL = {'rx': 'crx', 'ry': 'cry', 'rz': 'crz', 'p': 'cp', 'u1': 'cp'}
 
 
-def _design_spec(n):
+def _design_spec(n, k=1):
     """Register layout for the resolution-IV design encoding.
 
     The one-hot encoding spends ONE QUBIT PER PARAMETER, which is what caps block
@@ -215,10 +215,35 @@ def _design_spec(n):
     XOR-ing whatever bits differ from the previous column, so any assignment gives
     the right signs; only the gate count changes.
 
+    With k scratch wires the parameters are dealt round-robin, so wire s carries
+    parameters s, s+k, s+2k, ... Plain Gray ordering then fails for the same reason
+    it succeeded: those are k apart in the sequence, their columns differ in
+    several bits, and each update stops being one CNOT. Measured cost of that at
+    N=6, k=4: two-qubit gates per gradient rose 372 -> 522 while depth fell
+    229 -> 101, i.e. the parallelism gave back more than it bought.
+
+    So each wire gets its OWN slice of the column space: the high bits identify the
+    wire and the low bits run a private Gray sequence, so every wire walks
+    one-bit transitions independently. This costs nothing in register width when
+    the slices fit, since ceil(log2(k)) + ceil(log2(n/k + 1)) is about log2(n)
+    either way. When they do not fit, fall back to the plain sequence, which is
+    correct and merely more gates.
+
     Returns (m_row, cols). Total register width is m_row + 1.
     """
     m_row = max(1, int(np.ceil(np.log2(n + 1))))
-    return m_row, [((j + 1) ^ ((j + 1) >> 1)) for j in range(n)]
+    gray = lambda t: t ^ (t >> 1)
+    if k > 1:
+        per = -(-n // k)                       # parameters on the busiest wire
+        m_lo = max(1, int(np.ceil(np.log2(per + 1))))
+        m_hi = int(np.ceil(np.log2(k)))
+        if m_lo + m_hi <= m_row:
+            cols = [0] * n
+            for p in range(n):
+                cols[p] = ((p % k) << m_lo) ^ gray(p // k + 1)
+            if len(set(cols)) == n and 0 not in cols:
+                return m_row, cols
+    return m_row, [gray(j + 1) for j in range(n)]
 
 
 def _design_sign(d, f, c):
@@ -237,7 +262,7 @@ class QLTOv5:
     def __init__(self, ansatz, hamiltonian, shot_budget=8192, alpha=0.9,
                  sim_seed=None, backend=None, gradient_mode='direct',
                  num_ancillas=3, qpe_margin=2.0, block_mode='layered',
-                 decoder='marginal', encoding='onehot'):
+                 decoder='marginal', encoding='onehot', n_scratch=1):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and the original unbounded `while`
@@ -325,6 +350,22 @@ class QLTOv5:
         if encoding not in ('onehot', 'design'):
             raise ValueError(f"encoding must be 'onehot' or 'design', got {encoding!r}")
         self.encoding = encoding
+        # SCRATCH COUNT. With one scratch qubit every parity is computed on the
+        # same wire, so none of them overlap and the block's depth is the sum of
+        # all of them. That is why the design encoding measured 229 depth per
+        # circuit against one-hot's 34: not gate count, which Gray ordering already
+        # fixed, but serialisation.
+        #
+        # Round-robin over several scratch qubits lets the parity CNOT for the NEXT
+        # parameter sit on a different wire from the CURRENT parameter's controlled
+        # rotation. The two then touch disjoint qubits and the transpiler schedules
+        # them in the same layer.
+        #
+        # The gain is not linear in the count: register qubits are shared controls
+        # and a qubit can only take part in one two-qubit gate at a time. It also
+        # costs gates, since parameters sharing a scratch are k apart in the Gray
+        # sequence and their columns differ in more than one bit.
+        self.n_scratch = max(1, int(n_scratch))
         if self.block_mode == 'global':
             self.layers = [{'params': list(range(self.M))}]
         else:
@@ -446,10 +487,11 @@ class QLTOv5:
 
         design = self.encoding == 'design'
         if design:
-            m_row, cols = _design_spec(n)
+            m_row, cols = _design_spec(n, max(1, min(self.n_scratch, n)))
             nreg = m_row + 1                   # row index bits plus foldover
+            ns = max(1, min(self.n_scratch, n))
             regs = [QuantumRegister(nreg, 'param'), QuantumRegister(self.N, 'sys'),
-                    QuantumRegister(1, 'par'),     # parity scratch, never measured
+                    QuantumRegister(ns, 'par'),    # parity scratch, never measured
                     ClassicalRegister(nreg, 'cp'), ClassicalRegister(self.N, 'cs')]
         else:
             m_row, cols = None, None
@@ -459,18 +501,19 @@ class QLTOv5:
 
         qc = QuantumCircuit(*regs)
         param, sysr = qc.qregs[0], qc.qregs[1]
-        anc = qc.qregs[2][0] if design else None
+        scr = qc.qregs[2] if design else None
         qc.h(param)
         if design:
-            # The scratch qubit carries a RUNNING parity, held across the whole
-            # block rather than rebuilt per parameter. Seed it once: X so that it
-            # reads NOT(parity), which makes the controlled rotation fire on
-            # sigma = +1 without an X around every rotation, then fold in the
-            # foldover bit, which contributes identically to every parameter and so
-            # is applied once rather than 2n times.
-            qc.x(anc)
-            qc.cx(param[m_row], anc)
-        prev_col = 0
+            # Each scratch qubit carries its OWN running parity across the block,
+            # rebuilt for none of its parameters. Seed each once: X so it reads
+            # NOT(parity), which makes the controlled rotation fire on sigma = +1
+            # without an X around every rotation, then fold in the foldover bit,
+            # which contributes identically to every parameter and so is applied
+            # once per scratch rather than 2n times.
+            for s in range(ns):
+                qc.x(scr[s])
+                qc.cx(param[m_row], scr[s])
+        prev_col = [0] * (ns if design else 1)
 
         for inst in self.ansatz.data:
             op = inst.operation
@@ -497,23 +540,26 @@ class QLTOv5:
                 # rebuilding it. Under Gray ordering consecutive columns differ in
                 # one bit, so this is a single CNOT; under any other assignment it
                 # is still correct, just more gates.
-                c = cols[pos[gi]]
+                p = pos[gi]
+                s = p % ns                     # round-robin over the scratch wires
+                c = cols[p]
                 for b in range(m_row):
-                    if (c ^ prev_col) >> b & 1:
-                        qc.cx(param[b], anc)
-                prev_col = c
-                getattr(qc, _CTRL[op.name])(2.0 * radius, anc, qs[0])
+                    if (c ^ prev_col[s]) >> b & 1:
+                        qc.cx(param[b], scr[s])
+                prev_col[s] = c
+                getattr(qc, _CTRL[op.name])(2.0 * radius, scr[s], qs[0])
 
         if design:
-            # Return the scratch qubit to |0>, once for the whole block. Leaving it
-            # set would not change the measured statistics, since it is a function
-            # of the register that is itself measured, but a clean ancilla keeps the
-            # template composable and the qubit reusable.
-            for b in range(m_row):
-                if prev_col >> b & 1:
-                    qc.cx(param[b], anc)
-            qc.cx(param[m_row], anc)
-            qc.x(anc)
+            # Return every scratch qubit to |0>, once for the whole block. Leaving
+            # them set would not change the measured statistics, since each is a
+            # function of the register that is itself measured, but clean ancillas
+            # keep the template composable and the qubits reusable.
+            for s in range(ns):
+                for b in range(m_row):
+                    if prev_col[s] >> b & 1:
+                        qc.cx(param[b], scr[s])
+                qc.cx(param[m_row], scr[s])
+                qc.x(scr[s])
 
         self._basis(qc, sysr, group)
         qc.measure(param, qc.cregs[0])
@@ -646,7 +692,7 @@ class QLTOv5:
         m_sum = np.zeros(n)
         e_sum = 0.0
         design = self.encoding == 'design'
-        m_row, cols = _design_spec(n) if design else (None, None)
+        m_row, cols = (_design_spec(n, max(1, min(self.n_scratch, n))) if design else (None, None))
 
         for group in self.groups:
             num = np.zeros((2, n))
