@@ -43,3 +43,6 @@ Quantum_AI/QLTO/Math_proof/BQP_NP_Lean/.lake
 Quantum_AI/QLTO/Math_proof/BQP_NP_Lean/books
 Quantum_AI/QLTO/Math_proof/BQP_NP_Lean/paper
 Quantum_AI/QLTO/Math_proof/BQP_vs_NP_proof_plan.md
+.claude/
+__pycache__/
+*.pyc
