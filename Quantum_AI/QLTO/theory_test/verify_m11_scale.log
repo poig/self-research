@@ -1,0 +1,36 @@
+================================================================================================
+PART 1.  spec(M_11) against Delta_H
+================================================================================================
+  case                                     Delta_H   max|eig M11|    ratio       verdict
+  ------------------------------------------------------------------------------------
+  referee check: H=Z, |phi>=|+>, Y=X      1.000000       0.500000   0.5000     Delta_H/2
+  n=1  H=Z  Y=X  tau=0.7                  1.000000       0.500000   0.5000     Delta_H/2
+  n=2  H=ZZ+X1  Y=X1+X2                   1.414204       0.707102   0.5000     Delta_H/2
+  n=3  H=Heis chain  Y=sum X              1.213328       0.606664   0.5000     Delta_H/2
+
+================================================================================================
+PART 2.  trace norm ||M_11||_1
+================================================================================================
+  case                                     ||M11||_1   Delta_H   2*Delta_H       which
+  ------------------------------------------------------------------------------------
+  n=1  H=Z  Y=X  tau=0.7                    1.000000  1.000000    2.000000     Delta_H
+  n=2  H=ZZ+X1  Y=X1+X2                     1.397931  1.397931    2.795863     Delta_H
+  n=3  H=Heis chain  Y=sum X                1.500274  1.500274    3.000548     Delta_H
+
+================================================================================================
+PART 3.  THE ARBITER: exact W against both candidate first-order slopes
+================================================================================================
+  dW/dtheta at theta->0 must equal (1/2) Tr(M_11 Y). The competing
+  pure-branch endpoints are (theta/2) Delta_H * spread(Y)  [paper]
+  and (theta/4) Delta_H * spread(Y)  [referee].
+
+  case                             exact dW/dth   (1/2)Tr(M11 Y)   paper end  referee end
+  ---------------------------------------------------------------------------------------
+  n=1  H=Z  Y=X  tau=0.7            -0.49272486      -0.49272486    1.000000     0.500000
+  n=2  H=ZZ+X1  Y=X1+X2              0.15928383       0.15928383    2.644095     1.322048
+  n=3  H=Heis chain  Y=sum X        -0.00000000      -0.00000000    4.580931     2.290465
+
+  The first two columns agreeing confirms the chain identity -> M_11 -> W.
+  The endpoint columns are the MAXIMUM |dW/dtheta| over the isospectral
+  orbit of Y, so the true slope must not exceed the correct one, and the
+  incorrect one will be exceeded by orbit-optimal configurations.

@@ -14,3 +14,33 @@ EXACT INTERVAL vs THE FIRST-ORDER ONE — is the symmetry an artefact of O(theta
      0.003   -0.00230    0.00232   2.2%   0.1%    0.0053    0.00231     2.1369
      0.005   -0.00457    0.00467   4.4%   0.2%    0.0107    0.00462     2.1372
      0.010   -0.00905    0.00944   8.8%   0.3%    0.0214    0.00924     2.1384
+     0.020   -0.01770    0.01928  17.2%   0.7%    0.0429    0.01849     2.1433
+     0.040   -0.03381    0.04022  32.9%   1.4%    0.0866    0.03697     2.1649
+
+  (2) HOW BIG IS THE DIRECTED PART, and does it scale as O(theta^2)?
+      NOT compared against the paper's both-conditions-broken interval:
+      that uses a rank-2 projector generator whose spectral range differs
+      from sum_i X_i, so the magnitudes are not commensurable. An earlier
+      version of this file made that comparison and reported multipliers
+      up to 25000x. Those were saturation against an incommensurable
+      baseline and are withdrawn. What IS comparable is the SCALING.
+     theta  directed |W_max+W_min|  asym/theta    usable?
+  -------------------------------------------------------
+     0.0025               0.000025      2.1369        yes
+     0.0050               0.000099      2.1372        yes
+     0.0100               0.000395      2.1384        yes
+     0.0200               0.001585      2.1433        yes
+     0.0400               0.006411      2.1649  SATURATED
+
+  asym/theta over the UNSATURATED rows: 2.1369, 2.1372, 2.1384, 2.1433
+  spread 0.0064 over a 8x range of theta.
+  A constant here is the signature of a genuine O(theta^2) directed
+  term: asym = (W_2/W_1) theta exactly. Saturation or an optimiser
+  artefact would not hold a constant across that range.
+
+  If asym stays ~0 across theta, the first-order picture is operational and
+  the classification stands. If asym grows and the directed part exceeds
+  the paper's own both-conditions-broken result, then finite theta supplies
+  directed work WITHOUT breaking (A) or (B), and Sec. 'Two independent
+  causes' needs a scope line saying so - the conditions govern the
+  linearised protocol, not the protocol.

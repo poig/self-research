@@ -180,7 +180,7 @@ for theta in (0.0025, 0.005, 0.01, 0.02, 0.04):
     fo = first_order_endpoint(Psi, H, Yg, theta, n)
     sm, sp = lo / W_FLOOR, hi / W_CEIL
     rows.append((theta, lo, hi, asym, fo, max(sm, sp)))
-    print(f"  {theta:>8.3f}{lo:>11.5f}{hi:>11.5f}{sm:>7.1%}{sp:>7.1%}"
+    print(f"  {theta:>8.4f}{lo:>11.5f}{hi:>11.5f}{sm:>7.1%}{sp:>7.1%}"
           f"{asym:>10.4f}{fo:>11.5f}{asym / theta:>11.4f}", flush=True)
 
 print()
