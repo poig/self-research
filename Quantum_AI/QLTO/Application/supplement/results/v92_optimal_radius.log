@@ -1,0 +1,82 @@
+================================================================================================
+PART 1.  Attenuation vs R, exact energies.  Fit the effective degree d.
+================================================================================================
+  model:  |g_R| / |grad E|  =  sin(R) cos^(d-1)(R) / R
+
+  Heisenberg N=4  M=16
+          R   |g_R|/|g|   model d fit
+    ---------------------------------
+       0.05     1.31867
+       0.10     1.11247
+       0.15     0.90187
+       0.20     0.82675
+       0.30     0.83344
+       0.45     0.61246
+       0.60     0.43297
+       0.80     0.22404
+       1.00     0.09259
+    fitted d = 5.00   (M = 16)   -> predicted R* = 0.4636
+
+  Heisenberg N=6  M=24
+          R   |g_R|/|g|   model d fit
+    ---------------------------------
+       0.05     0.96689
+       0.10     1.00598
+       0.15     0.97891
+       0.20     0.92724
+       0.30     0.82826
+       0.45     0.64408
+       0.60     0.42915
+       0.80     0.24518
+       1.00     0.11900
+    fitted d = 4.75   (M = 24)   -> predicted R* = 0.4767
+
+================================================================================================
+PART 2.  cos(g_R, grad E) at the REAL shot budget.  Where is the optimum?
+================================================================================================
+  V6's own sense(), 8192 shots, 6 seeds, one global block.
+
+  Heisenberg N=4   predicted R* = 0.4636   tuned r0 = 0.60
+          R   mean cos       sd
+    ---------------------------
+       0.05     0.5044   0.0665
+       0.10     0.7352   0.0534
+       0.15     0.7938   0.0578
+       0.20     0.8255   0.0717
+       0.30     0.9359   0.0303
+       0.45     0.9632   0.0165
+       0.60     0.9605   0.0171
+       0.80     0.9702   0.0113
+       1.00     0.9361   0.0426
+    empirical best R = 0.80  (cos 0.9702)
+    predicted  R* = 0.4636   -> DISAGREES within 0.10
+
+  Heisenberg N=6   predicted R* = 0.4767   tuned r0 = 0.60
+          R   mean cos       sd
+    ---------------------------
+       0.05     0.2886   0.1512
+       0.10     0.6388   0.0828
+       0.15     0.7534   0.0875
+       0.20     0.7843   0.0994
+       0.30     0.8580   0.0385
+       0.45     0.9014   0.0292
+       0.60     0.9262   0.0183
+       0.80     0.9187   0.0161
+       1.00     0.8595   0.0414
+    empirical best R = 0.60  (cos 0.9262)
+    predicted  R* = 0.4767   -> DISAGREES within 0.10
+
+================================================================================================
+READING IT
+================================================================================================
+  PART 1 must be monotone decreasing: attenuation only ever loses signal.
+  A fitted d far from M means the ansatz does not carry degree-M content,
+  which is itself worth knowing - (*) says the attenuation base reports
+  the EFFECTIVE degree, not the parameter count.
+
+  PART 2 is the test. If the empirical argmax sits at the predicted R*,
+  the radius becomes a computed quantity and the sweep is redundant. If
+  the argmax sits near 0.60 instead, the SNR derivation does not govern
+  what the tuned value was selected for, and 0.6 stays a fitted constant
+  - in which case the honest statement is that V6 still has one knob
+  with no theory behind it.

@@ -1,3 +1,76 @@
+# QLTO V6 — M parameters sensed on log₂M qubits
+
+The current line. A resolution-IV Hadamard design carries **all M parameters at
+once** on `⌈log₂(M+1)⌉+1` register qubits, so one gradient costs `G` circuits —
+the number of qubit-wise-commuting groups in `H` — and nothing in that count
+depends on `M`.
+
+```python
+from nisq_v6 import QLTOv6
+
+q = QLTOv6(ansatz, hamiltonian, shot_budget=8192)
+theta, trace = q.minimize(theta0, epochs=20)
+```
+
+V5 spent **one register qubit per parameter**. At M=48 that is 48 ancillas —
+undeployable. V6 needs **7**. That is the result; the circuit count follows from
+it.
+
+## The cost is three numbers, not one
+
+| cost | V6 | parameter-shift | measured in |
+|---|---|---|---|
+| circuits per gradient | **`G`** | `2MG` | `v87` — exactly `G` on all 7 problems, 16–64× under |
+| width | `N + ⌈log₂(M+1)⌉ + 4` | `N` | `v87` — 2.25×–5×, **additive**, ratio falls with N |
+| classical per gradient | `O(M)` Walsh decode | `O(M)` | `v87` — no exponential term |
+
+Quoting only the first invites the obvious rebuttal, so all three ship together.
+`Θ(G)` is a **construction-level** fact — V6 issues `G` circuits whatever `M` is,
+at any size, needing no measurement. That it still *converges* competitively at
+that cost is a separate claim, measured to N=8.
+
+## What is measured
+
+| | result |
+|---|---|
+| 8-problem suite, 5 trials, one setting | **1st on 2, 2nd on 5, 3rd on 1**, cheapest on all 8 |
+| sharpest row | Heisenberg N=8: **−11.6222 at 60 circuits** vs AdamW **−11.6133 at 3840** |
+| total resources, not just circuits | 28× fewer **qubit·shots** at N=8, *charging V6 its full width penalty* |
+| variance scaling, fixed-norm regime | per-component variance **flat** (2.9e-5 over a 16× range in M) while parameter-shift's grows 16×; exponents **1.006 vs 2.000** (`v82`) |
+| crosstalk | *decays* with M, 0.0339 → 0.0133 (`v82`) |
+| vs the strongest competitor | QN-SPSA (Gacon et al. 2021), swept and bracketed: **7–10× worse at 4.4× the circuits** (`v91`) |
+| quantum-data task | Hamiltonian learning has `G = 1` **structurally**: 16 coefficients on a 6-qubit register, 1 circuit per gradient, 32× under parameter-shift (`v88`) |
+| the estimator, exactly | `E_s[s_i·E(θ+Rs)] = sin(R)·Σ_{T∋i} cos^(\|T\|−1)(R)·∂_iE_T` — a low-pass filter on Fourier degree, verified to **3.8e-17** (`v89`) |
+
+## What is *not* claimed
+
+- **Not** backpropagation scaling. In the wide-ansatz regime V6's variance
+  exponent is 1.94 against parameter-shift's 2.00 (`v82`) — there the advantage
+  is circuits, not shots. This is why V6 does not contradict the lower bound of
+  Abbas et al. (NeurIPS 2023), which forbids backprop scaling for single-copy
+  measurement.
+- **Not** a barren-plateau escape. Proven, not merely untested: every factor
+  `cos^(d−1)(R)` lies in [0,1], so smoothing attenuates every Fourier component
+  and amplifies none — `|∇E_R| ≤ |∇E|`, with `max ratio ≤ 1` on every
+  configuration measured (`v89`).
+- **Not** improved by preconditioning. `F⁻¹` on top of V6 hurts (κ(F)=349, the
+  inverse amplifies noise along low-metric directions), and obtaining the metric
+  cheaply fails too (`v91`). The `2M` saving and the preconditioning are
+  mutually exclusive.
+- **Not** improved by Richardson extrapolation: it loses at every budget tested,
+  and its fitted exponent is worse than plain V6's (`v84`).
+- **Not** a chaotic or period-doubling optimiser. The iteration is period-2
+  everywhere from gain 0.005 to 0.95 — max-normalisation makes a fixed point
+  structurally unreachable — with no cascade at any gain (`v96`).
+
+## Knobs, and which way they were measured
+
+| knob | default | finding |
+|---|---|---|
+| `design_resolution` | 4 | 5 removes 3- and 4-term column aliasing and recovers the Hamiltonian-learning cosine (0.714 → 0.927 at M=16, `v90`) — but on **VQE** it is three ties and one marginal loss at 20–52% more depth (`v97`). Keep 4. |
+| `n_scratch` | 3 | 2 saves a qubit at neutral depth and tied-or-better energy; 1 saves two but costs 21–50% depth (`v98`). The genuinely free lever, and the one never swept until now. |
+| `r0`, `r_decay` | 0.6, 0.95 | still fitted. The SNR-optimal radius derived from the degree law under-predicts (`v92`), and there is no dynamical instability to derive it from (`v96`). |
+
 # QLTO V3 — a one-circuit local-landscape oracle
 
 One circuit puts 2ⁿ parameter configurations in superposition, reads an energy for
@@ -61,15 +134,31 @@ per epoch:
 ## Layout
 
 ```
-nisq_v3.py           the optimizer (this is the one to read)
+nisq_v6.py           the current optimizer — log-width design register
+qnspsa.py            QN-SPSA (Gacon et al. 2021), the closest competitor
+nisq_v3.py           predecessor: one-circuit QPE oracle
 nisq_v2.py           predecessor: Riemannian / commuting-block QFIM variant
 commute_*.py         V2's gradient and metric engines
-benchmark.py         8-problem suite vs AdamW, SPSA, QNG, QAOA, V2
+benchmark.py         8-problem suite vs AdamW, SPSA, QNG, QN-SPSA, QAOA
 RESEARCH_NOTES.md    the full research record — derivations, results, dead ends
 supplement/          investigation scripts, one question each
 supplement/results/  their logs; every number in the notes cites one
 results/             benchmark output
 ```
+
+## What binds at scale, and it is not width
+
+V6 removed the `M` factor entirely, so the remaining quantum cost **is** `G`. For
+molecular Hamiltonians `v30` measured `G ~ N^4.24`, and nothing in the V6 line
+touches that. The register overhead is `N + log₂M + O(1)` and therefore
+asymptotically negligible on its own; shaving qubits off it does not change the
+exponent.
+
+V5's QPE path was the attempt to remove `G` — reading the energy from a phase
+rather than measuring each commuting group — and it died on depth, with measured
+survival **0.098** at Heisenberg N=6. So the open scaling question is whether
+`G`-independence is reachable without a Trotter ladder. Everything since has been
+optimising the term that no longer dominates.
 
 ## On V2
 

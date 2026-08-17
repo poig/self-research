@@ -416,12 +416,18 @@ class QLTOv6_Wrapper:
     # 0.95 removes the collapsing seed that the 0.90 standard deviations were
     # hiding, and at N=6 beats V3 QPE's -8.9545 at a third of its 180 circuits.
     # 0.98 overshoots and degrades everywhere, so the optimum is interior.
+    # design_resolution defaults to 4, the minimum-width Gray design every
+    # result up to v89 was measured on. 5 selects the no-3-term/no-4-term
+    # column set of v90, which costs m_row ~ 2 log2(n) instead of log2(n) and
+    # recovers the aliased cosine (0.714 -> 0.927 at M=16). r0 was tuned
+    # against resolution 4, so it is NOT necessarily right for 5.
     def __init__(self, ansatz, hamiltonian, backend=None, shot_budget=4096,
-                 r0=0.6, r_decay=0.95, n_scratch=3):
+                 r0=0.6, r_decay=0.95, n_scratch=3, design_resolution=4):
         from nisq_v6 import QLTOv6
         self.optimizer = QLTOv6(ansatz, hamiltonian,
                                 shot_budget=SHOTS or shot_budget,
-                                n_scratch=n_scratch)
+                                n_scratch=n_scratch,
+                                design_resolution=design_resolution)
         self.epoch = 0
         self.r0 = r0
         self.r_decay = r_decay

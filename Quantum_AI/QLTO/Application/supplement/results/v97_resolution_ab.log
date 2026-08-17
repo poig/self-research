@@ -1,0 +1,22 @@
+================================================================================================
+PAIRED A/B:  design_resolution 4 vs 5,  same seeds, same r0=0.6
+================================================================================================
+  5 seeds x 20 epochs. Negative diff = res-5 better (lower energy).
+
+  problem                  res4 mean   res5 mean  paired diff      sem   nefv   depth 4/5
+  ---------------------------------------------------------------------------------------
+  Heisenberg N=4             -5.9320     -5.9216       0.0103   0.0167     60       27/41
+  Heisenberg N=6             -8.8623     -8.7944       0.0678   0.0602     60       45/62
+  MaxCut N=4 (Opt=3.2)        0.0212      0.0248       0.0036   0.0054     20       27/41
+  H2 Molecule                -1.8448     -1.8451      -0.0003   0.0014     40       19/22
+
+================================================================================================
+READING IT
+================================================================================================
+  A paired difference more negative than ~2 SEM is a real improvement
+  and justifies re-tuning r0 for res-5 and rerunning the full suite.
+  Anything inside the noise means v90's single-seed -5.5921 -> -5.8329
+  was a draw of the dice, the aliasing fix helps the Hamiltonian-
+  learning task it was built for and NOT VQE, and the suite stands.
+  The depth column is the cost either way: res-5 spends more CNOTs on
+  longer parity chains, and that is charged to nobody in the NEFV table.

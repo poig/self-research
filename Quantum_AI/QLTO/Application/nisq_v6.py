@@ -307,7 +307,7 @@ class QLTOv6:
         n = len(active)
         ns = max(1, min(self.n_scratch, n))
         m_row, cols = _design_spec(n, ns, self.design_resolution)
-        nreg = m_row + 1
+        nreg = m_row + (1 if self.design_resolution >= 4 else 0)
         theta = list(self.ansatz.parameters)
         radius = Parameter(f'R_{n}_{len(self._direct_template_cache)}')
         pos = {p: i for i, p in enumerate(active)}
@@ -326,7 +326,8 @@ class QLTOv6:
         # and so is folded in once per wire rather than twice per parameter.
         for s in range(ns):
             qc.x(scr[s])
-            qc.cx(param[m_row], scr[s])
+            if self.design_resolution >= 4:
+                qc.cx(param[m_row], scr[s])
         prev = [0] * ns
 
         for inst in self.ansatz.data:
@@ -363,7 +364,8 @@ class QLTOv6:
             for b in range(m_row):
                 if prev[s] >> b & 1:
                     qc.cx(param[b], scr[s])
-            qc.cx(param[m_row], scr[s])
+            if self.design_resolution >= 4:
+                qc.cx(param[m_row], scr[s])
             qc.x(scr[s])
 
         self._basis(qc, sysr, group)
@@ -422,7 +424,8 @@ class QLTOv6:
                 e_cnt += cnt
                 d = sum(1 << b for b in range(m_row)
                         if b < len(xbits) and xbits[b] == '1')
-                f = 1 if (m_row < len(xbits) and xbits[m_row] == '1') else 0
+                f = (1 if (self.design_resolution >= 4 and m_row < len(xbits)
+                           and xbits[m_row] == chr(49)) else 0)
                 for i in range(n):
                     b = 1 if _design_sign(d, f, cols[i]) > 0 else 0
                     num[b, i] += e * cnt
