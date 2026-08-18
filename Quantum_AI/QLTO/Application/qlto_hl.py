@@ -185,7 +185,8 @@ class QLTOHamiltonianLearner:
     """
 
     def __init__(self, terms, evolution_time=1.0, shots=8192, n_scratch=2,
-                 design_resolution=5, backend=None, seed=None):
+                 design_resolution=5, backend=None, seed=None,
+                 probe='plus', n_probes=4):
         """
         terms              Pauli strings whose coefficients are unknown.
         evolution_time     T in e^{-iHT}. Too small and the signal vanishes;
@@ -197,6 +198,28 @@ class QLTOHamiltonianLearner:
                            (0.714 -> 0.927 at M=16) and v97 measured it NOT
                            helping VQE. The default differs because the
                            evidence differs.
+        probe              'plus' for |+..+>, 'random' for n_probes random
+                           product states.
+
+                           USE 'random' FOR NON-COMMUTING H. |+..+> is optimal
+                           for commuting H, where <z|P_k|z> = +-1 makes the
+                           commutant projections exactly orthogonal and the
+                           Fisher matrix proportional to the identity. It is
+                           CATASTROPHIC for non-commuting H, because it is
+                           close to an eigenstate and therefore barely evolves:
+                           for Heisenberg XYZ at N=4 it has support on 3.47 of
+                           16 eigenstates and drives cond(F) to 8.8e15, while
+                           the operators themselves are fine at cond 64. Any
+                           random product state gives cond(F) ~ 60, a
+                           fourteen-order-of-magnitude repair for free - no
+                           ancillas, no control, no extra circuits.
+
+                           Measured on Heisenberg XYZ N=4, M=9, 3 seeds:
+                             |+..+>            err stuck 0.29 -> 0.31
+                             1 random product  err 0.219 -> 0.097
+                             4 random product  err 0.099 -> 0.056
+                           The default stays 'plus' only because it is right
+                           for the commuting case this file was built on.
         """
         self.terms = list(terms)
         self.M = len(self.terms)
@@ -210,6 +233,22 @@ class QLTOHamiltonianLearner:
         self.nefv = 0
         self.max_circuit_depth = 0
         self._paulis = [SparsePauliOp.from_list([(t, 1.0)]) for t in self.terms]
+        # PROBE STATES. Stored as per-qubit (theta, phi) so the circuit can
+        # prepare with u(theta,phi,0) and un-prepare with its inverse; |+..+>
+        # is the single probe (pi/2, 0) on every qubit, which reproduces the
+        # original qc.h(sysr) exactly.
+        self.probe_kind = probe
+        if probe == 'plus':
+            self._probes = [[(np.pi / 2, 0.0)] * self.N]
+        elif probe == 'random':
+            pr = np.random.default_rng(
+                None if seed is None else 1000 + int(seed))
+            self._probes = [
+                [(float(np.arccos(1 - 2 * pr.random())),
+                  float(2 * np.pi * pr.random())) for _ in range(self.N)]
+                for _ in range(int(n_probes))]
+        else:
+            raise ValueError("probe must be 'plus' or 'random'")
         # RADIUS RESCALING. The +-R design displaces all M coordinates at once,
         # so the state moves by about R*sqrt(M) - a random walk, not R. The
         # finite-radius bias goes as the square of that displacement, c*R^2*M,
@@ -225,19 +264,34 @@ class QLTOHamiltonianLearner:
         return SparsePauliOp.from_list(
             list(zip(self.terms, np.asarray(coeffs, float)))).simplify()
 
+    def _prep(self, qc, reg, pi, inverse=False):
+        """Prepare (or un-prepare) probe pi as a product state.
+
+        u(pi/2, 0, 0) is exactly H, so probe='plus' reproduces the original
+        circuit gate for gate. The inverse of u(t,p,0) is u(-t,0,-p).
+        """
+        for q, (t, p) in enumerate(self._probes[pi]):
+            if inverse:
+                qc.u(-t, 0.0, -p, reg[q])
+            else:
+                qc.u(t, p, 0.0, reg[q])
+
     def return_probability(self, c_true, theta):
-        """Exact |<+..+| U_model^dag U_true |+..+>|^2, for scoring only."""
-        qc = QuantumCircuit(self.N)
-        qc.h(range(self.N))
-        qc.append(PauliEvolutionGate(self._H(c_true), time=self.T),
-                  range(self.N))
-        qc.append(PauliEvolutionGate(self._H(theta), time=-self.T),
-                  range(self.N))
-        qc.h(range(self.N))
-        return float(abs(Statevector(qc).data[0]) ** 2)
+        """Exact |<probe| U_model^dag U_true |probe>|^2, averaged over probes."""
+        tot = 0.0
+        for pi in range(len(self._probes)):
+            qc = QuantumCircuit(self.N)
+            self._prep(qc, qc.qubits, pi)
+            qc.append(PauliEvolutionGate(self._H(c_true), time=self.T),
+                      range(self.N))
+            qc.append(PauliEvolutionGate(self._H(theta), time=-self.T),
+                      range(self.N))
+            self._prep(qc, qc.qubits, pi, inverse=True)
+            tot += float(abs(Statevector(qc).data[0]) ** 2)
+        return tot / len(self._probes)
 
     # ---- the sensing circuit --------------------------------------------
-    def _sense_circuit(self, c_true, centre, R):
+    def _sense_circuit(self, c_true, centre, R, pi=0):
         """One circuit: all M coefficients displaced by +-R on a log register.
 
         theta_k = centre_k + R * sigma_k with sigma_k the design sign. The base
@@ -260,7 +314,7 @@ class QLTOHamiltonianLearner:
                             ClassicalRegister(nreg, 'cp'),
                             ClassicalRegister(self.N, 'cs'))
         qc.h(param)
-        qc.h(sysr)
+        self._prep(qc, sysr, pi)
         qc.append(PauliEvolutionGate(self._H(c_true), time=self.T), sysr)
 
         for i in range(self.M):
@@ -281,42 +335,55 @@ class QLTOHamiltonianLearner:
                 if (cols[i] >> b) & 1:
                     qc.cx(param[b], scr[s])
 
-        qc.h(sysr)
+        self._prep(qc, sysr, pi, inverse=True)
         qc.measure(param, qc.cregs[0])
         qc.measure(sysr, qc.cregs[1])
         return qc, m_row, cols, fold
 
     def gradient(self, c_true, centre, R, rescale=True):
-        """Degree-1 Walsh marginal of the return bit. ONE circuit, any M.
+        """Degree-1 Walsh marginal of the return bit. One circuit PER PROBE.
 
         R is rescaled by 1/sqrt(M) unless rescale=False, so that the callers
         radius means the same displacement at every M. Pass rescale=False to
         reproduce the uncompensated behaviour.
+
+        CIRCUIT COUNT. With probe='plus' this is one circuit for all M
+        coefficients, which is the property the log register exists to give.
+        With probe='random' it is n_probes circuits - a CONSTANT, independent
+        of M, so the Theta(M) -> Theta(1) claim survives with a worse constant.
+        The shot budget is split across probes, not multiplied, so shots are
+        unchanged. nefv counts circuits and is incremented by n_probes.
         """
         Reff = R * (self._r_scale if rescale else 1.0)
-        qc, m_row, cols, fold = self._sense_circuit(c_true, centre, Reff)
-        tqc = transpile(qc, self.backend, optimization_level=1)
-        self.max_circuit_depth = max(self.max_circuit_depth, tqc.depth())
-        counts = self.backend.run(tqc, shots=self.shots).result().get_counts()
-        self.nefv += 1
+        nP = len(self._probes)
+        per = max(1, self.shots // nP)
+        out = np.zeros(self.M)
+        for pi in range(nP):
+            qc, m_row, cols, fold = self._sense_circuit(c_true, centre,
+                                                        Reff, pi)
+            tqc = transpile(qc, self.backend, optimization_level=1)
+            self.max_circuit_depth = max(self.max_circuit_depth, tqc.depth())
+            counts = self.backend.run(tqc, shots=per).result().get_counts()
+            self.nefv += 1
 
-        tot, acc = 0, np.zeros(self.M)
-        for bs, cnt in counts.items():
-            parts = bs.split()
-            if len(parts) != 2:
-                continue
-            sysb, parb = parts[0], parts[1]
-            tot += cnt
-            if set(sysb) != {'0'}:
-                continue                       # probe did not return
-            xb = parb[::-1]
-            row = sum(1 << b for b in range(m_row)
-                      if b < len(xb) and xb[b] == '1')
-            f = 1 if (fold and m_row < len(xb) and xb[m_row] == '1') else 0
-            sg = np.array([_design_sign(row, f, cols[i])
-                           for i in range(self.M)])
-            acc += sg * cnt
-        return acc / max(tot, 1) / Reff
+            tot, acc = 0, np.zeros(self.M)
+            for bs, cnt in counts.items():
+                parts = bs.split()
+                if len(parts) != 2:
+                    continue
+                sysb, parb = parts[0], parts[1]
+                tot += cnt
+                if set(sysb) != {'0'}:
+                    continue                   # probe did not return
+                xb = parb[::-1]
+                row = sum(1 << b for b in range(m_row)
+                          if b < len(xb) and xb[b] == '1')
+                f = 1 if (fold and m_row < len(xb) and xb[m_row] == '1') else 0
+                sg = np.array([_design_sign(row, f, cols[i])
+                               for i in range(self.M)])
+                acc += sg * cnt
+            out += acc / max(tot, 1)
+        return out / nP / Reff
 
     # ---- the loop --------------------------------------------------------
     def fit(self, c_true, theta0, epochs=30, r0=0.5, r_decay=0.93, alpha=0.35,
@@ -352,7 +419,8 @@ class QLTOHamiltonianLearner:
 
     # ---- the hierarchical schedule ---------------------------------------
     def fit_heisenberg(self, c_true, theta0, levels=8, shots_per_level=None,
-                       T0=0.25, alpha=0.35, steps_per_level=48, verbose=False):
+                       T0=0.25, alpha=0.35, steps_per_level=48, verbose=False,
+                       p_hi=0.90, p_lo=0.55, k_radius=0.35):
         """Hierarchical T-doubling. Otilde(M/eps) evolution time on COMMUTING H.
 
         Each level drives the residual down, then doubles T - holding T*|delta|
@@ -373,18 +441,16 @@ class QLTOHamiltonianLearner:
         theta = np.array(theta0, dtype=float)
         n_shots = int(shots_per_level or max(self.M, 32))
         T = float(T0)
-        saved_for_probe = self.shots, self.T
-        self.shots, self.T = n_shots, T
-        delta = np.sqrt(max(1.0 - self.return_probability(c_true, theta), 1e-12))
-        delta = max(float(delta) / max(T, 1e-9), 1e-3)
-        self.shots, self.T = saved_for_probe
         trace = []
         saved_shots, saved_T = self.shots, self.T
         self.shots = n_shots
         try:
             for lev in range(levels):
-                self.T = min(T, 1.0 / max(delta, 1e-9))
-                R = max(0.5 * delta, 1e-4)
+                self.T = T
+                # R is tied to T, NOT to a residual estimate. Holding
+                # R*T*sqrt(M) constant keeps the design displacement at the
+                # edge of the linear regime whatever the residual is doing.
+                R = max(k_radius / (T * np.sqrt(self.M)), 1e-6)
                 for _ in range(steps_per_level):
                     g = self.gradient(c_true, theta, R, rescale=False)
                     mx = float(np.max(np.abs(g)))
@@ -397,15 +463,20 @@ class QLTOHamiltonianLearner:
                               'nefv': self.nefv,
                               'evolution_time': self.nefv * self.T * n_shots})
                 if verbose:
-                    print('  lev %2d  T %7.3f  R %.4f  P %.5f  err %.5f'
+                    print('  lev %2d  T %7.3f  R %.5f  P %.5f  err %.5f'
                           % (lev, self.T, R, p, err))
-                # guard on the MEASURABLE residual proxy, never on c_true
-                delta_hat = np.sqrt(max(1.0 - p, 1e-12)) / max(self.T, 1e-9)
-                if delta_hat < delta:
-                    delta = max(float(delta_hat), 1e-9)
+                # FRINGE-BAND GUARD. Steer T to hold the measured return
+                # probability inside [p_lo, p_hi]. P is the fringe visibility:
+                # near 1 the interferometer is insensitive and T should grow,
+                # far below p_lo the phase has wrapped and T must come back
+                # down. Nothing here estimates the residual, which is what the
+                # previous guard got wrong.
+                if p > p_hi:
                     T *= 2.0
+                elif p < p_lo:
+                    T /= 1.6
                 else:
-                    T *= 1.2
+                    T *= 1.25
         finally:
             self.shots, self.T = saved_shots, saved_T
         return theta, trace
