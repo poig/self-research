@@ -54,11 +54,34 @@ A_k in the eigenbasis, T in [50, 800], 32 probe states summed:
 
 Blind count d = M - rank across families:
 
-    transverse Ising   d = N-1 ~ M/2, PERSISTENT   (the Z2 symmetry)
+    transverse Ising   d = N-1 ~ M/2, PERSISTENT   (see below: INTEGRABILITY,
+                                                     not the Z2 symmetry)
     Heisenberg XYZ     d = 0 for N >= 4
     random Pauli sets  d = 0 for N >= 6
 
-So the obstruction is a SYMMETRY phenomenon, not a non-commutativity one:
+WHY TFIM IS PERSISTENTLY DEFICIENT: INTEGRABILITY, NOT ITS Z2 SYMMETRY. TFIM's
+spin-flip symmetry S = prod_i X_i turns out not to be the cause - both term
+types (Z_iZ_{i+1} and X_i) are EVEN under S, so the standard "odd operators
+have vanishing diagonal" argument does not apply and does not explain the gap.
+
+The real cause is that TFIM is Jordan-Wigner integrable: it maps to N free-
+fermion modes with conserved occupations n_1..n_N, and every local quadratic
+operator's commutant-diagonal part is confined to that same N-dimensional
+space regardless of which operator it is. Measured directly, N=3..8: the N
+field terms {X_i} ALONE already achieve rank N - the full measured rank - and
+adding the N-1 coupling terms {Z_iZ_{i+1}} contributes ZERO new directions.
+The couplings are not individually deficient (rank{Z_iZ_{i+1}} alone is N-1
+already), they are collectively confined to the span the fields cover.
+
+So d = M - rank is a symptom of integrability, not of the specific symmetry:
+free-fermion-solvable H is a second classically-tractable rung below the
+commuting case, still not where an ancilla register does real work. The
+regime where it might is chaotic, non-commuting H with d = 0 and no efficient
+classical description - e.g. the ZZ+XY tunable-coupler crosstalk case in the
+application screen, not TFIM or any other integrable model.
+
+So the obstruction is a SYMMETRY/INTEGRABILITY phenomenon, not a
+non-commutativity one:
 generic non-commuting Hamiltonians have no blind directions at all. An earlier
 non-commuting benchmark in this project measured SQL scaling and was read as
 evidence against the method; its test Hamiltonian (ZII IZI IIZ XII IXI XXI) has
@@ -246,6 +269,25 @@ def main():
                   % (label, N, len(Ps), r, len(Ps) - r))
     print()
     print('criterion matched measurement in every case: %s' % ok)
+    print()
+    print('WHY TFIM IS DEFICIENT: do the N field terms {X_i} ALONE already')
+    print('span the full measured rank, making the N-1 couplings redundant?')
+    print('%-5s %4s %10s %12s %14s %s'
+          % ('N', 'M', 'rank_all', 'rank_X_only', 'rank_ZZ_only', 'X spans all?'))
+    print('-' * 62)
+    for N in range(3, 9):
+        zz = [_put(N, {i: 'Z', i + 1: 'Z'}) for i in range(N - 1)]
+        xx = [_put(N, {i: 'X'}) for i in range(N)]
+        Pzz, Pxx = [pauli(t) for t in zz], [pauli(t) for t in xx]
+        c = np.random.default_rng(11).uniform(-0.6, 0.6, len(zz) + len(xx))
+        H = sum(a * P for a, P in zip(c, Pzz + Pxx))
+        H = (H + H.conj().T) / 2
+        r_all = commutant_rank(H, Pzz + Pxx)
+        r_x = commutant_rank(H, Pxx) if Pxx else 0
+        r_zz = commutant_rank(H, Pzz) if Pzz else 0
+        print('%-5d %4d %10d %12d %14d   %s'
+              % (N, len(zz) + len(xx), r_all, r_x, r_zz,
+                 'YES' if r_x == r_all else 'no'))
 
 
 if __name__ == '__main__':
