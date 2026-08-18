@@ -139,10 +139,36 @@ def A_exact(w, V, Ps, T):
     return [V @ ((V.conj().T @ P @ V) * ker) @ V.conj().T for P in Ps]
 
 
-def commutant_rank(H, Ps, tol=1e-8):
-    """rank span{diag_H(P_k)} - the criterion, computed with no experiment."""
+def commutant_rank(H, Ps, tol=1e-8, dtol=1e-9):
+    """rank span{diag_H(P_k)} - the criterion, computed with no experiment.
+
+    diag_H is projection onto the COMMUTANT of H, which is block diagonal over
+    degenerate eigenvalue groups, not merely diagonal. A_k grows as T wherever
+    E_a = E_b, and for degenerate H that includes off-diagonal elements INSIDE
+    a degenerate block, so the strict diagonal is the wrong projector whenever
+    the spectrum is degenerate.
+
+    Measured: on every case in this file the strict diagonal happens to give
+    the same rank as the block projection, including Heisenberg N=3 and N=5,
+    which carry 4 and 16 degenerate pairs. That agreement is an observation,
+    not a theorem, so the block form is used because it is the one the
+    derivation specifies.
+    """
     w, V = np.linalg.eigh(H)
-    Dk = [V @ np.diag(np.diag(V.conj().T @ P @ V)) @ V.conj().T for P in Ps]
+    groups, i = [], 0
+    while i < len(w):
+        j = i
+        while j + 1 < len(w) and abs(w[j + 1] - w[i]) < dtol:
+            j += 1
+        groups.append((i, j))
+        i = j + 1
+    Dk = []
+    for P in Ps:
+        Pt = V.conj().T @ P @ V
+        B = np.zeros_like(Pt)
+        for a, b in groups:
+            B[a:b + 1, a:b + 1] = Pt[a:b + 1, a:b + 1]
+        Dk.append(V @ B @ V.conj().T)
     G = np.array([[np.trace(a.conj().T @ b).real for b in Dk] for a in Dk])
     e = np.sort(np.linalg.eigvalsh(G))[::-1]
     return int(np.sum(e > tol * max(e[0], 1e-30)))
