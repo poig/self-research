@@ -85,9 +85,71 @@ TWO THINGS THIS RESTS ON, and the first is the reason it is not simply done.
       epoch clock instead of an estimate-conditioned trigger, T*d crosses pi,
       the return probability wraps, and the gradient inverts.
 
-STATUS: fit() runs the fixed-T SQL schedule; fit_heisenberg() implements the
-hierarchical one derived above. Use fit_heisenberg only on COMMUTING terms -
-it will silently give wrong answers otherwise, for the Trotter reason above.
+HOW BADLY COMMUTATION FAILS, MEASURED. _sense_circuit CANNOT apply the model as
+one exponential: each theta_k carries its own ancilla-controlled sign sigma_k(x)
+from the design, so the circuit MUST serialise,
+
+    U_model(theta(x)) = prod_k e^{-i theta_k(x) P_k T}
+
+and there is no gate that evaluates e^{-i H(theta(x)) T} for a
+superposition-dependent theta(x) without a Trotter ladder. U_seq is therefore
+not a lazy choice, it is the only construction available.
+
+The consequence is that the model does not invert the device AT THE TRUTH.
+ZZ+XY crosstalk, N=4, M=13, at theta = c_true exactly:
+
+    T       ||U_seq - U_exact||     P(theta = c_true)
+    0.25         1.95e-03                0.999987
+    1.00         3.07e-02                0.996538
+    4.00         3.25e-01                0.291972
+   16.00         3.56e-01                0.042624
+
+P should be 1.000000 there by construction. At T=16 it is 0.043. So the maximum
+of P sits at theta*(T) != c_true and MOVES as T grows: fit_heisenberg raises T
+to chase the Heisenberg limit and the target walks away from the truth. Measured
+end to end on that model, every arm DIVERGED - starting error 0.0597 became
+0.173 to 1.181 over 8-12 levels, worse the longer it ran.
+
+*** return_probability IS A SIMULATION PHANTOM ON NON-COMMUTING TERMS AND MUST
+*** NOT BE USED AS A GUARD SIGNAL THERE. It builds PauliEvolutionGate(_H(theta))
+*** and reads it with Statevector, and Qiskit evaluates that from the gate's
+*** exact DEFINITION, not from a synthesised circuit. Measured: the exact
+*** operator matches expm to 1e-16 at every T, while the TRANSPILED circuit -
+*** what hardware would run - reproduces U_seq's error exactly (3.07e-02,
+*** 3.25e-01, 3.56e-01 at T = 1, 4, 16). No circuit implements what
+*** return_probability computes. It is fine for scoring in simulation and it is
+*** invalid as a control signal, because the fringe-band guard then steers T on
+*** a probability the sensing circuit never experiences.
+
+THE HONEST BOUNDARY, and it is the same law paper 1 states for the feedback
+protocol. Both designs keep a shallow circuit by leaving Hamiltonian simulation
+out, and both provably cannot do the job without it:
+
+    paper 1   unfiltered unitary kick -> symmetric work interval, heats as
+              readily as it cools. Repair: frequency-filtered jump operator,
+              costing e^{iHs} per sample EVERY CYCLE (~32 evolutions).
+    here      single-stage U_seq W-gate -> Trotter bias moves theta*(T) off
+              the truth. Repair: higher-order Suzuki inside the W-gate,
+              costing K ~ T^{1+1/p} reps EVERY GRADIENT.
+
+Paper 1 puts it as "a design that keeps the shallow kick in order to avoid
+simulating H is keeping the part that provably cannot cool." The same sentence
+governs this sensing circuit verbatim.
+
+STATUS, by regime:
+  COMMUTING H                 U_seq is EXACT. fit_heisenberg reaches -0.983
+                              against the Heisenberg limit, Theta(1) circuits.
+  NON-COMMUTING, fixed small T  Trotter bias stays bounded. SQL in eps, but the
+                              Theta(1) circuits per gradient SURVIVE - the
+                              M-fold saving is intact, only the T-schedule is
+                              lost. Use fit(), not fit_heisenberg().
+  NON-COMMUTING, growing T    DIVERGES. Not a tuning failure: the target itself
+                              moves. Do not use fit_heisenberg here.
+
+An earlier note in this file called the Trotter caveat refuted, on the grounds
+that 1-P still grows as T^1.96 for non-commuting H. That measurement is correct
+and it is about the SIGNAL. It says nothing about the MODEL INVERSION, which is
+what actually breaks. The caveat stands.
 
 MEASURED SO FAR, in supplement/v88 and v90:
   cos(measured gradient, exact smeared) = 0.997 at M=5 on a linear register
@@ -439,7 +501,22 @@ class QLTOHamiltonianLearner:
         so fewer cannot work however long the evolution runs.
         """
         theta = np.array(theta0, dtype=float)
-        n_shots = int(shots_per_level or max(self.M, 32))
+        # SHOT FLOOR, DERIVED THEN VERIFIED. The degree-1 Walsh signal per
+        # coordinate is ~2/M at the linearisation boundary while the bounded-bit
+        # noise is 1/(2 sqrt(n)), so SNR = 4 sqrt(n)/M and the gradient is only
+        # informative once n >= M^2/16. This is a PER-GRADIENT floor, not a
+        # budget that more steps can amortise: the step is max-normalised, so a
+        # noise-dominated gradient produces a full-length step in a random
+        # direction - a random walk, which averaging does not repair.
+        # Measured against shots = M, which the old default max(M,32) reduces
+        # to for M > 32:
+        #     M=15  need 14.1  had 15  -> converged,  err 0.046
+        #     M=21  need 27.6  had 21  -> FAILED,     err 0.108
+        #     M=36  need 81.0  had 36  -> FAILED,     err 0.186
+        # The threshold predicts the observed pass/fail boundary exactly.
+        # max(M,32) alone satisfies M^2/16 only up to M ~ 22.
+        n_shots = int(shots_per_level
+                      or max(self.M, 32, (self.M * self.M + 15) // 16))
         T = float(T0)
         trace = []
         saved_shots, saved_T = self.shots, self.T
