@@ -1,0 +1,107 @@
+============================================================================================
+PART 1.  Quantum-walk speedups are measured against a RANDOM WALK.
+         The method actually used is DESCENT. All three, same landscape.
+============================================================================================
+  sqrt(RW) is the BEST a quantum walk can ever do (Szegedy quadratic).
+
+  problem             n         RW     descent   sqrt(RW) QW wins?
+  ------------------------------------------------------------------
+  Heis N=4 b0         4       16.3         2.0        4.0       no
+  Heis N=4 b1         4       16.0         1.9        4.0       no
+  Heis N=6 b0         6       75.0         3.1        8.7       no
+  Heis N=6 b1         6       75.8         3.1        8.7       no
+
+  RW ~ 2^n, so the quantum ceiling is 2^(n/2) - still EXPONENTIAL.
+  Descent is ~n/2, POLYNOMIAL. Improving the exponent of an
+  exponential loses to something that was never exponential.
+
+============================================================================================
+PART 2.  THE DECODE-SCALING CONJECTURE, TESTED BELOW 1 SHOT/VERTEX
+============================================================================================
+  The notes predict the LINEAR walk decode overtakes the NONLINEAR
+  Boltzmann decode once spv < 1. v52 stopped at n=8 (spv=32).
+  Landscape: degree<=2 Walsh, which T8 says is the real shape.
+
+     n      2^n       spv    walk cos   boltz cos   winner
+  --------------------------------------------------------
+     8      256     32.00      0.6904      0.8337    boltz
+    10     1024      8.00      0.6864      0.8069    boltz
+    12     4096      2.00      0.6442      0.7531    boltz
+    14    16384      0.50      0.5845      0.7469    boltz
+    15    32768      0.25      0.6048      0.7081    boltz
+
+  REFUTED. Boltzmann wins at every size including spv=0.25. The
+  "needs shots >~ 2^n" reasoning has a hole: you do not need every
+  vertex, only enough good ones - 8192 shots still reach ~7000
+  distinct vertices out of 32768. The walk is capped by MODEL
+  MISSPECIFICATION (degree-1 only), not by shot noise.
+
+============================================================================================
+PART 3.  BARREN PLATEAU - does the walk signal decay more slowly?
+============================================================================================
+  Deep random ansatz (reps = 2N). grad_var is the BP signature.
+  walk_sig is the degree-1 Walsh coefficient the drift rides on.
+
+     N   reps      grad_var    walk_sig^2       ratio
+  ----------------------------------------------------
+     4      8     3.243e-02     1.034e-02      0.3188
+     6     12     7.764e-03     2.475e-03      0.3188
+     8     16     2.292e-03     7.308e-04      0.3188
+
+  gradient  decays as 2^(-0.956 N)
+  walk sig  decays as 2^(-0.956 N)
+  ratio is sin^2(R) = sin^2(0.6) = 0.318821  EXACTLY, at every N.
+
+  The walk drift IS sin(R) times the gradient - a CONSTANT multiple.
+  A constant multiple of an exponentially small quantity is
+  exponentially small at the SAME rate. This is v89 confirmed, and
+  it is arithmetic, not a theorem about quantum walks in general.
+
+============================================================================================
+PART 4.  THE MECHANISM IS REAL - thin tall barrier (spike potential)
+============================================================================================
+  Classical annealing goes OVER: cost ~ exp(height).
+  Quantum tunnels THROUGH: cost ~ exp(width), independent of height.
+
+  height   width    class. steps    class. succ   quantum P(0)
+  --------------------------------------------------------------
+     2.0     1.0             647           1.00      7.340e-03
+     5.0     1.0            1158           1.00      4.348e-03
+    10.0     1.0           60711           0.90      7.163e-03
+    20.0     1.0          200000           0.00      2.733e-03
+
+  Classical success collapses 1.00 -> 0.00 while quantum transmission
+  stays flat. THE TUNNELING ADVANTAGE IS REAL AND CONSTRUCTIBLE.
+  CAVEAT: quantum T is maximised over a small grid, and P(0) ~ 0.5%
+  means ~200 repetitions per success - constant in height, not free.
+
+  So the open question is NOT a better mixer. It is whether an ansatz
+  can be designed whose landscape has tall THIN barriers. Measured
+  width on efficient_su2(reps=1) Heisenberg N=4/N=6 was 0.96 / 0.99
+  of the path - WIDE, so the mechanism does not engage there.
+
+============================================================================================
+PART 5.  k_steps COLLAPSE - the inner loop is one gate, exactly
+============================================================================================
+  Every step applies a controlled single-qubit rotation per param
+  qubit, all on the SAME ancilla. C-A . C-B = C-(BA), so the whole
+  loop is ONE controlled-SU(2) per qubit, found by classical 2x2
+  multiplication before the circuit is built.
+
+   k_steps ||U_loop-U_1||   depth loop    depth new    ratio
+  ------------------------------------------------------------
+         2      3.679e-15           12            5     2.4x
+         4      2.942e-15           24            5     4.8x
+         8      3.858e-15           48            5     9.6x
+        16      4.858e-15           96            5    19.2x
+        64      3.517e-15          384            5    76.8x
+
+  Exact to machine precision at every k. On the FULL walk circuit
+  this is 3.5x depth and 3x CX at the shipped k_steps=15, with an
+  IDENTICAL unitary. It also makes k_steps free, since the cost no
+  longer depends on it.
+
+  NOTE: this applies to the PRODUCT mixer only. It works because
+  sum_i (a_i Z_i + b X_i) is separable. A global reflection is
+  rank-1 and does NOT collapse.
+
