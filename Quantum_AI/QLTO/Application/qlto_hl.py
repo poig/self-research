@@ -96,13 +96,19 @@ superposition-dependent theta(x) without a Trotter ladder. U_seq is therefore
 not a lazy choice, it is the only construction available.
 
 The consequence is that the model does not invert the device AT THE TRUTH.
-ZZ+XY crosstalk, N=4, M=13, at theta = c_true exactly:
+ZZ+XY crosstalk, N=4, M=13, at theta = c_true exactly, MEASURED ON THE ACTUAL
+SENSING CIRCUIT (200k shots) against what the guard reports:
 
-    T       ||U_seq - U_exact||     P(theta = c_true)
-    0.25         1.95e-03                0.999987
-    1.00         3.07e-02                0.996538
-    4.00         3.25e-01                0.291972
-   16.00         3.56e-01                0.042624
+    T      P from _sense_circuit     P from return_probability
+    1.0          0.986965                    1.000000
+    4.0          0.334475                    1.000000
+   16.0          0.139610                    1.000000
+
+An earlier version of this block quoted 0.9999 / 0.292 / 0.043. Those came from
+comparing U_seq against expm, i.e. against an EXACT device. The device inside
+_sense_circuit is itself PauliEvolutionGate(_H(c_true)), which LieTrotter
+expands, so the real mismatch is Trotter against Trotter and is somewhat
+smaller. The conclusion is unchanged and the figures above are the right ones.
 
 P should be 1.000000 there by construction. At T=16 it is 0.043. So the maximum
 of P sits at theta*(T) != c_true and MOVES as T grows: fit_heisenberg raises T
