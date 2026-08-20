@@ -72,16 +72,45 @@ T sets a linearity window: the readout is first order, so small T is accurate
 and weak. 0.13% relative at T=0.1. The departure at T=0.5 is higher-order Walsh
 content, NOT Trotter - every branch evolves exactly.
 
+*** THOSE NUMBERS ARE NOT CIRCUIT-ACHIEVABLE AND T=0.1 IS THE WRONG OPERATING
+*** POINT. They come from exact amplitudes. On the real circuit in
+*** Application/twirl_cal.py the signal is T*c_k*<i[P_k,O]> ~ 0.0075 at T=0.1,
+*** against a shot floor of 1/sqrt(shots) ~ 0.0028 at 2^17 - SNR under 3. The
+*** two error sources move oppositely in T, so the circuit optimum is T ~ 0.25:
+***
+***      T      shots   circuits   mean rel err
+***   0.25      65536         24         0.0297   <- best
+***   0.25     524288         24         0.0331   8x shots, NO gain: bias-limited
+***   0.50     524288         24         0.0502
+***   1.00     524288         24         0.2005
+***   2.00     524288         24         0.6053
+***
+*** 3.0% on a circuit, not 0.13%. The residual is first-order truncation, not
+*** noise - every estimate at larger T is systematically LOW.
+***
+*** RICHARDSON IN T REMOVES THAT BIAS. Only odd orders survive into the degree-1
+*** Walsh coefficient (even orders carry sigma_j sigma_k and project onto degree
+*** 2), so chat(T) = c(1 + aT^2) and (4 chat(T/2) - chat(T))/3 cancels it:
+***      T=1.0  plain 0.2053 -> richardson 0.0395   5.2x
+***      T=2.0  plain 0.6100 -> richardson 0.0596  10.2x
+*** But it does NOT beat the plain estimator at its own best point (0.0395 at 48
+*** circuits against 0.0297 at 24), and at T=0.5 it is worse. Richardson buys
+*** insensitivity to the choice of T, not a lower floor. Use plain at T~0.25;
+*** use Richardson when T is pinned by the hardware.
+
 AGAINST THE ITERATIVE PATH, same model:
 
-    protocol                circuits   rel err on the weak ZZ terms
-    parameter-shift            1040+   -
-    QLTO fit(), v100 config      160    ~30%
-    twirl design                   4    0.13%
+    protocol                     circuits   mean rel err   limited by
+    QLTO fit(), v100 config           160    ~30% on ZZ    Trotter bias
+    twirl, plain, T=0.25               24         3.0%     truncation
+    twirl + Richardson, T=1.0          48         4.0%     shot noise
+    twirl, exact amplitudes             -        0.13%     NOT achievable
 
-40x fewer circuits and roughly 200x better relative accuracy, because the
-iterative route spends its budget fighting a bias this construction does not
-have.
+On circuits it is 6.7x fewer circuits at roughly 10x better accuracy - a real
+win, and an order of magnitude short of what the exact-amplitude figure
+suggested. The iterative route spends its budget fighting a Trotter bias this
+construction does not have; this one spends its budget on the shot-noise vs
+truncation trade the exact version hid.
 
 WHAT IS NOT ESTABLISHED, and the first item is the important one.
 
@@ -90,9 +119,12 @@ WHAT IS NOT ESTABLISHED, and the first item is the important one.
       barely sees, and the Walsh coefficient is an average over the register
       superposition. Shot-noise behaviour is UNMEASURED and is the obvious way
       this could fail in practice.
-  NO CIRCUIT. The amplitudes here are computed classically from the twirled
-      Hamiltonians. The Qiskit circuit - controlled Cliffords, device
-      evolution, X-basis readout of the register - is not built or run.
+  CIRCUIT NOW EXISTS: Application/twirl_cal.py, verified term by term against
+      this file (corr 0.9905 between the exact Walsh coefficients and the
+      predicted T c_k <i[P_k,O]>). Two endianness bugs were found building it -
+      observable support indexed by string position rather than qubit, and the
+      probe kron built in the wrong order - so any reuse of the classical
+      helpers here should assume Qiskit little-endian.
   ONE FAMILY. Nearest-neighbour crosstalk at N=4 for accuracy, rank only up to
       N=12. Nothing on TFIM, Heisenberg, or molecular Hamiltonians.
   FIRST ORDER ONLY. The T window is set by when the linear term stops
