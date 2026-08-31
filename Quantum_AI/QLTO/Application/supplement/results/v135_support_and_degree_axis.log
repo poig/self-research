@@ -1,0 +1,39 @@
+Does the radius grade the sensing register by Walsh DEGREE, exactly?
+TIER B - Statevector, no shots. Not an accuracy or cost figure.
+
+PART 1  C1: second-harmonic content of E(theta_j)
+        fit a + b1 cos t + c1 sin t + b2 cos 2t + c2 sin 2t on 9 points
+        efficient_su2(.).decompose() + Heisenberg
+
+  ansatz                    M    tied |1st harm|   |2nd harm|
+  N=4 reps=1               16       0     1.7137     8.25e-16
+  N=4 reps=2               24       0     1.6118     6.66e-16
+  N=6 reps=1               24       0     1.8623     9.04e-16
+  N=6 reps=2               36       0     1.4531     5.55e-16
+
+  VERDICT: second harmonic at machine zero, no ansatz ties a parameter.
+  supp(c) subset {-1,0,1}^M holds for the ansatz V6 actually runs.
+
+PART 2  C2: alpha_j(R)/sin R against cos R, full 2^6 factorial
+        every row shifts all 6 parameters - fully multiplexed
+
+  param   exact d_jE  deg1 res  deg2 res  deg3 res        extrap       err
+  0        +0.099129   9.4e-03   7.8e-04   2.8e-05     +0.099129   2.8e-16
+  1        +0.642080   8.4e-03   3.7e-04   6.6e-06     +0.642080   2.1e-15
+  2        -0.228746   8.2e-03   7.9e-04   2.0e-05     -0.228746   1.1e-15
+  3        -1.037113   5.9e-02   5.0e-03   1.1e-04     -1.037113   4.4e-16
+  4        +0.020918   8.6e-04   1.3e-04   6.0e-06     +0.020918   8.5e-16
+  5        +0.765424   3.6e-03   9.2e-04   2.6e-05     +0.765424   1.0e-15
+
+  The deg-5 column is NOT reported: 6 radii and 6 coefficients means
+  degree 5 interpolates exactly whatever the truth is. The EXTRAPOLATION
+  to cos R = 1 is the valid test - a non-polynomial would miss it.
+
+  radii  fit deg   median relative residual
+      2        1   3.84e-02
+      3        2   4.12e-03
+      4        3   9.81e-05
+
+  VERDICT: exact gradient recovered to ~1e-15 from a FULLY MULTIPLEXED
+  design. Residuals fall geometrically with degree, so what costs is
+  D_eff and not the formal D (= 5 on this block).

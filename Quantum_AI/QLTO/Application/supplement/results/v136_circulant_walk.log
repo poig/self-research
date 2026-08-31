@@ -1,0 +1,206 @@
+Does a circulant mixer, built as a CIRCUIT, break the separability that makes
+========================================================================
+PART 0  is F^dag e^{-i Lambda t} F actually e^{-i C t}?
+        TIER B - Operator vs scipy expm, no shots
+        `chiral` is the only row that CAN distinguish the two
+        conventions; the undirected ones cannot, by symmetry.
+
+  graph        n   err conj=False   err conj=True   
+  cycle        3   3.08e-15         3.08e-15        
+  complete     3   3.66e-15         3.66e-15        
+  mobius       3   3.19e-15         3.19e-15        
+  chiral       3   2.59e-15         1.45e+00        
+  cycle        4   1.37e-14         1.37e-14        
+  complete     4   1.36e-14         1.36e-14        
+  mobius       4   1.35e-14         1.36e-14        
+  chiral       4   8.58e-15         2.06e+00        
+
+  DISCRIMINATING rows agree on conj=False  (2 of them)
+
+
+PART 1  does the mixer alone break separability, with only a
+        DEGREE-1 drift?   TIER B - exact, mechanism only
+
+  mixer                ||mixer - prodRX|| walk mid-cut entropy
+  hypercube sum X_i              2.22e-16               0.0000
+  cycle    C_16                  4.11e+00               0.2410
+  complete K_16                  3.80e+00               0.8780
+  mobius   M_16                  3.71e+00               0.2465
+
+  entropy is from a PRODUCT input, so any nonzero value is
+  correlation the walk created. Part VI predicts exactly 0 for the
+  hypercube, and the drift here is DEGREE-1 for every row.
+
+
+PART 2  circuit cost.   TIER A - transpiled to rz/sx/x/cx
+
+  graph        n    depth       2q    total
+  complete     3       43       16       54
+  cycle        3       42       16       55
+  hypercube    3        5        0       15
+  complete     4       68       36      100
+  cycle        4       65       34       94
+  hypercube    4        5        0       20
+  complete     5      108       68      168
+  cycle        5       96       60      149
+  hypercube    5        5        0       25
+
+  CAVEAT: DiagonalGate synthesises an ARBITRARY diagonal in O(2^n).
+  The slides' 2*log2(n)+1 is for the COMPLETE graph specifically,
+  whose spectrum (N,0,...,0) is one multi-controlled phase. These
+  are correctness numbers and an UPPER BOUND, not the efficient
+  construction, which is a separate build.
+
+
+PART 3  Liu-Su-Li's ACTUAL algorithm: start in one well's LOCAL
+        GROUND STATE, evolve to t = pi/DeltaE, land in the other.
+        TIER A - StatePreparation + Trotter on AerSimulator, shots
+
+  graph           h     DeltaE    t=pi/dE        S_0  P(far) B  P(far) A
+  hypercube    0.90   7.37e-01        4.3     1.8748    0.7836    0.7902
+  hypercube    0.60   8.70e-02       36.1     2.2605    0.9461    0.8746
+           (localisation of Phi_- in the left well: 0.9461)
+  cycle        0.90   1.90e-07 16558180.7    14.1702    0.9998    0.3303
+  cycle        0.60   1.05e-10 30001008278.3    14.8725    1.0000    0.3316
+           (localisation of Phi_- in the left well: 1.0000)
+  mobius       0.90   5.49e-01        5.7     0.0000    0.4988    0.5018
+  mobius       0.60   3.88e-01        8.1     0.0000    0.5000    0.5027
+           (localisation of Phi_- in the left well: 0.5000)
+  complete     0.90   2.46e+01        0.1     0.0000    0.5304    0.5322
+  complete     0.60   1.02e+01        0.3     0.0000    0.5489    0.5505
+           (localisation of Phi_- in the left well: 0.5489)
+
+  P(far) B is exact expm on the SAME state - the reference the
+  circuit is checked against. P(far) A is the circuit with shots.
+  A gap between them is Trotter error, not physics.
+
+
+PART 4  does DeltaE track Liu-Su-Li's e^{-S_0/h}?
+        TIER C - dense spectra only. This is the THEORY check;
+        if the slope is not -1 their continuum exponent does not
+        survive discretisation, whatever the circuit does.
+
+  graph              S_0  fit slope   predicted -1
+  hypercube       1.7348    -1.9913          -1.00
+  cycle          13.4096    -0.9749          -1.00
+  mobius          0.0000        n/a     NO BARRIER
+
+  slope is d[ln dE - 0.5 ln h] / d[S_0/h]. Liu-Su-Li Eq. 7 predicts
+  exactly -1 in the semiclassical limit.
+
+
+PART 5  THE FIX: reduce to the symmetric subspace, and use the
+        Agmon metric for POSITION-DEPENDENT hopping.
+        TIER C - dense spectra of the reduced chain. Theory check.
+
+  slope = d[ ln DeltaE - 0.5 ln h ] / d[ S0/h ];  Eq. 7 predicts -1
+
+  graph          n   S0 raw   S0 corr   slope raw  slope corr
+  hypercube      5    3.614     2.124     -0.8548     -1.1837
+  hypercube     10    6.613     2.876     -0.5298     -1.4609
+  hypercube     20   10.706     3.354     -0.2886     -1.6555
+  hypercube     40   15.525     3.464     -0.2396     -1.8096
+  hypercube     80   17.918     2.831     -0.2301     -2.7216
+  cycle          5   14.448    14.448     -0.9978     -0.9978
+  cycle          6   29.429    29.429     -0.9433     -0.9433
+  cycle          7   60.035    60.035     -0.8954     -0.8954
+
+  cycle rows: hopping is UNIFORM, so raw and corrected coincide -
+  the control that says the correction is not just a free parameter.
+
+
+PART 6  distinct eigenvalues: the quantity that predicts BOTH the
+        circuit cost and the DLA.   TIER C - spectra only
+
+  Wang (CQCWS1_19335 slide 9): an efficient circuit needs either
+    (1) O(polylog N) DISTINCT eigenvalues, or
+    (2) eigenvalues in closed form.
+  Bridi et al. (2508.05749) Thm 1: dim(g_QWOA) <= m^2 + 1, m the
+  number of DISTINCT eigenvalues of the problem Hamiltonian.
+  Same quantity. Few eigenvalues buys a cheap circuit AND a
+  collapsed DLA - cheap and useless together.
+
+  graph          N distinct      route consequence               
+  complete      16        2    (1) few small DLA, nothing to learn
+  cycle         16        9 (2) closed LARGE DLA and still cheap 
+  mobius        16        9 (2) closed LARGE DLA and still cheap 
+  hypercube     16        5 (2) closed large DLA, cheap          
+  complete      32        2    (1) few small DLA, nothing to learn
+  cycle         32       17 (2) closed LARGE DLA and still cheap 
+  mobius        32       17 (2) closed LARGE DLA and still cheap 
+  hypercube     32        6 (2) closed large DLA, cheap          
+
+  The complete graph's 2 eigenvalues are why PART 3 gave it S0 = 0
+  and Phi_- localisation 0.50: there is no barrier and no structure.
+  Bridi report DLA dimension exactly 2 for it.
+
+
+PART 7  THE HYPERCUBE IS NOT A PARTICLE, IT IS A SPIN.
+        TIER C - dense spectra of the reduced chain.
+
+  PART 5's corrected Agmon metric did not fix the slope; it made it
+  worse with n (-1.18 -> -2.72). The reason is structural, not a
+  bad metric:  n*I - 2 J_x  is NOT the Laplacian of the reduced
+  chain. Its row sums are
+
+      n - sqrt(w(n-w+1)) - sqrt((w+1)(n-w))   !=  0
+
+  which is n - sqrt(n) at the ends and ~0 in the middle - a large
+  BUILT-IN inverted potential of size O(h^2 n) that no choice of
+  Agmon metric on V alone can see.
+
+  So the hypercube walk is a LARGE-SPIN system (Lipkin-Meshkov-Glick
+  shaped), whose semiclassical parameter is 1/n, NOT h. Liu-Su-Li's
+  framework is a particle with -h^2 Laplacian on R^d; sweeping h at
+  fixed n is simply not its semiclassical limit.
+
+  THE TEST. If the hypercube is a spin, then with the potential
+  scaled EXTENSIVELY (V = n v(w/n)) and h FIXED, ln DeltaE should be
+  linear in n with a constant slope -S~ (an intensive action).
+
+  h fixed         n        DeltaE         ln dE   d lndE/dn
+  Points are DISCARDED below the double-precision eigenvalue
+  floor eps*||H||: a splitting of 1e-14 against ||H|| ~ 150 is
+  LAPACK resolution, not physics. The first run of this part fitted
+  through the floor and reported r = -0.58; the usable points had
+  already given -0.959 and -0.970.
+
+  h=1.00          8     1.387e-01       -1.9756 
+  h=1.00         12     2.164e-02       -3.8332     -0.4644
+  h=1.00         16     3.136e-03       -5.7648     -0.4829
+  h=1.00         20     4.387e-04       -7.7317     -0.4917
+  h=1.00         24     6.006e-05       -9.7201     -0.4971
+  h=1.00         28     8.104e-06      -11.7231     -0.5007
+  h=1.00         32     1.082e-06      -13.7367     -0.5034
+  h=1.00         36     1.433e-07      -15.7583     -0.5054
+  h=1.00         40     1.886e-08      -17.7862     -0.5070
+  h=1.00         44     2.470e-09      -19.8192     -0.5083
+  h=1.00         48     3.220e-10      -21.8564     -0.5093
+      -> fit over 11 usable points: d(ln dE)/dn = -0.4988
+         linear correlation r = -0.999936
+
+  h=0.70          8     5.160e-03       -5.2668 
+  h=0.70         12     1.924e-04       -8.5560     -0.8223
+  h=0.70         16     6.768e-06      -11.9034     -0.8369
+  h=0.70         20     2.306e-07      -15.2827     -0.8448
+  h=0.70         24     7.699e-09      -18.6821     -0.8499
+  h=0.70         28     2.535e-10      -22.0956     -0.8534
+  h=0.70         32     8.264e-12      -25.5192     -0.8559
+  h=0.70         36     2.665e-13            --   below floor 8.5e-13
+  h=0.70         40     2.309e-14            --   below floor 9.5e-13
+  h=0.70         44     1.776e-15            --   below floor 1.0e-12
+  h=0.70         48     0.000e+00            --   below floor 1.1e-12
+      -> fit over 7 usable points: d(ln dE)/dn = -0.8448
+         linear correlation r = -0.999979
+
+  A CONSTANT slope and r ~ -1 means ln DeltaE = -n S~ + const, i.e.
+  the tunnelling is exponential in the SPIN SIZE, exactly as a
+  large-spin WKB predicts - and NOT of the form e^{-S0/h} with S0 a
+  path integral over a fixed landscape.
+
+  CONSEQUENCE FOR QLTO. The design/walk register at q=2 levels per
+  parameter is a spin-n/2 system, not a discretised particle. Every
+  continuum tunnelling bound quoted for it - including v99 PART 4's
+  exp(width) vs exp(height) reading - is being applied outside its
+  hypotheses. The CYCLE register (PART 5, slope -0.998) is a genuine
+  particle-on-a-lattice and the bound does hold there.

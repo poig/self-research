@@ -1,0 +1,84 @@
+================================================================================================
+v116  SYMPLECTIC PRE-FLIGHT:  one GF(2) check, two obstructions
+================================================================================================
+  For a twirl-multiplexed degree-1 Walsh decode, the term set alone decides
+  whether the decode is confounded and whether time reversal is free.
+  TIER C: operator structure, no state evolution. R1-sanctioned.
+
+================================================================================================
+THE FAMILIES
+================================================================================================
+  crosstalk N=3          N=3  M=9   rank(V)=5   2N=6
+     dependencies forced by M > rank : True
+     degree-2 aliasing triples       : 6   e.g. ZZI + XXI = YYI
+     odd null subsets (block Q)      : 4
+     time-reversing twirl Q          : NO
+     -> kernel needs the cross-Pauli readout; no cheap fix
+
+  crosstalk N=4          N=4  M=13  rank(V)=7   2N=8
+     dependencies forced by M > rank : True
+     degree-2 aliasing triples       : 9   e.g. ZZII + XXII = YYII
+     odd null subsets (block Q)      : 6
+     time-reversing twirl Q          : NO
+     -> kernel needs the cross-Pauli readout; no cheap fix
+
+  crosstalk N=5          N=5  M=17  rank(V)=9   2N=10
+     dependencies forced by M > rank : True
+     degree-2 aliasing triples       : 12   e.g. ZZIII + XXIII = YYIII
+     odd null subsets (block Q)      : 8
+     time-reversing twirl Q          : NO
+     -> kernel needs the cross-Pauli readout; no cheap fix
+
+  single-Z N=3           N=3  M=3   rank(V)=3   2N=6
+     dependencies forced by M > rank : False
+     degree-2 aliasing triples       : 0
+     odd null subsets (block Q)      : 0
+     time-reversing twirl Q          : YES  a=111 b=000  verified=True
+     -> kernel half-range sampling is AVAILABLE for free
+
+  mixed independent      N=3  M=5   rank(V)=5   2N=6
+     dependencies forced by M > rank : False
+     degree-2 aliasing triples       : 0
+     odd null subsets (block Q)      : 0
+     time-reversing twirl Q          : YES  a=111 b=011  verified=True
+     -> kernel half-range sampling is AVAILABLE for free
+
+  ZZ ring N=3            N=3  M=3   rank(V)=2   2N=6
+     dependencies forced by M > rank : True
+     degree-2 aliasing triples       : 1   e.g. ZZI + IZZ = ZIZ
+     odd null subsets (block Q)      : 1
+     time-reversing twirl Q          : NO
+     -> kernel needs the cross-Pauli readout; no cheap fix
+
+  TFIM-like N=3          N=3  M=5   rank(V)=5   2N=6
+     dependencies forced by M > rank : False
+     degree-2 aliasing triples       : 0
+     odd null subsets (block Q)      : 0
+     time-reversing twirl Q          : YES  a=010 b=111  verified=True
+     -> kernel half-range sampling is AVAILABLE for free
+
+================================================================================================
+READING IT
+================================================================================================
+  THE RULE. If any ODD-size subset of terms has symplectic vectors summing
+  to zero, then the flip parity over that subset is fixed at even for every
+  twirl - so all-minus is unreachable, no Q reverses time, and the same null
+  combination confounds a degree-2 product with a degree-1 effect.
+
+  crosstalk fails on both counts at every N, and for one reason:
+     v(ZZ) + v(XX) + v(YY) = 0   on every bond
+  The XX/YY/ZZ triple is the whole story - it caps the weak ZZ coefficients
+  (v106) and blocks the free kernel fix (v115) simultaneously.
+
+  USE IT AS A PRE-FLIGHT. Before building a twirl-multiplexed estimator for
+  a new term set:
+     odd_nulls empty  -> decode is clean at degree 2 AND time reversal is
+                         free, so the band-limited kernel drops straight in
+     odd_nulls found  -> expect a weak-coefficient ceiling, and budget for
+                         the cross-Pauli restructure rather than a patch
+
+  This session lost two builds to questions answered here in milliseconds.
+
+  Scope: alias search is over PAIRS and odd nulls up to size 4. Larger even
+  dependencies exist whenever M > rank and are not enumerated - they affect
+  higher-degree confounding, not the two obstructions above.

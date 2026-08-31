@@ -1,0 +1,40 @@
+====================================================================================================
+v104  HEAD TO HEAD:  twirl design vs the iterative path, one statistic, matched shots
+====================================================================================================
+  N=3 crosstalk, M=9 terms, c_true seed 7.
+  3 seeds per arm. Reported three ways because the original comparison
+  mixed a mean against a worst case.
+
+   method            circuits   shots/circ   total shots   max|dc|   mean rel   max rel
+   ----------------------------------------------------------------------------------------------
+   twirl design         24        65536      1.57e+06    0.0140    0.0682    0.2645
+   twirl design         24       524288      1.26e+07    0.0066    0.0183    0.0603
+   qlto_hl.fit() e30     30         8192      2.46e+05    0.3378    1.1022    4.5533
+   qlto_hl.fit() e160    160         8192      1.31e+06    0.3017    1.0130    5.1808
+   qlto_hl.fit() e320    320         8192      2.62e+06    0.3618    0.9880    3.6408
+
+   notes:
+     twirl design     direct, no initial guess
+     twirl design     direct, no initial guess
+     qlto_hl.fit() e30 iterative, WARM START +-0.4
+     qlto_hl.fit() e160 iterative, WARM START +-0.4
+     qlto_hl.fit() e320 iterative, WARM START +-0.4
+
+====================================================================================================
+READING IT
+====================================================================================================
+  MATCHED-SHOT ROW is the honest one: twirl at 65536 shots/circuit spends
+  1.57e+06 total shots against fit()'s 1.31e+06 - within 1.2x.
+
+    circuits        24  vs    160      6.7x fewer
+    mean rel    0.0682  vs 1.0130      14.9x
+    max  rel    0.2645  vs 5.1808      19.6x
+    max |dc|    0.0140  vs 0.3017      21.6x
+
+  AND fit() had a warm start within 0.4 of the answer while twirl had none,
+  so any twirl win here is an understatement and any fit() win is inflated.
+
+  The defensible claim is whatever the max-rel row supports at matched shots,
+  stated with the warm-start asymmetry named. 'Roughly 10x the accuracy at
+  6.7x fewer circuits' is withdrawn: it compared a lucky-draw mean against a
+  worst case, across a 9.6x shot gap, on an easier problem.

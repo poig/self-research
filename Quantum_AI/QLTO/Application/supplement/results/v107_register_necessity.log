@@ -1,0 +1,17 @@
+====================================================================================================
+v107  IS THE REGISTER LOAD-BEARING?  2N ancillas against zero
+====================================================================================================
+  N=3, M=9, T=0.25, 4 probes, matched TOTAL shots = 5.24e+05
+  3 seeds. TIER A both arms.
+
+   arm                       qubits   distinct circuits   shots/circ    mean rel      max rel
+   ------------------------------------------------------------------------------------------------
+   register (superposed)         9             8             65536      0.0748       0.2735
+   frames, K=4   random           3            32             16384      4.6230       16.1517
+   frames, K=8   random           3            64              8192      3.8793       20.3529
+   frames, K=16  random           3           128              4096      1.9967       9.9942
+   frames, K=32  random           3           256              2048      1.1035       4.6453
+   frames, K=12  distinct         3            96              5461      1.1437       3.8375
+   frames, K=16  distinct         3           128              4096      1.7367       6.7256
+   frames, K=24  distinct         3           192              2730      1.3729       6.7604
+   frames, K=32  distinct         3           256              2048      1.0977       4.7835

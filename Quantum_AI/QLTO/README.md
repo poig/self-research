@@ -176,12 +176,11 @@ that SPSA structurally cannot shed.
 
 ## Theory — status
 
-**Posted:** *Information-Theoretic Constraints on Variational Quantum Optimization:
-Efficiency Transitions and the Dynamical Lie Algebra*
-([arXiv:2512.14701](https://arxiv.org/abs/2512.14701), v1–v2 Dec 2025).
-
-**Prepared as v3, retitled:** *Commutator-Governed Energy Exchange in
-Single-Ancilla Coherent Feedback*.
+**Posted:** *Commutator-Governed Energy Exchange in Single-Ancilla Coherent
+Feedback* ([arXiv:2512.14701](https://arxiv.org/abs/2512.14701), quant-ph /
+cs.ET). **v3, 12 Aug 2026** — retitled from *Information-Theoretic Constraints on
+Variational Quantum Optimization: Efficiency Transitions and the Dynamical Lie
+Algebra*, which was v1 (2 Dec 2025) and v2 (20 Dec 2025).
 
 **Versions 1–2 proposed a constitutive relation ΔE ≤ η·I(S:A) linking work
 extraction to system–ancilla mutual information, and an efficiency transition
@@ -201,9 +200,11 @@ correlations the reachable work is a closed-form interval symmetric about zero.
 That symmetry is the protocol's defect — an unfiltered conditional kick heats as
 readily as it cools.
 
-The corrected manuscript (`research_paper/paper/paper1`) is prepared as v3 and not
-yet posted. Numerics and their logs are in `theory_test/`, mapped claim-by-claim
-in [`theory_test/README.md`](theory_test/README.md).
+v3 is the corrected manuscript and is the version now on arXiv; the withdrawal is
+stated there rather than left to this README. The PDF under `paper/` still carries
+the superseded v1–v2 title. Numerics and their logs are in `theory_test/`, mapped
+claim-by-claim in [`theory_test/README.md`](theory_test/README.md) — all of it
+exact statevector simulation at N ≤ 7, with no sampling noise and no hardware run.
 
 **The algebraic core is machine-checked.** `theory_test/QuantumFeedback/` is a
 Lean 4 + Mathlib development covering the identity, its vanishing under

@@ -1,0 +1,65 @@
+====================================================================================================
+v122  THE QML STACK ON CIRCUITS:  data register + design register + shots
+====================================================================================================
+  N_sys=3, M=12, |D|=4 on 2 register qubits. Readout is one Pauli, so G=1.
+  labels y = [ 1 -1 -1 -1]
+
+====================================================================================================
+PART 0  DOES THE TRACE-OUT IDENTITY HOLD FOR A *NON-UNIFORM* REGISTER?
+====================================================================================================
+  v74 verified <O x I> = mean_x f_x for a UNIFORM register. The weighted
+  scheme needs sum_x p_x f_x for arbitrary p, which nothing has checked.
+  TIER B: exact amplitudes, structural identity.
+
+   per-sample f_x = [-0.89315 -0.47296 -0.47002  0.1381 ]
+
+      weights p                      <O x I> circuit    sum_x p_x f_x     err
+   ------------------------------------------------------------------------------------
+   uniform    [0.25 0.25 0.25 0.25]   -0.42450585      -0.42450585    1.1e-16
+   skewed     [0.6  0.25 0.1  0.05]   -0.69422484      -0.69422484    1.1e-16
+   2-point    [0.7 0.  0.  0.3]   -0.58377176      -0.58377176    4.4e-16
+   random     [0.065 0.313 0.126 0.496]   -0.19686453      -0.19686453    1.9e-16
+
+   PASS - identity holds for arbitrary p
+
+====================================================================================================
+PART 1  THE FULL STACK WITH SHOTS
+====================================================================================================
+  Three circuits per epoch, independent of |D| and M:
+    1  register measured -> all f_x -> all weights
+    2  positive-weight branch, V6 gradient (G=1)
+    3  negative-weight branch, V6 gradient (G=1)
+  TIER A: AerSimulator, 32768 shots per circuit.
+
+   epoch      MSE      cos(stack, true)   cos(uniform, true)   circuits
+  ------------------------------------------------------------------------------------
+       0   0.93105        +0.9870              +0.0508              3
+       1   0.80469        +0.9504              +0.5808              3
+       2   0.65472        +0.9882              +0.0330              3
+       3   0.52465        +0.9753              +0.2960              3
+       4   0.37767        +0.9789              -0.1331              3
+       5   0.33708        +0.9812              +0.9698              3
+       6   0.39221        +0.9855              -0.9854              3
+       7   0.33553        +0.9678              +0.9768              3
+
+   mean cos over 8 epochs:   stack +0.9768     uniform +0.2236
+
+====================================================================================================
+READING IT
+====================================================================================================
+  PART 0 is the result that matters most, because everything else assumed it.
+
+  PART 1's stack column is the honest test of v121, whose cos=1.0000 was
+  algebra. Here the weights, the branch normalisations and the gradient are
+  ALL shot-estimated, so anything below 1 is the noise v121 could not see.
+
+  Circuits per epoch is 1 + 2*G = 3, independent of |D| AND of M. That is the
+  strongest cost position in this project, because a QML readout is a single
+  Pauli so G=1 structurally - no N^4.24 to fight.
+
+  What it still does NOT buy is shots: circuit 1 splits its budget |D| ways to
+  read every f_x, which is what |D| separate evaluations would cost.
+
+  Scope: |D|=4, N_sys=3, one dataset, one R, 32768 shots, no noise model, no
+  seed averaging. Z+ and Z- use EXACT weights here - shot noise on the weights
+  themselves is the next thing to break and is not tested.

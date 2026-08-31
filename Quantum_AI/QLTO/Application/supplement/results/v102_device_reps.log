@@ -1,0 +1,115 @@
+==================================================================================================
+v102  DEVICE_REPS:  is the reported 3.0% the estimator, or the simulated device?
+==================================================================================================
+  N=3 crosstalk, M=9 terms, T=0.25, shots=65536, n_probes=4 -> 24 circuits/estimate
+  c_true = [ 0.035   0.2794  0.2551  0.019   0.16    0.2747 -0.1979  0.1285  0.1188]
+
+==================================================================================================
+PART 1  WHAT THE SIMULATED DEVICE ACTUALLY IMPLEMENTS
+        TIER B/C REFERENCE - circuit built and read exactly, expm as ground
+        truth, no sampling. Supports no accuracy claim on its own.
+==================================================================================================
+  H_eff = i log(U)/T from the Trotter circuit's own unitary; c_eff is its
+  projection onto the modelled terms. 'leak' is the RMS weight on Paulis
+  OUTSIDE span(terms) - error no choice of c can absorb.
+
+   reps   mean |c_eff-c_true|/|c_true|    max |dc_k|      leak      ||U-U_exact||_2
+   ------------------------------------------------------------------------------------------
+      1           2.040e-03              1.039e-03   1.135e-03     6.897e-04
+      2           5.102e-04              2.591e-04   2.830e-04     1.721e-04
+      4           1.276e-04              6.474e-05   7.071e-05     4.301e-05
+      8           3.189e-05              1.618e-05   1.767e-05     1.075e-05
+     12           1.417e-05              7.193e-06   7.855e-06     4.778e-06
+     24           3.543e-06              1.798e-06   1.964e-06     1.195e-06
+
+==================================================================================================
+PART 2  DOES THE MEASURED ERROR MOVE WITH reps?   TIER A - real circuits, shots
+==================================================================================================
+  Same probes on every row (probe_seed=0), so only the device synthesis and
+  the shot draw differ. 3 seeded simulator runs per row; +- is the sd.
+
+   reps   circuits   mean rel err vs c_true     vs c_eff(reps)     depth
+   ------------------------------------------------------------------------------------------
+      1       24       0.0682 +- 0.0125         0.0682 +- 0.0127         70
+      2       24       0.0673 +- 0.0106         0.0673 +- 0.0106        140
+      4       24       0.0677 +- 0.0086         0.0677 +- 0.0086        280
+      8       24       0.0672 +- 0.0092         0.0672 +- 0.0092        560
+     12       24       0.0672 +- 0.0095         0.0672 +- 0.0095        840
+     24       24       0.0672 +- 0.0095         0.0672 +- 0.0095       1680
+
+==================================================================================================
+READING IT
+==================================================================================================
+  shipped default reps=12 :  0.0672 +- 0.0095  vs c_true
+  cheapest        reps=1  :  0.0682 +- 0.0125
+  most converged  reps=24 :  0.0672 +- 0.0095
+  spread across reps      :  0.0010
+  typical seed-to-seed sd :  0.0100
+
+  FLAT within seed noise. The reported error does NOT come from the device
+  model, so twirl_cal's attribution to first-order truncation in T stands,
+  and the 3.0% headline is the estimator's own. device_reps is then free to
+  lower for simulation speed.
+
+  Scope: one coefficient draw (seed 7), N=3, noiseless, one T. Widening any of
+  those is a separate experiment; this one asks only whether reps is a confound.
+
+==================================================================================================
+PART 3  THE SEED SPREAD, AND WHAT IT DOES TO THE REPORTED OPERATING POINT
+==================================================================================================
+  PART 2 measures 0.067 +- 0.010 at exactly the configuration twirl_cal reports
+  0.0297 for. Reproducing that configuration directly over 4 unseeded trials
+  gives 0.0662 +- 0.0246. The commit discloses 'no seed averaging on the circuit
+  numbers'; this is what that disclosure costs. The estimator divides by
+  <i[P_k,O]>, so terms a probe barely sees amplify shot noise, and the
+  run-to-run spread is a large fraction of the mean.
+
+  The reported table then rests on differences smaller than its own noise:
+  0.0297 at 65536 shots against 0.0331 at 524288 was read as 'no gain,
+  bias-limited'. Re-run with seeds, does that survive?
+
+      T      shots    circuits    mean rel err (3 seeds)      max rel err
+   ----------------------------------------------------------------------------------------
+    0.10      65536       24       0.2158 +- 0.0317            0.7908
+    0.10     524288       24       0.0435 +- 0.0080            0.1651
+
+    0.25      65536       24       0.0672 +- 0.0095            0.2716
+    0.25     524288       24       0.0194 +- 0.0015            0.0693
+
+    0.50      65536       24       0.0739 +- 0.0150            0.2050
+    0.50     524288       24       0.0479 +- 0.0048            0.0866
+
+    1.00      65536       24       0.1963 +- 0.0108            0.3084
+    1.00     524288       24       0.1974 +- 0.0019            0.3066
+
+==================================================================================================
+READING PART 3
+==================================================================================================
+  (a) THE OPERATING POINT. Best T is 0.25 at 65536 shots and 0.25 at 524288 shots.
+      At 65536 shots T=0.25 and T=0.50 differ by 0.0067 against sd 0.0150 - INSIDE
+      the noise, so the low-shot row does not order them at all. The
+      operating point is only resolvable at the higher shot count.
+
+  (b) BIAS-LIMITED, OR SHOT-LIMITED? twirl_cal reads 0.0297 -> 0.0331 across
+      8x shots as 'no gain - bias-limited'. Per T, the seed-averaged ratio:
+
+        T      65536 shots      524288 shots     ratio    verdict
+      --------------------------------------------------------------------------
+       0.10     0.2158        0.0435        4.96x   shot-limited
+       0.25     0.0672        0.0194        3.46x   shot-limited
+       0.50     0.0739        0.0479        1.54x   bias-limited
+       1.00     0.1963        0.1974        0.99x   bias-limited
+
+      At the operating point T=0.25 the error falls 3.5x for 8x shots.
+      THE 'BIAS-LIMITED' READING IS REFUTED THERE. It is shot-limited, and
+      the original conclusion came from comparing two single draws whose
+      difference (0.0034) is an eighth of the seed spread (~0.025). The
+      diagnosis IS right at large T, where truncation dominates - which is
+      why it looked plausible.
+
+  (c) THE HEADLINE. 3.0% was a favourable single draw from a distribution
+      centred near 6.6% at that shot count. Restated as a seed mean it is
+      6.7% at 65536 shots and 1.9% at 524288 - and the second number is
+      BETTER than the figure originally claimed, reached honestly. The
+      comparison against QLTO fit()'s ~30% in 160 circuits survives either
+      way, which is why restating costs nothing.

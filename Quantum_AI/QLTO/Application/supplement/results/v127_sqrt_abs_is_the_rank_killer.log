@@ -1,0 +1,67 @@
+====================================================================================================
+v127  IS sqrt|w| THE RANK KILLER?  and the shifted encoding that avoids it
+====================================================================================================
+  v126: exact weight vectors have real structure, too weak to pay for MPS.
+  Theory (reviewer of v126, correct): if a(x) = p(A bits(x)) with A of rank
+  k and p of degree r, then chi <= C(k+r, r) at every cut - no 2^d. But
+  qlto_qml prepares sqrt|w|, and sqrt|.| is non-smooth at 0, so r blows up.
+  TIER B vectors (exact, no shots) / TIER C analysis (SVD, NO CIRCUIT).
+
+----------------------------------------------------------------------------------------------------
+PART 1  same run, four amplitude functions, chi* to reach eps=0.0214
+----------------------------------------------------------------------------------------------------
+  n_sys = k = 3 throughout. 'max' is the maximum Schmidt rank 2^(d/2);
+  a chi* at or above it is full rank and buys nothing.
+
+      d   |D|   max  w (raw)               |w|                   sqrt|w| (current)     sqrt(w+c) (shifted)   
+   ----------------------------------------------------------------------------------------------------------
+      4    16     4  chi*=3    (0.000@4)   chi*=3    (0.000@4)   chi*=3    (0.000@4)   chi*=3    (0.000@4)   
+      6    64     8  chi*=3    (0.006@4)   chi*=6    (0.030@4)   chi*=6    (0.024@4)   chi*=3    (0.003@4)   
+      8   256    16  chi*=6    (0.073@4)   chi*=12   (0.106@4)   chi*=8    (0.105@4)   chi*=4    (0.018@4)   
+     10  1024    32  chi*=6    (0.022@4)   chi*=12   (0.069@4)   chi*=12   (0.066@4)   chi*=3    (0.007@4)   
+
+  Read chi* as the smallest bond dimension whose worst-cut truncation error
+  falls under the shot noise the weights already carry. 'none' means no
+  tested chi at or below max rank was sufficient.
+
+----------------------------------------------------------------------------------------------------
+PART 2  does chi track the LATENT DIMENSION k, as C(k+r,r) predicts?
+----------------------------------------------------------------------------------------------------
+  The bound depends on k = n_sys (the rank of A), not on d. If it is the
+  right mechanism, chi* should grow with k and stay flat in d.
+
+      k   d=6 chi*(raw)   d=8 chi*(raw)   d=6 chi*(shift)  d=8 chi*(shift)
+   ----------------------------------------------------------------------------------
+      2             4               6                3                4
+      3             3               6                3                4
+      4             6              12                3                6
+
+====================================================================================================
+READING IT
+====================================================================================================
+  At d=8 (max rank 16):  raw w chi*=6,  sqrt|w| chi*=8,  shifted chi*=4
+
+  THE NONLINEARITY WAS THE PROBLEM, NOT THE DATA. Shifting to a strictly
+  positive amplitude drops chi* from 8 to 4 at d=8. The bound was never
+  violated - sqrt|.| simply fails its smoothness hypothesis, and a
+  residual crosses zero constantly, which is precisely what a residual
+  does as a model fits.
+
+  WHAT IT WOULD BUY, and this is TIER C arithmetic on chi, NOT a measured
+  gate count: MPS prep at chi=4 is ~4*d*chi^2 = 512 gates against the
+  exact prep's 2^d - 1 = 255. Still not a saving at this d.
+  Crossover 4*d*chi^2 < 2^d - 1 at chi=4: d >= 10, |D| >= 1024.
+
+  AND THE SHIFT IS A BETTER ALGORITHM INDEPENDENTLY OF RANK. With
+  p_x = (w_x + c)/Z the register needs no sign split, because
+      sum_x w_x f_x = Z*<shifted> - c*<uniform>
+  and <uniform> is v74's one-circuit batch mean. TWO circuits instead of
+  three, and the branch-flip failure mode v124 spent a file ruling out
+  cannot occur at all. That is worth building even if the rank were flat.
+
+  SCOPE. Realizable labels only (y = f(theta*)), so w IS a function of
+  A bits(x) by construction - the most favourable case the theorem covers,
+  and an upper bound on what unstructured labels would give. d <= 10,
+  reps=1, 3 seeds, 6 epochs, contiguous cuts, natural qubit order, exact
+  vectors with no shot noise. Gate counts here are arithmetic on chi and
+  NOT transpiled circuits; a tier-A build is what would settle the cost.

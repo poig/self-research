@@ -1,0 +1,14 @@
+Cost of ONE potential step e^{-iE(w)dt}, n=8 qubits
+
+  width   Pauli-rotation route      ancilla-arithmetic route
+          gates   (body-order)      gates   depth   ancillas
+  --------------------------------------------------------------------
+    0.5     255       (k<=8)         1045     897       8
+    1.0     254       (k<=7)         1045     897       8
+    2.0     246       (k<=6)         1045     897       8
+    4.0     218       (k<=5)         1045     897       8
+    8.0     162       (k<=4)         1045     897       8
+
+The Pauli route grows as the barrier thins (2^n in the limit).
+The arithmetic route does NOT depend on the shape of E at all - it is the
+same circuit with different rotation angles.

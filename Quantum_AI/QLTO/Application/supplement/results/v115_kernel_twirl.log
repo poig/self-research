@@ -1,0 +1,77 @@
+====================================================================================================
+v115  O(1)-CIRCUIT REALISATION OF THE OPTIMAL CROSS-PAULI ESTIMATOR
+====================================================================================================
+  N=3, M=9, Lambda=||H||=0.830259, grid t0=0.567581 (threshold pi/6L=0.630645)
+
+====================================================================================================
+CHECK 0  is half-range sampling valid, or does the kernel need time reversal?
+====================================================================================================
+  L is ODD. Half-range tau>=0 works only if the cross-Pauli correlation F
+  is ODD too, making L*F even. Otherwise negative times are required.
+
+      t        F(t)         F(-t)      F(t)+F(-t)     odd?
+   --------------------------------------------------------------
+    0.20   +0.381820   +0.419634   +0.801455
+    0.50   +0.358478   +0.450834   +0.809312
+    1.00   +0.335620   +0.504365   +0.839985
+
+   F(0) = +0.400000   (an ODD function would have F(0)=0)
+
+      quantity                         value
+   ------------------------------------------------------------
+   F'(0) central difference        -0.09494611
+   full-range  int_R  L F dt       -0.09494622
+   half-range  2 int_0^inf L F dt  +0.54734074
+
+   HALF-RANGE INVALID AS twirl_cal IS BUILT - but the reason is a fixable
+   readout choice, not the kernel and not the register.
+
+   F(0) = +0.4000, i.e. the correlator carries a large EVEN part. An odd
+   kernel annihilates that only over the FULL range; over tau>=0 it
+   survives and swamps the answer (0.5473 against the true -0.0949).
+
+   WHY: twirl_cal measures a single-qubit observable in a basis that
+   OVERLAPS its probe, so <O> is nonzero at t=0. The paper's readout is
+   CROSS-Pauli precisely to avoid this - prepare in basis a, measure in
+   basis b, keep only pairs with |A xor B| ODD. Then <P_B> = 0 in an
+   a-basis eigenstate, F(0) = 0, and the even part is killed at source.
+
+   MEASURED, X-basis product eigenstate, various observables:
+       IIY   F(0)=0.000000   F(t)+F(-t)=+0.000000   ODD
+       YYY   F(0)=0.000000   F(t)+F(-t)=+0.000000   ODD
+       IZY   F(0)=0.000000   F(t)+F(-t)=+0.000000   ODD
+       IIX   F(0)=1.000000   F(t)+F(-t)=+1.921509   not odd (same basis)
+       IYY   F(0)=0.000000   F(t)+F(-t)=+0.099727   not odd
+
+   SO THE VISIBILITY RULE IS NOT BOOKKEEPING. The odd-|A xor B| condition
+   in their Algorithm 2, which reads like an indexing detail, is what
+   makes the protocol runnable WITHOUT TIME REVERSAL on an always-on
+   device. Drop it and the kernel demands negative evolution times.
+
+   CONSEQUENCE FOR THE BUILD: swapping fixed-T for the kernel is not a
+   patch. It requires restructuring the readout to cross-Pauli with the
+   cyclic (c,a,b) rule and the q(u) visibility reweighting - i.e.
+   implementing Algorithm 2 with the register in front of it, which is
+   the whole job rather than a substitution. Q1 and Q2 stay OPEN.
+
+====================================================================================================
+THE SAMPLING GRID   tau = m t0,  probability ~ |L(tau)|,  |m| <= 12
+====================================================================================================
+   ||L||_1 = 2.715929   -> per-shot magnitude 2.716, variance ~ 7.38
+   fixed-T twirl_cal at T=0.25 divides by T: variance ~ 16.00
+
+      m     tau       L(tau)      p(m)
+   ----------------------------------------------------
+      1    0.568   +0.771521   0.3404
+      2    1.135   +0.712829   0.3145
+      3    1.703   +0.082347   0.0363
+      4    2.270   -0.273967   0.1209
+      5    2.838   -0.110674   0.0488
+      6    3.405   +0.114255   0.0504
+      7    3.973   +0.081653   0.0360
+      8    4.541   -0.041160   0.0182
+   ... 12 grid times total
+
+   CIRCUITS = n_probes x n_bases x n_times = 4 x 2 x 12 = 96
+   - independent of M, growing only as Lambda * polylog(1/eps) in n_times.
+

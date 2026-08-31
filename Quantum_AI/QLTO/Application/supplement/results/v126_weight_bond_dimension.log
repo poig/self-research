@@ -1,0 +1,128 @@
+====================================================================================================
+v126  BOND DIMENSION OF THE WEIGHT VECTOR:  can the prep be truncated?
+====================================================================================================
+  v125: the weighted prep is Theta(|D|) by parameter counting, for an
+  ARBITRARY distribution. An MPS at bond dimension chi preps in O(d*chi^2).
+  So: are real weight vectors low-rank? Vectors are TIER A (circuits,
+  32768 shots, real descent); the SVD of them is TIER C, NO CIRCUIT.
+
+----------------------------------------------------------------------------------------------------
+CONTROLS  what the two extremes look like, per size
+----------------------------------------------------------------------------------------------------
+  Worst-case truncation error over all cuts. max rank = 2^(d/2) at the
+  middle cut, so a chi at or near that is FULL rank and means nothing.
+
+      d   |D|   max rank   vector             chi=1  chi=2  chi=3  chi=4  chi=6  chi=8
+   --------------------------------------------------------------------------------------------
+      4    16        4   uniform            0.000  0.000  0.000  0.000  0.000  0.000
+      4    16        4   random Dirichlet   0.332  0.223  0.012  0.000  0.000  0.000
+
+      6    64        8   uniform            0.000  0.000  0.000  0.000  0.000  0.000
+      6    64        8   random Dirichlet   0.380  0.294  0.231  0.155  0.057  0.000
+
+      8   256       16   uniform            0.000  0.000  0.000  0.000  0.000  0.000
+      8   256       16   random Dirichlet   0.448  0.399  0.350  0.304  0.231  0.160
+
+----------------------------------------------------------------------------------------------------
+REAL WEIGHT VECTORS, harvested from descent   vectors TIER A / SVD TIER C
+----------------------------------------------------------------------------------------------------
+  Stepped with the ESTIMATED gradient - three circuits per epoch - so the
+  trajectory is the realistic one and d=8 is affordable.
+
+   UNREALIZABLE
+      d   |D|  max rank   n    chi=1  chi=2  chi=3  chi=4  chi=6  chi=8    chi* (err<0.0214)
+      --------------------------------------------------------------------------------------------
+        4    16        4   60   0.513  0.229  0.044  0.000  0.000  0.000        4
+        6    64        8   60   0.631  0.479  0.354  0.242  0.091  0.000        8
+        8   256       16   60   0.669  0.593  0.527  0.468  0.356  0.247        none
+
+   REALIZABLE
+      d   |D|  max rank   n    chi=1  chi=2  chi=3  chi=4  chi=6  chi=8    chi* (err<0.0214)
+      --------------------------------------------------------------------------------------------
+        4    16        4   56   0.212  0.033  0.005  0.000  0.000  0.000        3
+        6    64        8   60   0.324  0.159  0.096  0.054  0.014  0.000        6
+        8   256       16   60   0.492  0.388  0.323  0.272  0.185  0.115        none
+
+----------------------------------------------------------------------------------------------------
+CONFOUND CHECK  am I measuring the signal's rank or the SHOT NOISE's?
+----------------------------------------------------------------------------------------------------
+  Shot noise is full rank by construction. The budget splits |D| ways, so
+  per-sample noise rms is ~sqrt(|D|/S): 0.0442 at d=6 and 0.0884 at d=8 - the
+  same order as the truncation errors above. If the EXACT weight vector is
+  low rank and the MEASURED one is not, the finding is 'noise destroys the
+  structure', not 'there is none', and more shots would recover it.
+
+      arm            d   source     chi=1  chi=2  chi=3  chi=4  chi=6  chi=8
+   ----------------------------------------------------------------------------------------
+   UNREALIZABLE     4   EXACT      0.506  0.227  0.048  0.000  0.000  0.000
+                    4   measured   0.513  0.229  0.044  0.000  0.000  0.000
+   UNREALIZABLE     6   EXACT      0.627  0.473  0.347  0.236  0.086  0.000
+                    6   measured   0.631  0.479  0.354  0.242  0.091  0.000
+   UNREALIZABLE     8   EXACT      0.670  0.593  0.526  0.466  0.355  0.246
+                    8   measured   0.669  0.593  0.527  0.468  0.356  0.247
+   REALIZABLE       4   EXACT      0.201  0.021  0.002  0.000  0.000  0.000
+                    4   measured   0.212  0.033  0.005  0.000  0.000  0.000
+   REALIZABLE       6   EXACT      0.271  0.097  0.041  0.017  0.002  0.000
+                    6   measured   0.324  0.159  0.096  0.054  0.014  0.000
+   REALIZABLE       8   EXACT      0.358  0.199  0.131  0.093  0.050  0.017
+                    8   measured   0.492  0.388  0.323  0.272  0.185  0.115
+
+====================================================================================================
+READING IT
+====================================================================================================
+  THE THRESHOLD. v123 measured the shot noise already in w as rms 0.0075 at
+  |D|=4 rising to 0.0214 at |D|=16. A truncation error under 0.0214 is
+  invisible to the estimator - smaller than the error the weights carry.
+
+  AND THE ONLY chi THAT COUNTS IS ONE WELL BELOW MAX RANK. At d=4 the
+  middle cut has max rank 4, so chi=3 there is three-quarters of full and
+  says nothing. An earlier run of this file stopped at d=4 and read chi=3,
+  err 0.0066 as 'a sufficient chi exists' - that was reading full rank as
+  structure. d=6 and d=8 have max rank 8 and 16, where a small chi is
+  genuinely a claim.
+
+      arm            d   max rank   chi*   chi*/max rank   verdict
+   ----------------------------------------------------------------------------
+   UNREALIZABLE     4        4       4      1.00        near full
+   UNREALIZABLE     6        8       8      1.00        near full
+   UNREALIZABLE     8       16    none        n/a        full rank
+   REALIZABLE       4        4       3      0.75        near full
+   REALIZABLE       6        8       6      0.75        near full
+   REALIZABLE       8       16    none        n/a        full rank
+
+  NO LOW BOND DIMENSION AT d>=6 IN THE MEASURED VECTORS. Every arm needs
+  a chi at or near the maximum rank of its cut.
+
+  AND THE CONFOUND CHECK DECIDES WHAT THAT MEANS. Realizable arm at d=8,
+  exact vs measured, largest gap 0.192:
+      chi=4:  exact 0.093   measured 0.272
+      chi=8:  exact 0.017   measured 0.115
+
+  THE EXACT VECTOR IS LOW RANK AND THE MEASURED ONE IS NOT. So the
+  structure is real and SHOT NOISE IS DESTROYING IT - noise is full rank
+  and at d=8 it is ~0.088 per sample, larger than the signal's own tail.
+  THE INTERNAL CONTROL CONFIRMS THE MECHANISM. The gap appears only where
+  there is structure to destroy: the UNREALIZABLE arm at d=8 is exact
+  0.246 vs measured 0.247 at chi=8 - no gap at all, because those vectors
+  are genuinely full rank and noise cannot lower a rank that is already
+  maximal. Realizable shows 0.017 vs 0.115 over the same cells.
+
+  BUT THE MECHANISM CHANGES, AND THE CONCLUSION DOES NOT. Finish the
+  arithmetic: the sufficient chi on the EXACT vector at d=8 is 8, which
+  is half of max rank 16, and an MPS prep at chi=8 costs ~4*d*chi^2 =
+  2048 gates against the exact prep's 2^d - 1 = 255. It is 8.0x WORSE.
+  4*d*chi^2 < 2^d - 1 at chi=8 needs d >= 12, i.e. |D| >= 4096, where the
+  budget gives well under one shot per sample.
+
+  SO: the structure is REAL, WEAK, and BURIED - and even ungoverned by
+  noise it would not pay for itself at any size the register can reach.
+  v125's cap stands. What this file changes is the reason: not 'the
+  weights are generic' but 'the structure is too weak to buy the prep,
+  and shot noise removes what there is'. Those imply different next
+  moves, which is why the distinction is worth the extra arm.
+
+  SCOPE. d in (4, 6, 8), N_sys=3, efficient_su2 reps=1, 32768 shots, 3 seeds,
+  10 epochs, CONTIGUOUS cuts only, estimate-driven descent, no noise model,
+  no hardware. Contiguous cuts under the natural qubit order is the MPS
+  question specifically; a permuted order or a tree tensor network could
+  find structure this misses, and neither is tested.

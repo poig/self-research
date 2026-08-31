@@ -1,0 +1,29 @@
+Liu-Su-Li's Eq. 120 corridor landscape, on a circuit: walk vs SGD.
+Exact sweep at d=3 (numpy); ONE circuit at d=2 to verify the
+circuit reproduces it. Building a 12-qubit DiagonalGate 16 times
+per configuration was the bottleneck - 4096 multiplexed rotations
+each - and none of it is needed to get the physics.
+
+PART 1  d=2, 32 points/axis, 1024 vertices.  TIER C - dense spectra.
+  seed      h      loc        t*  P(W+) qu    SGD .2    SGD .5
+     0   0.30    1.000     177.8    0.0000    0.8600    0.9933
+     0   0.45    1.000      39.5    0.0000    0.8600    0.9933
+     1   0.30    1.000      11.1    0.0000    0.8867    1.0000
+     1   0.45    1.000       4.9    0.0000    0.8867    1.0000
+     2   0.30    1.000      11.1    0.0000    0.8900    1.0000
+     2   0.45    1.000       9.9    0.0001    0.8900    1.0000
+     3   0.30    1.000       5.6    0.0000    0.8633    0.9967
+     3   0.45    1.000      19.8    0.0000    0.8633    0.9967
+     4   0.30    1.000      88.9    0.0000    0.8400    1.0000
+     4   0.45    1.000       9.9    0.0000    0.8400    1.0000
+     5   0.30    1.000      22.2    0.0000    0.8800    1.0000
+     5   0.45    1.000       2.5    0.0000    0.8800    1.0000
+
+PART 2  d=2, 8 qubits.  TIER A - circuit with shots, against the
+        same expm on the same landscape.
+  |W-|=12 |W+|=13 corridor=4 of 256,  t=39.5, 6 Trotter steps
+  P(W+): exact 0.0000   circuit 0.0198   SGD 0.9967   depth 4655
+
+  The walk is ONE circuit from Phi_-; SGD gets 4000 moves and 300
+  restarts. A gap here confirms the MECHANISM; the separation
+  itself is a large-d statement and is out of simulation reach.

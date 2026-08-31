@@ -1,0 +1,80 @@
+====================================================================================================
+v117  SUBGROUP REGISTER:  d qubits instead of 2N
+====================================================================================================
+  A d-qubit register twirls over a SUBGROUP Q(B^T r). It separates the M
+  terms iff B is injective on their symplectic vectors. Characters of a
+  subgroup stay orthogonal, so the decode stays unbiased - which is why this
+  is not forbidden by v107's failed random fractions.
+  TIER C: structural, no circuit built.
+
+    family            N    M    2N    log2M    d found   ctrl gates   qubits saved
+   --------------------------------------------------------------------------------------------
+   crosstalk N=3        3     9     6       4         4           5           2
+   crosstalk N=4        4    13     8       4         4          13           4
+   crosstalk N=5        5    17    10       5         5          13           5
+   crosstalk N=6        6    21    12       5         5          18           7
+   crosstalk N=7        7    25    14       5         6          29           8
+   crosstalk N=8        8    29    16       5         6          54          10
+
+====================================================================================================
+SCALING OF THE SAVING
+====================================================================================================
+     N     current 2N     subgroup d     ratio      ctrl gates: 2N -> sum|row|
+   ------------------------------------------------------------------------------------
+     3          6             4        1.50x            6 ->   5
+     4          8             4        2.00x            8 ->  13
+     5         10             5        2.00x           10 ->  13
+     6         12             5        2.40x           12 ->  18
+     7         14             6        2.33x           14 ->  29
+     8         16             6        2.67x           16 ->  54
+
+   d ~ N^0.471   (2N is N^1.0; log2 M ~ log N would be N^0)
+
+====================================================================================================
+WHAT THE REDUCTION DOES NOT FIX
+====================================================================================================
+  crosstalk N=4, full 2N=8 register vs subgroup d=4 register:
+     degree-2 alias triples, full register     : 9
+     degree-2 alias triples, subgroup register : 33
+
+  WORSE, NOT IDENTICAL - and this refutes what the docstring of this file
+  originally asserted. v_j + v_k = v_m does imply B v_j + B v_k = B v_m, so
+  every existing alias survives. But B is injective only on the M points, not
+  on all of F_2^{2N}, so it CREATES coincidences that were not there: fewer
+  register bits, fewer sign patterns, more collisions among degree-2 products.
+  The one-directional implication was mistaken for a biconditional.
+
+====================================================================================================
+READING IT
+====================================================================================================
+  THE QUBIT SAVING IS REAL. d sits at or one above the information bound
+  ceil(log2 M), so the register is logarithmic in M where it was linear in N.
+  The fitted d ~ N^0.47 above OVERSTATES the growth: the bound is 4,4,5,5,5,5
+  and the search returned 4,4,5,5,6,6, missing the optimum at N=7,8. That is a
+  search budget artefact, not scaling - more trials would flatten it.
+
+  BUT IT IS BOUGHT TWICE OVER, and both costs land on axes that already hurt:
+
+     controlled gates   2N -> sum|row|    16 -> 54 at N=8   (3.4x worse)
+     alias triples       9 -> 33          at N=4            (3.7x worse)
+
+  Gates matter because depth is where this construction is already weakest.
+  Aliasing matters more, because it is ALREADY the accuracy ceiling on the
+  weak coefficients (v106), and the reduction lowers that ceiling further.
+
+  NET: a qubit saving paid for in the currency that was already scarce. The
+  2N-ancilla objection was the strongest argument against this construction,
+  but answering it by compressing the register makes the estimator worse at
+  the thing it is already worst at. That is not obviously a good trade and
+  this file does not claim it is one.
+
+  A CHEAPER VARIANT WORTH TRYING: d strictly between log2 M and 2N. The
+  extremes are 2N qubits / 9 aliases and log2 M qubits / 33 aliases; nothing
+  here measures the middle, and the alias count should interpolate. If it
+  falls off fast, a modest reduction may cost almost nothing.
+
+  NOT ANSWERED HERE, and it is the tier-A question: does a d-qubit register
+  reproduce the 2N-qubit accuracy at matched shots on real circuits? The
+  orthogonality argument says the DECODE stays unbiased, and that argument
+  is sound - but it says nothing about the alias inflation just measured,
+  which is exactly the failure mode it does not model.

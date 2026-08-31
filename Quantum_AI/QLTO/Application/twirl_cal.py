@@ -25,7 +25,7 @@ independent. So the design matrix has rank M for any set of distinct Paulis, at
 any size. See supplement/v101 for the check to M=45.
 
 WHY AN OBSERVABLE AND NOT A HADAMARD TEST. The return probability |<psi|U|psi>|^2
-has NO first-order term in sigma - the linear part is purely imaginary and
+carries no degree-1 signal at order T - the linear part is purely imaginary and
 squares away - so recovering it needs a Hadamard test, which needs a CONTROLLED
 device evolution. An always-on chip Hamiltonian does not offer one. Measuring an
 observable after the twirl does:
@@ -34,6 +34,37 @@ observable after the twirl does:
     degree-1 Walsh coefficient in sigma_k  ->  T c_k <i[P_k,O]>
 
 so the device evolution stays uncontrolled and free.
+
+  CORRECTED, supplement/v106. An earlier version of the paragraph above said the
+  return probability has "NO first-order term in sigma" full stop. That is wrong:
+  its degree-1 Walsh coefficient is nonzero and scales as T^2 (fitted slope 1.986,
+  against the observable's 1.088), so it is suppressed, not absent. The conclusion
+  is unchanged - T^2 against T is the wrong direction, since small T is where the
+  bias is small - but the reason is.
+
+QPE CANNOT BE SUBSTITUTED EITHER, and for a stronger reason than cost. The twirl
+acts by CONJUGATION, so H_sigma = Q H Q^dag is ISOSPECTRAL to H at every sigma:
+measured worst spectral deviation 1.4e-15 over all 64 register values, and a phase
+readout's degree-1 coefficient is 2.1e-16 - machine zero, no signal at any T or
+depth. V5's QPE path worked because its register changed the STATE, so energies
+moved and a phase carried them; this register changes the Hamiltonian by
+conjugation, so eigenvectors rotate and eigenvalues do not. Only a fixed-basis
+expectation value sees it. supplement/v106.
+
+THE DESIGN IS CONFOUNDED AT DEGREE 2, and unlike QLTO's register this cannot be
+fixed by adding rows. sigma_j sigma_k is itself a Walsh character - the one indexed
+by v_j + v_k - so whenever that sum equals some v_m already in the term set, a
+degree-2 effect is indistinguishable from term m's degree-1 effect. For crosstalk
+v_XX + v_YY = v_ZZ on every bond, and 12 such triples exist at N=3. The general
+statement is worse: M distinct symplectic vectors live in GF(2)^2N, so M > 2N
+FORCES dependencies, and here M = 4N-3. v101's full-rank theorem is correct and
+does not cover this - it proves the M degree-1 columns independent, which says
+nothing about a degree-2 product landing on one of them. Consequences: the T^2
+bias below is aliasing rather than truncation, Richardson still removes it (it
+cancels any T^2 term whatever its origin) but not for the stated reason, and the
+columns ARE the Paulis so there is no _design_spec-style lever. Untested cures:
+drop one term per triple and infer it, or choose probes nulling the aliased
+contribution. supplement/v106.
 
 ONE COMPILED CIRCUIT. The register is measured, so the superposition is doing
 the same job as sampling twirls at random - the gain is that it is ONE circuit
@@ -45,12 +76,38 @@ and does not grow with M, against parameter-shift's 2M distinct circuits.
     register width   2N qubits
     Clifford gates   4N controlled Paulis
     device evolutions 1 per circuit
-    circuits         n_probes * n_observables, INDEPENDENT of M
+    circuits         2 * n_probes, independent of N AND of M   (grouped=True)
+                     2N * n_probes                             (grouped=False)
+
+The first row is the claim; the second is what this file did until v105 measured
+it at exactly 8N for N=3..8. See estimate() for why two bases suffice.
 
 SCOPE. First order in T, so there is a linearity window; supplement/v101
-measures 0.13% relative error at T=0.1 on N=4 crosstalk and 3.2% by T=0.5.
+measures 0.13% relative error at T=0.1 on N=4 crosstalk and 3.2% by T=0.5 - both
+on EXACT AMPLITUDES, no circuit and no shot noise (tier C under project rule R1).
 Probe choice is load-bearing: a probe with <[P_k,O]> = 0 cannot see term k, and
 |+..+> misses 10 of 13 crosstalk terms. Use several random product probes.
+
+THE CIRCUIT NUMBERS, SEED-AVERAGED (supplement/v102). The 3.0% once quoted for
+T=0.25 at 65536 shots was a single unseeded draw; the seed mean at that
+configuration is 6.7% +- 1.0%, and 1.9% +- 0.15% at 524288 shots. The reading that
+8x shots bought nothing and the estimator was "bias-limited" there is REFUTED -
+the error falls 3.46x, so T=0.25 is shot-limited. That diagnosis does hold at
+T >= 0.5 where truncation dominates, which is why it looked right.
+
+device_reps IS A SIMULATION ARTEFACT, not a protocol parameter - on hardware the
+evolution is the chip's own and exact. v102 measured the simulated device's
+Trotter error at 1.4e-05 relative at reps=12, far below the estimator's own, with
+accuracy flat across reps 1..24. But v103 measured reps=12 costing 3.4x under
+depolarising noise at p2=1e-3 while reps=1 does not, so prefer 1 in any noisy run.
+
+UNDER NOISE (supplement/v103) the failure mode is the recoverable one: across p2
+from 0 to 1e-2 the cosine to c_true moves 0.0045 while the best global scale falls
+0.983 -> 0.630. Noise contracts the estimate, it does not rotate it, and at
+p2=1e-3 the shape error is statistically identical to noiseless. NOT shown: that
+the scale is recoverable without ground truth, which needs its own protocol. NOT
+tested: T1/T2 idle decay during the device evolution, the omission most likely to
+flatter all of the above.
 """
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
@@ -154,18 +211,74 @@ class TwirlCalibrator:
         return acc / max(tot, 1)
 
     # ---- the estimator ---------------------------------------------------
-    def estimate(self, c_true, n_probes=4, observables=None, probe_seed=0):
+    def _walsh_basis(self, c_true, probe_angles, basis_letter):
+        """ONE circuit; every single-qubit observable in that basis decoded from it.
+
+        This is what makes the circuit count constant. _walsh builds its basis as
+        `obs_pauli[n-1-q] if in XYZ else 'Z'`, so the N single-qubit Z observables
+        all produce the SAME circuit and differ only in which qubit's parity the
+        decode reads. Running them separately spent N circuits to obtain N numbers
+        that one set of counts already contains. Here the basis is fixed first and
+        every observable diagonal in it is read off the same bitstrings.
+
+        It also improves accuracy at matched total shots, for the same reason the
+        design register does: every shot now contributes to N observables'
+        marginals instead of one. Measured in supplement/v105 - N=4, 2.10e6 total
+        shots either way, mean rel err 0.1238 ungrouped against 0.0814 grouped.
+        """
+        n = self.N
+        qc = self._circuit(c_true, probe_angles, [basis_letter] * n)
+        tqc = transpile(qc, self.backend, optimization_level=1)
+        counts = self.backend.run(tqc, shots=self.shots).result().get_counts()
+        self.ncircuits += 1
+
+        acc = np.zeros((n, self.M))
+        tot = 0
+        for bitstr, cnt in counts.items():
+            parts = bitstr.split()
+            if len(parts) != 2:
+                continue
+            sysb, regb = parts[0][::-1], parts[1][::-1]
+            a = np.array([int(regb[i]) for i in range(n)])
+            b = np.array([int(regb[n + i]) for i in range(n)])
+            sig = (-1.0) ** ((self._z @ a + self._x @ b) % 2)
+            for q in range(n):
+                acc[q] += sig * (-1.0 if sysb[q] == '1' else 1.0) * cnt
+            tot += cnt
+
+        out = {}
+        for q in range(n):
+            s = ['I'] * n
+            s[n - 1 - q] = basis_letter
+            out[''.join(s)] = acc[q] / max(tot, 1)
+        return out
+
+    def estimate(self, c_true, n_probes=4, observables=None, probe_seed=0,
+                 grouped=True):
         """Direct estimate of every coefficient. No optimisation loop.
 
         c_true is the DEVICE - it is used only to build the evolution gate that
         the hardware would supply for free, never read by the estimator.
+
+        GROUPED=TRUE IS THE DEFAULT AND COSTS 2*n_probes CIRCUITS, flat in N and
+        in M. The ungrouped path costs 2*N*n_probes - measured at exactly 8N in
+        supplement/v104 (24, 32, 40, 48, 56, 64 at N=3..8), which is why the
+        original 'O(1) circuits' claim did not hold as written. It is kept
+        reachable with grouped=False as the comparison arm, not as a fallback.
+
+        TWO BASES SUFFICE FOR ANY PAULI HAMILTONIAN. In basis b the measurable
+        observables are the Paulis matching b on a subset, and P_k has a nonzero
+        commutator with one of them iff P_k disagrees with b somewhere it is not
+        identity. A term invisible to all-Z lies in {I,Z}^N; invisible to all-X
+        lies in {I,X}^N; the intersection is the identity alone. Coverage is
+        therefore complete at two bases at any N - verified M/M for N=3..8 in
+        supplement/v105. What stays family-dependent is n_probes, since
+        [P_k,O] != 0 is an operator condition while <i[P_k,O]> != 0 is a
+        statement about the probe. v105 measures coverage complete even at one
+        probe but the CONDITIONING poor (N=6, one probe: mean rel err 2.58);
+        it plateaus by 3-4.
         """
         N, M = self.N, self.M
-        if observables is None:
-            observables = [''.join('Z' if q == i else 'I' for q in range(N))
-                           for i in range(N)]
-            observables += [''.join('X' if q == i else 'I' for q in range(N))
-                            for i in range(N)]
         pr = np.random.default_rng(probe_seed)
         probes = []
         for _ in range(n_probes):
@@ -174,17 +287,36 @@ class TwirlCalibrator:
 
         num = np.zeros(M)
         den = np.zeros(M)
-        for ang in probes:
-            psi = self._probe_state(ang)
-            for ob in observables:
-                resp = self._response(psi, ob)      # <i[P_k,O]>, classical
-                g = self._walsh(c_true, ang, ob)
-                w = resp ** 2
-                est = np.where(np.abs(resp) > 1e-6,
-                               g / (self.T * np.where(np.abs(resp) > 1e-6,
-                                                      resp, 1.0)), 0.0)
-                num += w * est
-                den += w
+
+        def absorb(psi, ob, g):
+            resp = self._response(psi, ob)          # <i[P_k,O]>, classical
+            w = resp ** 2
+            est = np.where(np.abs(resp) > 1e-6,
+                           g / (self.T * np.where(np.abs(resp) > 1e-6,
+                                                  resp, 1.0)), 0.0)
+            return w * est, w
+
+        if grouped and observables is None:
+            for ang in probes:
+                psi = self._probe_state(ang)
+                for letter in ('Z', 'X'):
+                    for ob, g in self._walsh_basis(c_true, ang, letter).items():
+                        dn, dd = absorb(psi, ob, g)
+                        num += dn
+                        den += dd
+        else:
+            if observables is None:
+                observables = [''.join('Z' if q == i else 'I' for q in range(N))
+                               for i in range(N)]
+                observables += [''.join('X' if q == i else 'I' for q in range(N))
+                                for i in range(N)]
+            for ang in probes:
+                psi = self._probe_state(ang)
+                for ob in observables:
+                    dn, dd = absorb(psi, ob, self._walsh(c_true, ang, ob))
+                    num += dn
+                    den += dd
+
         self.coverage = int(np.sum(den > 1e-12))
         return num / np.maximum(den, 1e-30)
 

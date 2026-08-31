@@ -1,0 +1,61 @@
+========================================================================================================
+v109  SHOT EFFICIENCY:  cos and MSE versus TOTAL shot budget
+========================================================================================================
+  Heisenberg N=4, M=16, G=3, |grad E| = 2.9598, 12 repeats.
+  V6 spends G=3 circuits; parameter-shift spends 2MG=96.
+  TIER A. cos is averaged PER REPEAT, not on the mean estimate.
+
+   total shots   method        circuits  shots/circ      cos        MSE
+  ----------------------------------------------------------------------------------------
+         1024   p-shift           96          10    0.85977   3.4616e+00
+         1024   V6 R=0.30          3         341    0.57801   1.7853e+01
+         1024   V6 R=0.45          3         341    0.73055   6.1174e+00
+         1024   V6 R=0.60          3         341    0.73645   5.4046e+00
+
+         4096   p-shift           96          42    0.96423   8.1940e-01
+         4096   V6 R=0.30          3        1365    0.81907   4.0445e+00
+         4096   V6 R=0.45          3        1365    0.89023   1.9139e+00
+         4096   V6 R=0.60          3        1365    0.90697   1.6087e+00
+
+        16384   p-shift           96         170    0.98880   2.2308e-01
+        16384   V6 R=0.30          3        5461    0.93544   1.1437e+00
+        16384   V6 R=0.45          3        5461    0.96827   6.0773e-01
+        16384   V6 R=0.60          3        5461    0.97270   7.0596e-01
+
+        65536   p-shift           96         682    0.99759   4.6041e-02
+        65536   V6 R=0.30          3       21845    0.98165   3.4381e-01
+        65536   V6 R=0.45          3       21845    0.99182   3.0028e-01
+        65536   V6 R=0.60          3       21845    0.98851   6.2400e-01
+
+       262144   p-shift           96        2730    0.99934   1.2001e-02
+       262144   V6 R=0.30          3       87381    0.99485   1.2152e-01
+       262144   V6 R=0.45          3       87381    0.99689   2.1422e-01
+       262144   V6 R=0.60          3       87381    0.99383   5.4428e-01
+
+========================================================================================================
+READING IT
+========================================================================================================
+   total shots     p-shift cos     V6 best cos (R)      V6 circuits / PS circuits
+  ----------------------------------------------------------------------------------------
+         1024      0.85977         0.73645 (R=0.60)          3 / 96
+         4096      0.96423         0.90697 (R=0.60)          3 / 96
+        16384      0.98880         0.97270 (R=0.60)          3 / 96
+        65536      0.99759         0.99182 (R=0.45)          3 / 96
+       262144      0.99934         0.99689 (R=0.45)          3 / 96
+
+  THE QUESTION THE CAVEAT ANSWERS BADLY. 'At matched total shots the
+  advantage is circuits, not shots' is a statement about ONE budget. Read
+  the column instead: find the smallest budget at which V6 reaches the cos
+  that parameter-shift needs its full budget to reach. The ratio of those
+  two budgets is the shot-side advantage, and it is either there or it is
+  not - one matched point cannot tell you.
+
+  V6 is bias-limited well before it is shot-limited (v108: bias^2 3x
+  variance at 43690 shots/circuit), so its cos should FLATTEN with budget
+  while parameter-shift's keeps climbing. Where it flattens is the shot
+  count V6 actually needs; everything above that is spent for nothing.
+
+  Scope: one problem, one theta, one N, %d repeats, R swept over %s and the
+  best reported - so V6 is given its best radius at every budget while
+  parameter-shift has no equivalent knob. That favours V6 and is stated.
+  R swept over: [0.3, 0.45, 0.6]

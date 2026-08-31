@@ -1,0 +1,20 @@
+Where does a variational landscape's Fourier energy actually SIT by weight?
+TIER B - exact 3^M grid FFT, no shots.
+
+  Heisenberg  N=2 reps=1  M= 8   support weights 3..8, peak at 5
+      w3:0.213  w4:0.107  w5:0.480  w6:0.133  w7:0.053  w8:0.013
+  Heisenberg  N=2 reps=2  M=12   support weights 5..12, peak at 7
+      w5:0.161  w6:0.214  w7:0.335  w8:0.161  w9:0.097  w10:0.025  w11:0.007  w12:0.001
+  Heisenberg  N=3 reps=1  M=12   support weights 3..10, peak at 6
+      w3:0.148  w4:0.223  w5:0.223  w6:0.334  w7:0.028  w8:0.032  w9:0.009  w10:0.002
+  TFIM        N=2 reps=1  M= 8   support weights 3..6, peak at 3
+      w3:0.482  w4:0.337  w5:0.120  w6:0.060
+  TFIM        N=2 reps=2  M=12   support weights 4..10, peak at 5
+      w4:0.051  w5:0.384  w6:0.230  w7:0.237  w8:0.070  w9:0.024  w10:0.004
+  TFIM        N=3 reps=1  M=12   support weights 3..8, peak at 4
+      w3:0.340  w4:0.544  w6:0.085  w7:0.021  w8:0.011
+
+  VERDICT: weight-1 and weight-2 energy is identically zero and the
+  bulk sits near M/2. A DFT bin at frequency c_j therefore reads a
+  coefficient that does not exist. See the docstring for what that
+  settles about full-period designs and about V6's small-R box.

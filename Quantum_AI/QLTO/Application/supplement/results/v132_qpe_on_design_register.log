@@ -1,0 +1,64 @@
+====================================================================================================
+v132  QPE READOUT ON THE LOG-WIDTH DESIGN REGISTER
+====================================================================================================
+  V6: log M qubits, G circuits.  V5-QPE: 1 circuit, M qubits.
+  Both savings in one circuit has never been built. Building it.
+  TIER A - transpiled circuits on AerSimulator, 32768 shots.
+
+----------------------------------------------------------------------------------------------------
+Heisenberg N=4   N=4, M=16
+----------------------------------------------------------------------------------------------------
+/home/poig/project/self-research/Quantum_AI/QLTO/Application/supplement/v132_qpe_on_design_register.py:170: DeprecationWarning: The class ``qiskit.circuit.library.basis_change.qft.QFT`` is deprecated as of Qiskit 2.1. It will be removed in Qiskit 3.0. ('Use qiskit.circuit.library.QFTGate or qiskit.synthesis.qft.synth_qft_full instead, for access to all previous arguments.',)
+  qc.append(QFT(num_qubits=self.k_anc, inverse=True, do_swaps=True), anc)
+      readout                circuits  qubits   depth    2q gates   cos
+   ------------------------------------------------------------------------------
+      V6 direct (Pauli)           3      13         27       111      --
+      V5 QPE (1 qubit/param)      1      24          -         -      --
+      QPE on design register      1      17        550       295   +0.9758
+
+      Depth/2q for V6 is the WORST group; per-gradient totals are 3x
+      that if the 3 circuits run in series. QPE-on-design: 550 deep,
+      295 two-qubit gates, in ONE circuit.
+
+      V5 count is anc(4) + param(M=16) + sys(N=4) = 24, the full
+      circuit. Design register saves 7 qubits at M=16, and the saving
+      grows as M/log2(M) - that is the whole point of the register.
+
+----------------------------------------------------------------------------------------------------
+Heisenberg N=6   N=6, M=24
+----------------------------------------------------------------------------------------------------
+      readout                circuits  qubits   depth    2q gates   cos
+   ------------------------------------------------------------------------------
+      V6 direct (Pauli)           3      15         45       201      --
+      V5 QPE (1 qubit/param)      1      34          -         -      --
+      QPE on design register      1      19        955       517   +0.9658
+
+      Depth/2q for V6 is the WORST group; per-gradient totals are 3x
+      that if the 3 circuits run in series. QPE-on-design: 955 deep,
+      517 two-qubit gates, in ONE circuit.
+
+      V5 count is anc(4) + param(M=24) + sys(N=6) = 34, the full
+      circuit. Design register saves 15 qubits at M=24, and the saving
+      grows as M/log2(M) - that is the whole point of the register.
+
+====================================================================================================
+READING IT
+====================================================================================================
+  If the cos column is high, both savings hold in ONE circuit: G-independence
+  from the phase readout and log-M width from the design register. The QPE
+  ladder only ever touches `sys` under control of `anc`, so it cannot see
+  what the param register encodes - the structural argument, now built.
+
+  IF IT IS LOW, the phase readout does not survive the design encoding and
+  the reason is the finding. Note v106 found exactly that for twirl_cal, but
+  for a reason that does NOT apply here: there the register acts by
+  CONJUGATION, so H_sigma is isospectral and a phase carries no signal. Here
+  the register changes the STATE, so energies genuinely move.
+
+  WHAT THIS DOES NOT SHOW. The QPE ladder's depth is the (2^k-1)*tau0
+  evolution ladder that killed V5 on hardware (survival 0.098 at Heisenberg
+  N=6). Qubit width and circuit count are what this file measures; DEPTH is
+  the cost that moved, and it is unchanged by the design register.
+
+  SCOPE. Heisenberg N=4,6, efficient_su2 reps=1, 4 ancillas, 32768 shots,
+  3 seeds, R=0.45, no noise model, no hardware.

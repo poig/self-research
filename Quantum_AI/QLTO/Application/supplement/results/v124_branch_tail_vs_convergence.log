@@ -1,0 +1,110 @@
+====================================================================================================
+v124  DOES THE SIGN-BRANCH TAIL GET HEAVIER AS TRAINING CONVERGES?
+====================================================================================================
+  qlto_qml predicts it does and does not measure it. TIER A - every
+  estimate is a circuit on AerSimulator with 32768 shots, through
+  qlto_qml.QLTOQML itself. Exact arms are the reference only.
+
+  |D|=8, N_sys=3, 40 epochs x 3 seeds per arm, stepped with the EXACT
+  gradient so both arms follow comparable trajectories.
+
+----------------------------------------------------------------------------------------------------
+ARM: UNREALIZABLE (random +-1 labels)
+----------------------------------------------------------------------------------------------------
+  MSE range over the run: 1.96953 -> 0.66622 (min 0.66551)
+
+      MSE bin        n     mean cos   min cos   n_flip   flip_mass   min|w|
+   ------------------------------------------------------------------------------------
+   [0.400, 1.000)   115     +0.8063    -0.0752    0.00      0.0000     0.4175
+   [1.000, 10.000)     5     +0.9895    +0.9795    0.00      0.0000     0.5371
+
+----------------------------------------------------------------------------------------------------
+ARM: REALIZABLE   (y = f(theta*))
+----------------------------------------------------------------------------------------------------
+  MSE range over the run: 0.48201 -> 0.01722 (min 0.00053)
+
+      MSE bin        n     mean cos   min cos   n_flip   flip_mass   min|w|
+   ------------------------------------------------------------------------------------
+   [0.001, 0.010)    32     +0.9915    +0.9539    0.09      0.0037     0.0191
+   [0.010, 0.050)    70     +0.9930    +0.9796    0.06      0.0010     0.0361
+   [0.050, 0.150)     8     +0.9891    +0.9750    0.25      0.0025     0.0479
+   [0.150, 0.400)     3     +0.9861    +0.9812    0.00      0.0000     0.0367
+   [0.400, 1.000)     6     +0.9284    +0.8091    0.00      0.0000     0.2435
+
+====================================================================================================
+READING IT
+====================================================================================================
+  REALIZABLE arm, far from the optimum (MSE >= 0.15) vs near it (< 0.01):
+
+                        n     mean cos    min cos    n_flip    flip_mass
+   ----------------------------------------------------------------------------
+   MSE >= 0.15          9      +0.9476     +0.8091     0.00       0.0000
+   MSE <  0.01         33      +0.9916     +0.9539     0.12       0.0087
+
+  FLIPS DO RISE as predicted: 0.00 -> 0.12 samples per epoch out of 8.
+
+  BUT COS DOES NOT DEGRADE (+0.9476 -> +0.9916). THE PREDICTION IS WRONG IN
+  THE WAY THAT MATTERS, and the competing effect is why: flip_mass went
+  0.0000 -> 0.0087. A sample only flips when its residual is small, and a
+  small residual carries little gradient weight, so the split is
+  SELF-PROTECTING - misassignments concentrate on exactly the samples
+  whose misassignment costs least. The tail seen in qlto_qml's min cos
+  column is therefore NOT a convergence effect and must have another
+  cause; large-|w| shot noise is the remaining candidate.
+
+----------------------------------------------------------------------------------------------------
+SO WHAT DOES CAUSE THE TAIL? Binning by |g_true| instead of by MSE.
+----------------------------------------------------------------------------------------------------
+  The control arm settles the mechanism question on its own: it logs ZERO
+  flips at every epoch and still reaches min cos -0.0752. A tail that appears
+  where nothing flips cannot be caused by flipping. The remaining candidate
+  is the ordinary one - cos is a RATIO, so it collapses when the true
+  gradient is small next to a roughly fixed estimator error, regardless of
+  where the loss is. If that is right, |g_true| predicts cos and MSE does
+  not.
+
+     |g_true| bin        n     mean cos    min cos    mean |g_est-g_true|
+   ----------------------------------------------------------------------------
+   [0.0072, 0.1023)    60      +0.7744     -0.0752          0.0360
+   [0.1023, 0.1425)    60      +0.8946     +0.6778          0.0471
+   [0.1425, 0.1900)    60      +0.9565     +0.7372          0.0423
+   [0.1900, 1.0527)    60      +0.9802     +0.8734          0.0817
+
+   correlation of cos with log|g_true| : +0.5612
+   correlation of cos with log MSE     : -0.4554
+   spread of the estimator error itself: 0.0518 +- 0.0371  (n=240)
+
+  |g_true| PREDICTS THE TAIL BETTER THAN MSE DOES, and the mechanism is
+  visible in the error column rather than inferred. Across the quartiles
+  |g_true| spans roughly 20x while the absolute estimator error moves
+  only 0.0360 -> 0.0817 - it is NOT constant, but it grows far slower than
+  the signal does, so the RATIO improves and cos with it. Error over
+  signal by quartile:
+       |g| in [0.0072, 0.1023):  err/|g| = 0.89, cos +0.7744
+       |g| in [0.1023, 0.1425):  err/|g| = 0.39, cos +0.8946
+       |g| in [0.1425, 0.1900):  err/|g| = 0.26, cos +0.9565
+       |g| in [0.1900, 1.0527):  err/|g| = 0.20, cos +0.9802
+
+  So the tail is a SIGNAL-TO-NOISE effect: it appears wherever the true
+  gradient is small, which happens on flat regions and has nothing to do
+  with convergence or with the sign branches. The min cos entries in
+  qlto_qml's PART 1 are flat-region epochs. The honest fix is more shots
+  when |g| is small - not a third branch - and qlto_qml's docstring must
+  be corrected, since it names the branch split as the mechanism.
+
+  CAUTION ON THE CORRELATIONS. log|g| and log MSE are themselves related
+  along a descent, so +0.5612 against -0.4554 is a ranking, not a clean
+  decomposition. The load-bearing evidence is the control arm's ZERO
+  flips at min cos -0.0752, which rules the branch mechanism out outright,
+  and the err/|g| column above, which does not rely on either correlation.
+
+  CONTROL. The unrealizable arm never leaves MSE ~ 0.82, so no sample
+  approaches the sign boundary (mean min|w| = 0.4225) and its flip rate is
+  0.00 per epoch with mean cos +0.8139. That arm is the reason the
+  self-check could not have answered this question.
+
+  SCOPE. |D|=8 only, N_sys=3, efficient_su2 reps=1, 32768 shots, 3 seeds,
+  no noise model, no hardware. Both arms step with the exact gradient, so
+  this measures the ESTIMATOR along a fixed trajectory and says nothing
+  about whether estimator-driven descent stalls near the optimum - that is
+  a different experiment and it is not done here.

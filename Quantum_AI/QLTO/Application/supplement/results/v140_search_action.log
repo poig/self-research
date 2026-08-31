@@ -1,0 +1,36 @@
+How many MOVES does the walk need, against uniform, Grover, and the hypercube?
+TIER A - AerSimulator with shots.
+
+  box 4096 vertices, top-1% set = 41, suggest_h = 0.2340
+  uniform needs 100 moves; Grover's quadratic bound is 10
+
+  mixer             h       t   P(top1%)     moves   depth     cx
+  uniform           -       -     0.0103      97.1       4      0
+  cycle         0.117    36.5     0.0338      29.6    1117   2736
+  cycle         0.117    73.1     0.0191      52.5    1117   2736
+  cycle         0.117   146.2     0.0179      56.0    1117   2736
+  cycle         0.117   292.3     0.0118      85.1    1117   2736
+  cycle         0.234     9.1     0.0287      34.8    1117   2736
+  cycle         0.234    18.3     0.0568      17.6    1117   2736
+  cycle         0.234    36.5     0.1810       5.5    1117   2736
+  cycle         0.234    73.1     0.0391      25.5    1117   2736
+  cycle         0.468     2.3     0.0215      46.5    1117   2736
+  cycle         0.468     4.6     0.0383      26.1    1117   2736
+  cycle         0.468     9.1     0.0492      20.3    1117   2736
+  cycle         0.468    18.3     0.3210       3.1    1117   2736
+  hypercube     0.117    36.5     0.0432      23.1     518   1584
+  hypercube     0.117    73.1     0.0231      43.4     518   1584
+  hypercube     0.117   146.2     0.0199      50.3     518   1584
+  hypercube     0.117   292.3     0.0144      69.4     518   1584
+  hypercube     0.234     9.1     0.1351       7.4     518   1584
+  hypercube     0.234    18.3     0.2869       3.5     518   1584
+  hypercube     0.234    36.5     0.0795      12.6     518   1584
+  hypercube     0.234    73.1     0.1119       8.9     518   1584
+  hypercube     0.468     2.3     0.0290      34.5     518   1584
+  hypercube     0.468     4.6     0.1121       8.9     518   1584
+  hypercube     0.468     9.1     0.1414       7.1     518   1584
+  hypercube     0.468    18.3     0.0596      16.8     518   1584
+
+  moves = 1/P(top 1%). Below 100 beats uniform; below 10 beats
+  Grover's quadratic bound and would mean the walk is exploiting
+  landscape structure rather than just amplitude concentration.

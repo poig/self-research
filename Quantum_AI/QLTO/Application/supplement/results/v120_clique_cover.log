@@ -1,0 +1,49 @@
+====================================================================================================
+v120  MINIMUM CLIQUE COVER:  is Qiskit's grouper leaving G on the table?
+====================================================================================================
+  Grouping = clique cover of the commutation graph = COLOURING the
+  anticommutation graph. MCC is NP-hard (arXiv:1907.03358), so every
+  grouper is a heuristic and its answer is an upper bound.
+  TIER C: structural, no circuits.
+  networkx available: True
+
+====================================================================================================
+QUBIT-WISE COMMUTING
+====================================================================================================
+     N   terms   qiskit   largest_1st  smallest_last   DSATUR   best   vs qiskit
+   ----------------------------------------------------------------------------------------
+      6     171       75           75             74       73      73     -2.7%
+      8     652      259          259            262      250     250     -3.5%
+     10    1825      656          656            657      648     648     -1.2%
+     12    4170     1420         1420           1416     1403    1403     -1.2%
+
+====================================================================================================
+GENERAL COMMUTING
+====================================================================================================
+     N   terms   qiskit   largest_1st  smallest_last   DSATUR   best   vs qiskit
+   ----------------------------------------------------------------------------------------
+      6     171       17           17             22       18      17     +0.0%
+      8     652       54           54             51       43      43    -20.4%
+     10    1825      133          133            118      105     105    -21.1%
+     12    4170      227          227            217      175     175    -22.9%
+
+====================================================================================================
+READING IT
+====================================================================================================
+  IF a standard heuristic beats Qiskit's grouper, the saving is free: it is
+  seconds of classical preprocessing against circuits saved on EVERY gradient
+  for the whole optimisation run. nisq_v6._group would take the best of
+  several rather than whatever `group_commuting` returns.
+
+  IF Qiskit already wins or ties, its grouper is doing as well as the standard
+  greedy family and the remaining gap to the true MCC optimum is not
+  reachable this cheaply - which is itself worth knowing, because it closes
+  the question rather than leaving it as a vague 'maybe better heuristics'.
+
+  EITHER WAY THIS IS NOT A NEW METHOD. The MCC formulation and these
+  heuristics are arXiv:1907.03358's, from 2019. What is measured here is the
+  gap on THIS Hamiltonian family at THESE sizes, which is a sizing result.
+
+  Scope: v30's JW generator, four sizes, coefficients ignored (neither
+  grouping depends on them), greedy heuristics only - no exact MCC, no
+  simulated annealing, no LP relaxation.

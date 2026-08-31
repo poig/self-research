@@ -1,0 +1,68 @@
+====================================================================================================
+v113  TOTAL EVOLUTION TIME TO PRECISION eps
+====================================================================================================
+  N=3 crosstalk, M=9, ||H||_2 = Lambda = 0.8303, 4 probes -> 8 circuits.
+  eps is ABSOLUTE max_k |chat_k - c_k|, matching the theorem's statement.
+  T_total = circuits * shots * T. 3 seeds per point. TIER A.
+
+      T      shots/circ    T_total        eps (abs)
+  ------------------------------------------------------------------
+    0.10         4096   3.2768e+03     0.13903
+    0.10        16384   1.3107e+04     0.08128
+    0.10        65536   5.2429e+04     0.03738
+    0.10       262144   2.0972e+05     0.01349
+
+    0.25         4096   8.1920e+03     0.05907
+    0.25        16384   3.2768e+04     0.04002
+    0.25        65536   1.3107e+05     0.01312
+    0.25       262144   5.2429e+05     0.00746
+
+    0.50         4096   1.6384e+04     0.04117
+    0.50        16384   6.5536e+04     0.03291
+    0.50        65536   2.6214e+05     0.02551
+    0.50       262144   1.0486e+06     0.02396
+
+    1.00         4096   3.2768e+04     0.08806
+    1.00        16384   1.3107e+05     0.09536
+    1.00        65536   5.2429e+05     0.09583
+    1.00       262144   2.0972e+06     0.09487
+
+====================================================================================================
+THE ACHIEVABLE FRONTIER  (best eps at each total evolution time)
+====================================================================================================
+  For each T_total, the lowest eps over all T that reach it - which is what
+  an experimenter free to choose T would get.
+
+     T_total        best eps     at T
+  ----------------------------------------------------
+   3.2768e+03     0.13903      0.10
+   8.1920e+03     0.05907      0.25
+   1.3107e+04     0.08128      0.10
+   1.6384e+04     0.04117      0.50
+   3.2768e+04     0.04002      0.25
+   5.2429e+04     0.03738      0.10
+   6.5536e+04     0.03291      0.50
+   1.3107e+05     0.01312      0.25
+   2.0972e+05     0.01349      0.10
+   2.6214e+05     0.02551      0.50
+   5.2429e+05     0.00746      0.25
+   1.0486e+06     0.02396      0.50
+   2.0972e+06     0.09487      1.00
+
+====================================================================================================
+READING IT
+====================================================================================================
+   fitted   eps ~ T_total^(-0.217)
+
+   SQL / arXiv:2606.19486  Theta(Lambda/eps^2)  ->  slope -0.500
+   Heisenberg-limited      O(1/eps)             ->  slope -1.000
+
+   WORSE THAN SQL. twirl_cal does not reach the control-free optimum on
+   its own axis, so the O(1) circuit count is the only claim it can make.
+
+   Against Huang et al.'s O(1/eps) for KNOWN structure - twirl_cal's actual
+   problem class - anything at SQL is a full factor of 1/eps behind.
+
+  Scope: N=3, M=9, one coefficient draw, noiseless, 3 seeds, 13 points
+  spanning several decades of T_total. A slope fitted over that range is
+  indicative, not a scaling law; the bias floor at large T bends it.

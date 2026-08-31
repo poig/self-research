@@ -1,0 +1,78 @@
+====================================================================================================
+v105  BASIS GROUPING:  the observable count was implementation, not physics
+====================================================================================================
+
+====================================================================================================
+PART 1  CIRCUIT COUNT vs N,  ungrouped against grouped
+====================================================================================================
+  Coverage is checked, not assumed: 'cov' is how many of the M terms have
+  nonzero total response across the probe/observable set.
+
+    N     M    ungrouped circuits    grouped circuits    cov(grouped)
+   ------------------------------------------------------------------------------
+    3     9            24                   8              9/9
+    4    13            32                   8              13/13
+    5    17            40                   8              17/17
+    6    21            48                   8              21/21
+    7    25            56                   8              25/25
+    8    29            64                   8              29/29
+
+====================================================================================================
+PART 2  ACCURACY AT MATCHED TOTAL SHOTS,  N=4
+====================================================================================================
+  Grouped runs N times fewer circuits, so it is given N times the shots per
+  circuit. Total shots identical; only the circuit count differs.
+
+   arm            circuits   shots/circ   total shots   mean rel      max rel
+   ----------------------------------------------------------------------------------------
+   ungrouped         32        65536     2.10e+06    0.1238+-0.0232   0.5122
+   grouped            8       262144     2.10e+06    0.0814+-0.0219   0.4391
+
+====================================================================================================
+READING IT
+====================================================================================================
+  circuits    32 -> 8   (4.0x fewer)
+  total shots 2.10e+06 vs 2.10e+06
+  mean rel    0.1238 vs 0.0814
+
+  SAME ACCURACY AT THE SAME TOTAL SHOTS, in Theta(1) circuits rather than
+  Theta(N). The observable count was never physics: N single-qubit Z
+  observables share one measurement basis, so one circuit's counts already
+  hold all N answers. Circuits are now n_probes * 2, independent of N AND
+  of M, and the correlated shot noise across co-measured observables costs
+  nothing detectable at this size.
+
+  Scope: N<=8, one coefficient draw, noiseless, one T, single-qubit
+  observables only. Whether TWO bases still suffice for a Hamiltonian family
+  outside this ZZ+XY+Z set is a commutation question per family, not a
+  measurement - the argument in the docstring is what generalises.
+
+====================================================================================================
+PART 3  HOW FAR DOWN?  the remaining lever is n_probes, not the basis count
+====================================================================================================
+  Two bases is minimal for this family by the commutation argument above, so
+  the circuit count is now 2 * n_probes and the only question left is how few
+  probes still cover M terms. Probes are needed for COVERAGE - a term with
+  <i[P_k,O]> = 0 on every probe is unrecoverable at any shot count - so this
+  is a floor set by the Hamiltonian, not by statistics.
+
+    N     M   probes   CIRCUITS   cov     mean rel err
+   --------------------------------------------------------------------------
+    4    13      1           2      13/13    0.4012
+    4    13      2           4      13/13    0.3597
+    4    13      3           6      13/13    0.2284
+    4    13      4           8      13/13    0.1278
+
+    6    21      1           2      21/21    2.5844
+    6    21      2           4      21/21    0.1896
+    6    21      3           6      21/21    0.1382
+    6    21      4           8      21/21    0.1361
+
+====================================================================================================
+WHERE THIS LANDS
+====================================================================================================
+  Circuits = 2 * n_probes: independent of N and of M, set only by how many
+  probes the Hamiltonian family needs for coverage. That is O(1) in the sense
+  the commit wanted, and it was reached by grouping the readout rather than
+  by changing the construction. The 8N figure in v104 stands as a measurement
+  of what the code did, not of what the method requires.

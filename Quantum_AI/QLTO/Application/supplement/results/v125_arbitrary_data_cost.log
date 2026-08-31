@@ -1,0 +1,142 @@
+====================================================================================================
+v125  ARBITRARY DATA IN THE REGISTER:  what qlto_qml can hold, and the price
+====================================================================================================
+  qlto_qml's three circuits are flat in |D|. This asks what DATASET fits
+  in the register at all, which is the question that decides application.
+
+----------------------------------------------------------------------------------------------------
+PART 1  what can the linear encoder represent?   NO CIRCUIT (tier C)
+----------------------------------------------------------------------------------------------------
+  ang_j(x) = sum_d alpha[j,d]*bit_d(x) is linear in the register bits, so
+  the reachable angle tables form a d-dimensional subspace of R^(2^d).
+  Least-squares fit of alpha to a random target table, per sample size:
+
+      d   |D|   free params   rel. residual   variance captured
+   --------------------------------------------------------------------
+      2     4         6          0.7719           40.4%
+      3     8         9          0.7387           45.4%
+      4    16        12          0.8593           26.2%
+      5    32        15          0.9362           12.4%
+
+  The linear encoder holds n_sys*d numbers and an arbitrary table needs
+  n_sys*2^d, so the residual grows with d and the register is a
+  STRUCTURED-DATA device as built. It cannot load a general dataset.
+
+----------------------------------------------------------------------------------------------------
+PART 2  does the mux encoder actually load an arbitrary table?   tier B
+----------------------------------------------------------------------------------------------------
+  Exact amplitudes. Compare f_x read out of the register circuit against
+  f_x from directly preparing sample x's angles. Exactness question, so
+  no shots and no cost figure here.
+
+      d   |D|   max |f_reg - f_direct|   verdict
+   ------------------------------------------------------------
+      2     4          2.22e-16            ok
+      3     8          7.22e-16            ok
+      4    16          7.77e-16            ok
+
+   PASS - an arbitrary dataset IS loadable. The rest is what it costs.
+
+----------------------------------------------------------------------------------------------------
+PART 3  the price, on transpiled circuits   tier A
+----------------------------------------------------------------------------------------------------
+  Transpiled to ['rz', 'sx', 'x', 'cx']. 'circuits' is counted from q.ncircuits, not asserted.
+
+      d   |D|    encoder     gates    2q gates   depth   circuits   cos
+   ------------------------------------------------------------------------------------
+      2     4   linear         92         14       42       3      +0.9985
+      2     4   arbitrary      92         14       52       3      +0.9884
+
+      3     8   linear        129         24       55       3      +0.9356
+      3     8   arbitrary     159         30      115       3      +0.8225
+
+      4    16   linear        170         38       73       3      +0.9851
+      4    16   arbitrary     290         62      243       3      +0.9931
+
+      5    32   linear        219         60       99       3      +0.9635
+      5    32   arbitrary     549        126      499       3      +0.9384
+
+----------------------------------------------------------------------------------------------------
+PART 4  WHICH BLOCK IS THE COST?  prep vs encode, counted separately
+----------------------------------------------------------------------------------------------------
+  PART 3's 'linear' column fits a slope of 0.70 in d, which is NOT the
+  n_sys*d the linear encoder should cost. Something else in the circuit is
+  growing with |D|, so the two blocks are counted apart here rather than
+  attributed by argument.
+
+      d   |D|   prep 2q   linear enc 2q   arbitrary enc 2q   prep share
+   ------------------------------------------------------------------------------
+      2     4        2            12                 12         14.3%
+      3     8        6            18                 24         25.0%
+      4    16       14            24                 48         36.8%
+      5    32       30            30                 96         50.0%
+
+  Fitted slope of log2(2q gates) against d:
+      weighted state prep   1.29   -> ~ |D|^1.29
+      linear encoder        0.44   -> ~ |D|^0.44
+
+====================================================================================================
+READING IT
+====================================================================================================
+  CIRCUIT COUNT IS UNCHANGED at three for both encoders at every size -
+  the flat-in-|D| claim in qlto_qml survives arbitrary data intact.
+
+  GATE COUNT DOES NOT. Two-qubit gates, arbitrary over linear:
+
+      |D|     linear 2q    arbitrary 2q    ratio
+   --------------------------------------------------------
+        4          14              14         1.0x
+        8          24              30         1.2x
+       16          38              62         1.6x
+       32          60             126         2.1x
+
+  Fitted slope of log2(WHOLE-CIRCUIT 2q gates) against d = log2|D|:
+      with linear encoder     0.70
+      with arbitrary encoder  1.06
+
+  Both are near or above 1.0, so the FULL circuit is linear in |D| either
+  way - even with the cheap encoder.
+
+  AND THE ENCODER WAS THE WRONG SUSPECT FOR IT. PART 4 counts the blocks
+  apart: the linear encoder scales as |D|^0.44, logarithmic as designed,
+  while THE WEIGHTED STATE PREP scales as |D|^1.29 and reaches 50% of the
+  two-qubit gates by |D|=32, still climbing. Reading PART 3's 0.70 as
+  'the linear encoder is cheap' would have been wrong in a specific way:
+  the encoder IS cheap, and the circuit is not.
+
+  THAT CANNOT BE FIXED BY CHOOSING A BETTER DATASET. qlto_qml's premise is
+  p_x proportional to |w_x| - an ARBITRARY distribution that changes every
+  epoch. Setting 2^d - 1 free amplitudes needs at least 2^d - 1 angles, so
+  the prep is Theta(|D|) by parameter counting, not by any weakness of the
+  Gray-code construction. The weighted register is inherently linear in |D|
+  in GATES however structured the data is. Structure buys the encoder; it
+  does not buy the prep.
+
+  Loading 1024 arbitrary samples extrapolates to ~4881 two-qubit gates by the
+  arbitrary-encoder fit, which no NISQ device runs. That is the QRAM wall;
+  this file locates it rather than moving it.
+
+  ON THE DATASET RESTRICTION ITSELF. PART 1 shows the linear encoder
+  captures only a d-dimensional subspace of a 2^d-dimensional angle table -
+  40%, 45%, 26%, 12% of the variance of a random target at d = 2..5, falling
+  as d grows. So it is a STRUCTURED-DATA device: it fits samples generated
+  by a few underlying factors - parameter sweeps, designed experiments,
+  lattices of settings - and not unstructured data. That restriction is real
+  and is separate from the gate-count question PART 4 takes up.
+
+  SO WHAT IS THE MODULE ACTUALLY FOR, given both findings. Three circuits
+  per epoch against parameter-shift's 2M|D| is a real and large saving in
+  CIRCUIT COUNT - the quantity that carries per-job latency, queue time and
+  compilation overhead on real hardware. It is not a saving in depth, and
+  the Theta(|D|) prep means |D| is bounded by coherence, not by the method.
+  The regime where that trade is favourable is: modest |D| (tens), a system
+  register small enough that the prep fits in coherence, structured samples
+  so the cheap encoder suffices, and a workload where job count rather than
+  circuit depth is the binding constraint. Sweeps and designed experiments
+  sit in that regime. Unstructured large-batch learning does not.
+
+  SCOPE. N_sys=3, |D| <= 32, efficient_su2 reps=1, 32768 shots, one seed per
+  cell, no noise model, no hardware, single-Pauli readout so G=1. The
+  slope fits use four points over one decade and are trends, not laws. No
+  claim here about whether a NOISY device preserves the cos column - that
+  is untested for this module and is the gap that most limits application.
