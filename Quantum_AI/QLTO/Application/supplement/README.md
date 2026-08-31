@@ -1,8 +1,25 @@
 # Supplement: investigation scripts and their logs
 
-Every script here answers one question and writes one log in `results/`. The
-answers are folded into `../nisq_v3.py`'s module docstring, which cites these logs
-by path; this file is the reverse index — log to question to verdict.
+Every script here answers one question and writes one log in `results/`. This file
+is the reverse index — script to question to verdict.
+
+The answers are folded back into the module that owns them, and each cites these
+logs by path:
+
+| block | folded into | narrative |
+|---|---|---|
+| early → `v30` | `../nisq_v3.py` docstring | Part I — `../ARCHIVE_V3_V6.md` |
+| `v31`–`v99` | `../nisq_v6.py` docstring | Part II — `../ARCHIVE_V3_V6.md` |
+| `v100`–`v120` | `../twirl_cal.py`, `../nisq_v6.py` | Part II — `../ARCHIVE_V3_V6.md` |
+| `v121`–`v131` | `../qlto_qml.py` | Parts III–V — `../RESEARCH_NOTES.md` |
+| `v132`–`v134` | `../nisq_v6.py` (`readout='qpe'`) | Parts VI–VII — `../RESEARCH_NOTES.md` |
+| `v135` | `../nisq_v6.py` (`sense`, `_radius`) | Part VIII — `../RESEARCH_NOTES.md` |
+| `v136`-`v141` | `../qlto_walk.py`, `../qlto_prototype.py` | Part IX — `../RESEARCH_NOTES.md` |
+
+Parts I–II are the historical record and several of their verdicts are superseded
+— the archive's header says which. **Read Part V before drawing a cost comparison
+out of any of these logs** — it separates the substrate cost every
+method pays from the invocation count QLTO actually changes.
 
 Each script is standalone: it inserts the parent `Application/` directory on
 `sys.path` and imports `nisq_v3` / `benchmark` from there, so it runs from
@@ -155,3 +172,162 @@ Consequences: treat 2–3σ at six seeds as consistent with zero; `v22`'s MaxCut
 3.0σ is withdrawn as evidence; and **seeding the sampler** would make every
 future A/B in this project roughly an order of magnitude more sensitive — it is
 worth more than any single result in this table.
+
+## v31–v99 — the V5→V6 transition and the design register
+
+**The verdicts for this block are in `../ARCHIVE_V3_V6.md`, not repeated here.**
+Parts I and II carry them in prose, cited by script number — including the
+retired-planning-documents table (`v55` T7 falsified, `v56` failed, `v57/b/c`
+cos −0.41, `v58`/`v59` QNG dead, `v60` Claim 1 false, `v61` resolved), the
+blocking cost law (`v65`), and the design-register line (`v82`, `v90`, `v99`).
+`../nisq_v6.py`'s docstring carries the rest.
+
+This table is the *reverse* index only: script → the question it asked, taken
+verbatim from its own docstring → its log. Use it to find which experiment to
+read; read the notes for what it concluded.
+
+| script | question | log |
+|---|---|---|
+| `v12_deadblock.py` | Are dead blocks the source of V3's MaxCut variance - and does skipping them fix it? | `results/v12_deadblock.log` |
+| `v13_repschedule.py` | Was the Suzuki-2 change over-generalised? Gradient bias per problem. | `results/v13_repschedule.log` |
+| `v31_free_energy_log.py` | Can the energy log be read off the sensing ancilla instead of its own circuit? | — |
+| `v32_log_from_sensing.py` | Track the free degree-0 energy against the true one across a real run. | — |
+| `v33_qpe_mean_bias.py` | Why does the free log have an offset when the exact log does not? | — |
+| `v34_probe_cosine.py` | Which probe statistic drives the R schedule: the magnitude ratio or the cosine? | — |
+| `v35b_coverage_vs_depth.py` | Does the degree-1 marginal lose the landscape as depth grows? Measured directly. | — |
+| `v35c_walk_output_vs_depth.py` | Measure what the WALK delivers with depth, not what the gradient looks like. | — |
+| `v40_axis_only.py` | Put the gradient in the AXIS only, not the angle. Closed form, no simulator. | `results/v40_axis_only.log` |
+| `v44_anneal_time.py` | The walk is an ANNEAL, not a Grover search. So sweep the anneal time. | `results/v44_anneal_time.log` |
+| `v44b_true_anneal_time.py` | A real anneal-time sweep: scale BOTH totals, not one. | `results/v44b_true_anneal_time.log` |
+| `v52_decode_scaling.py` | Where does the Boltzmann decode break while the walk holds? The scaling claim. | `results/v52_decode_scaling.log` |
+| `v57_pulse_control.py` | Supplement Script v57_pulse_control.py: Model-Free Pulse Control via QLTO Primitive (Path B) | `results/v57_pulse_control.log` |
+| `v57b_pulse_trotter.py` | Supplement Script v57b_pulse_trotter.py: Trotterized Pulse Sensing for Non-Commuting Controls | `results/v57b_pulse_trotter.log` |
+| `v57c_pulse_correct_sign.py` | Supplement Script v57c_pulse_correct_sign.py: Model-Free Pulse Control with Correct Sign Derivative | `results/v57c_pulse_correct_sign.log` |
+| `v62_bisect_log_drift.py` | Which commit moved v20's logged row? Bisect nisq_v3 against its own history. | `results/v62_bisect_log_drift.log` |
+| `v63_tau0_range_vs_norm.py` | tau0 = pi/(margin*\|\|H0\|\|) or pi/(margin*range)? V3 and V5 disagree. | `results/v63_tau0_range_vs_norm.log` |
+| `v64_v5_vs_v3_suite.py` | V5 against V3 across the full suite. V5 has had exactly one smoke test. | `results/v64_v5_vs_v3_suite.log` |
+| `v65_blocking_cost_law.py` | The circuit-cost law as IMPLEMENTED, so Path A's theorem can be stated. | `results/v65_blocking_cost_law.log` |
+| `v66_protocol_scatter.py` | How reproducible is a v20-class row at all? The control the drift hunt needed. | `results/v66_protocol_scatter.log` |
+| `v67_spsa_crosstalk.py` | QLTO vs SPSA at the estimator level: is the difference Theta(M), or a constant? | `results/v67_spsa_crosstalk.log` |
+| `v68_direct_cost_ledger.py` | Do the depth and classical-overhead penalties survive the DIRECT readout? | `results/v68_direct_cost_ledger.log` |
+| `v69_radius_schedule_plateau.py` | Is v14's plateau a property of the estimator, or an artefact of fixing R? | `results/v69_radius_schedule_plateau.log` |
+| `v70_curvature_value.py` | Before engineering a way to GET curvature, is curvature worth having? | `results/v70_curvature_value.log` |
+| `v71_block_width_optimum.py` | Where is the cost-optimal block width, measured at matched TOTAL shots? | `results/v71_block_width_optimum.log` |
+| `v72_readout_vs_spsa.py` | Is the READOUT the only quantum content? The half v67 could not see. | `results/v72_readout_vs_spsa.log` |
+| `v73_certificate_incomparable.py` | Are spectral concentration and DLA dimension INCOMPARABLE certificates? | `results/v73_certificate_incomparable.log` |
+| `v74_qml_dataavg.py` | Does the v72 readout margin survive when the objective is a DATA-AVERAGED loss? | `results/v74_qml_dataavg.log` |
+| `v75_variance_law.py` | Where does the 5.66x come from? Derive the two variances and check them. | `results/v75_variance_law.log` |
+| `v76_hadamard_design.py` | Can an orthogonal design replace the random hypercube, and what does it cost? | `results/v76_hadamard_design.log` |
+| `v77_sampled_design_decoder.py` | v76's variance win needs EXACT row balance. A quantum register cannot give it. | `results/v77_sampled_design_decoder.log` |
+| `v78_wls_on_circuits.py` | Does the WLS decoder's synthetic win appear on the ACTUAL sensing circuits? | `results/v78_wls_on_circuits.log` |
+| `v79_design_encoding.py` | The log-qubit design encoding on real circuits, and what it unlocks. | `results/v79_design_encoding.log` |
+| `v80_scratch_parallelism.py` | Does parallelising the parity scratch close the design encoding's depth gap? | `results/v80_scratch_parallelism.log` |
+| `v81_v5_vs_v6.py` | V5 against V6 head to head, and both against parameter-shift. | `results/v81_v5_vs_v6.log` |
+| `v82_covariance_scaling.py` | Does V6 amortise gradient information across M, or hide an M-penalty in Cov? | `results/v82_covariance_scaling.log` |
+| `v83_radius_penalty.py` | Does V6's amortisation survive the radius it has to pay for it? | `results/v83_radius_penalty.log` |
+| `v84_richardson.py` | Does Richardson move V6 off the T^(-1/3) exponent, and what does it cost? | `results/v84_richardson.log` |
+| `v85_full_comparison.py` | V6 against every gradient method here, across the Richardson crossover. | `results/v85_full_comparison.log` |
+| `v86_vs_bowles.py` | V6 against Bowles, counted from both implementations rather than from abstracts. | `results/v86_vs_bowles.log` |
+| `v87_cost_ledger.py` | NEFV is ONE of three costs, and the paper has only ever quoted that one. | `results/v87_cost_ledger.log` |
+| `v88_hamlearn_v6.py` | Hamiltonian learning on V6's LOG register - the task where G=1 by construction. | `results/v88_hamlearn_v6.log` |
+| `v89_barren_plateau.py` | Barren plateaus and R-smoothing, after one wrong derivation and one bad sweep. | `results/v89_barren_plateau.log` |
+| `v90_design_rows.py` | v88's aliasing, and whether extra design rows buy the fidelity back. | `results/v90_design_rows.log` |
+| `v91_qnspsa_tuning.py` | Sweep QN-SPSA's lr the way TUNED was derived for everything else. | `results/v91_qnspsa_tuning.log` |
+| `v91b_qnspsa_extend.py` | Extend the QN-SPSA sweep below lr=0.03, because the optimum hit the boundary. | — |
+| `v92_optimal_radius.py` | Is the radius a fitted constant or a computed one? | `results/v92_optimal_radius.log` |
+| `v93_v6_bifurcation.py` | Does V6's own iteration period-double, and if so where? | `results/v93_v6_bifurcation.log` |
+| `v94_landscape_bifurcation.py` | Is bifurcation order a property of the STEP SIZE, or of the LANDSCAPE? | `results/v94_landscape_bifurcation.log` |
+| `v95_transition_route.py` | Which route to chaos, and is the transition window smaller than v93's grid? | `results/v95_transition_route.log` |
+| `v96_windows_and_lowgain.py` | Are v93's chaotic bands real, and is the cascade hiding below gain 0.10? | `results/v96_windows_and_lowgain.log` |
+| `v97_resolution_ab.py` | Paired A/B: does resolution V survive more than one seed? | `results/v97_resolution_ab.log` |
+| `v98_width_reduction.py` | Can V6 be made NARROWER for free? Two levers, both untested in the benchmark. | `results/v98_width_reduction.log` |
+| `v99_walk_advantage.py` | Does the PROVEN quantum-walk advantage apply to this optimiser? | `results/v99_walk_advantage.log` |
+
+## v100–v120 — the V6 / calibration line
+
+Folded into `../twirl_cal.py`, `../nisq_v6.py` and **Part II** of
+`../ARCHIVE_V3_V6.md`.
+
+| script | question | verdict |
+|---|---|---|
+| `v100_crosstalk_calibration.py` | Can QLTO learn a ZZ+XY crosstalk Hamiltonian? | **Yes**, once four things are fixed — the fixes are the result |
+| `v101_twirl_design.py` | Does the twirl-design construction remove the model, and the Trotter wall with it? | **Yes.** 0.13% at T=0.1 — but **`NO CIRCUIT`**, and `twirl_cal` measured 3.0% at T=0.25 on a real circuit. See R1 |
+| `v102_device_reps.py` | How many synthesis reps does the device evolution need? | **The `Operator(qc)` trap**: it returns `PauliEvolutionGate`'s exact matrix (1.147e-16 at every reps), bypassing synthesis. Needs `qc.decompose(reps=6)` |
+| `v103_twirl_under_noise.py` | Does the twirl design survive a noise model? | Survives; degradation quantified per noise strength |
+| `v104_head_to_head.py` | Against the proven-optimal stage-2 protocol? | Competitive on its own axis; the axis is the finding |
+| `v105_basis_grouping.py` | Can all single-qubit observables be decoded from one basis? | **Yes** — one circuit per basis, all observables from the same counts |
+| `v106_qpe_is_blind.py` | Can a phase readout replace the observable? | **No, and structurally.** Twirling is *conjugation*, so `H_σ` is **isospectral** at every σ (worst deviation 1.4e-15); the degree-1 phase coefficient is **2.1e-16** — machine zero at any T or depth |
+| `v107_register_necessity.py` | Is the design register necessary, or would random rows do? | Necessary |
+| `v108_variance_on_circuits.py` | Variance, measured on circuits rather than modelled | The `StatevectorEstimator` model was blind to it |
+| `v109_shot_efficiency.py` | What does the circuit saving cost in shots? | **~4× more shots for ~32× fewer circuits.** The headline trade, measured |
+| `v110_large_M_shot_gap.py` | Does the shot gap widen with M? | Yes — the trade worsens as M grows |
+| `v111_radius_exponent.py` | Should the smoothing radius scale with M? | Sweep table shipped as the `radius_exponent=0.5` knob in `nisq_v6.py` |
+| `v112_convergence_per_shot.py` | Convergence per shot, not per circuit | The unfavourable axis, run deliberately |
+| `v113_evolution_time_scaling.py` | How does error scale with evolution time T? | Sets the operating point |
+| `v114_kernel_build.py` | Build the band-limited derivative kernel | **A sign error caught by the second check** — `ψ = +iωχ` passes Check 1 to 1e-8 and returns *minus* the derivative |
+| `v115_kernel_twirl.py` | Does the kernel compose with the twirl design? | Composes; cost is the issue |
+| `v116_symplectic_preflight.py` | Can obstructions be predicted before building? | **Yes — one GF(2) check.** Odd-size null subsets `Σ_{k∈S} v_k = 0` block time-reversal twirls **and** cause degree-2 aliasing |
+| `v117_subgroup_register.py` | Does compressing to a subgroup preserve the aliasing structure? | **No** — 9 → 33 triples. `v_j+v_k=v_m ⟹ Bv_j+Bv_k=Bv_m` is one-directional; B is injective only on the M points |
+| `v118_tunneling_on_circuits.py` | Is the tunneling advantage real on circuits? | **Real.** Classical success collapses 1.00 → 0.00 over height 2 → 20 while quantum transmission stays flat. But measured barrier width on `efficient_su2` is 0.96–0.99 of the path — **wide**, so it does not engage there |
+| `v118b_oracle_cost.py` | Are thin barriers expensive to construct? | **No.** The arithmetic oracle is **flat at 1045 gates regardless of width**; only the *Pauli decomposition* grows as 2^n. The earlier "thin barriers are exponentially expensive" measured the wrong cost |
+| `v119_general_commuting.py` | Does general-commuting grouping widen V6's advantage? | **No — `G` cancels.** `C_PS/C_V6 = 2MG/G = 2M`. Grouping lowers the substrate for both arms equally |
+| `v120_clique_cover.py` | How far can minimum clique cover cut the term count? | Cuts terms substantially; does not change the ratio, for the same reason as `v119` |
+
+## v121–v131 — the QML data axis (`qlto_qml.py`)
+
+Folded into `../qlto_qml.py` and **Parts III–V** of `../RESEARCH_NOTES.md`.
+
+## v132–v134 — QPE on the design register, and the walk taken apart
+
+| script | question | verdict |
+|---|---|---|
+| `v132_qpe_on_design_register.py` | Do the log-width register and QPE's G-independence hold in ONE circuit? | **Yes.** 1 circuit, 19 qubits, cos +0.9658 vs V6 direct at N=6 — against V5's 34 qubits. Depth 955 is what pays for it. Shipped as `readout='qpe'` |
+| `v133_qlto_on_qcnn_and_discocat.py` | Does the design register work on QCNN (weight sharing) and DisCoCat (post-selection)? | **Yes**, cos +0.9944 / +0.9936, G=1, one circuit. Tests the GRADIENT axis only — no data enters either circuit |
+| `v134_feature_width_vs_plateau.py` | Do landscape features narrow as the barren-plateau regime is entered? | **INCONCLUSIVE** — the local-cost arm never entered the regime (variance fell only 5× from N=4 to N=10), so it cannot speak to the question. Superseded by Part VI, which settles the walk question algebraically instead |
+
+## v135 — the radius as a second measurement axis
+
+| script | question | verdict |
+|---|---|---|
+| `v135_support_and_degree_axis.py` | Is the landscape's Fourier support exactly `{−1,0,1}^M`, and does the RADIUS grade the design register by Walsh degree? | **Yes to both, tier B.** Second harmonic at `5.6e-16` and no ansatz ties a parameter, so the grid support holds. `α_j(R)/sin R` is a polynomial in `cos R` whose value at `cos R = 1` is the exact gradient — recovered to `1e-15` from a FULLY MULTIPLEXED `2⁶` factorial. Residuals fall `3.8e-2 → 4.1e-3 → 9.8e-5` at 2/3/4 radii, so `D_eff` costs, not `D`. Fractional designs and shot noise untested |
+
+| script | question | verdict |
+|---|---|---|
+| `v121_weighted_data_register.py` | Is a *weighted* register the right estimand for MSE? | **Yes**, and the file states its own tautology: the algebra verifies itself. What is new is the uniform column — v74's surrogate does not merely sit low, it **swings in sign** (+0.94, +0.34, +0.82, −0.98, −0.96) |
+| `v122_qml_stack_shots.py` | Full stack with *exact* weights | **cos 0.9768 in 3 circuits/epoch.** `cry` gates trip V6's decompose loop — use manual `ry/cx/ry/cx` |
+| `v123_qml_weights_from_shots.py` | Weights estimated end-to-end from one circuit | **cos 0.9773 at \|D\|=4** — shot-estimating the weights cost nothing detectable. `w rms` tracks `√(\|D\|/S)`; `w max` runs 1.5–2.1× higher (extreme-value, not a scaling break) |
+| `v124_branch_tail_vs_convergence.py` | Does the sign-branch tail worsen as training converges? | **No, and the mechanism is not the branch.** The control arm logs **zero flips** across 120 epochs and still hits min cos −0.0752. The tail is **signal-to-noise**: err/\|g\| by quartile 0.89, 0.39, 0.26, 0.20 against cos +0.77, +0.89, +0.96, +0.98 |
+| `v125_arbitrary_data_cost.py` | What dataset fits in the register, and at what price? | **Circuit count stays at 3; gate count does not.** The **state prep** is the Θ(\|D\|) block (\|D\|^1.29), not the encoder (\|D\|^0.44). The linear encoder captures only 40/45/26/12% of a random angle table at d=2..5 |
+| `v126_weight_bond_dimension.py` | Can the prep be truncated to an MPS? | **Structure is real but shot noise destroys it** — exact χ=8 truncates to 0.017, measured to 0.115; the *unrealizable* control shows no gap (0.246 vs 0.247), confirming the mechanism. Still useless: χ=8 costs **8× more** than exact prep |
+| `v127_sqrt_abs_is_the_rank_killer.py` | Is `√\|w\|` the rank killer rather than the data? | **Yes.** Shifted `√(w+c)` gives χ\* **flat in d — 3, 3, 4, 3** at d=4,6,8,10 while `√\|w\|` grows 3, 6, 8, 12. The k-dependence the bound predicts appears (χ\*=4,4,6 for k=2,3,4) |
+| `v128_shifted_estimator_variance.py` | Does the shifted estimator survive shot noise? | **No — all 18 cells lose.** κ climbs 15.2 → 32.3 at d=8 in lockstep with the cos loss, and best γ is **1.05 at every size**: the sweep is pinned against its own floor, so there is no interior optimum |
+| `v129_spsa_is_the_real_baseline.py` | Against SPSA — 2 circuits, flat in M and \|D\| | **INCOMPLETE** (d=3 only; d=4 aborted). d=3: best MSE qlto 0.00262 vs SPSA 0.00362, final 0.0104 vs 0.0048. Mixed, and the printed verdict uses the superseded end-MSE criterion |
+| `v130_cost_model_crossover.py` | When does the circuit saving pay? | **Break-even ≈ 796 shot-equivalents per circuit.** Holds by orders of magnitude behind a cloud queue; inverts on a local accelerator. Matched on *cos*, which `v131` supersedes |
+| `v131_shots_to_target_loss.py` | Shots to a target **loss**, not to a target cosine | **INCOMPLETE** — QLTO arm only (256 shots 0/3, then 3/3 at 60.0, 32.7, 27.7 circuits); the parameter-shift arm never ran, so there is no comparison |
+
+### Two traps in this block worth reusing
+
+**Endianness, five instances.** `twirl_cal` had two (observable support indexed by
+string position; a reversed `_probe_state` kron). `v122` had one (`lbl[0]` vs
+`lbl[n_sys-1]`). `v123` had one (the prep tree rotating `dq[lvl]` instead of
+`dq[d-1-lvl]`). `v130` had one (system qubit 0 is *circuit* qubit `d`, so the
+string index is `-(d+1)`). **None is visible in a dense-matrix formulation** —
+this is what R1 exists to catch.
+
+**A guard that pays for itself.** `v123`'s PART 0 checks `max|amp² − p|` against
+the requested distribution before anything downstream runs, and caught both the
+endianness bug (0.30/0.55/0.11 at d=2,3,4) and the Möttönen transpose (symmetric
+at k=1, so d=2 passed at 2.8e-17 while d=3,4 failed at 4.3e-3 and 1.1e-1). Put
+the cheap exactness check first.
+
+
+## v136-v141 — the walk built as a circuit, and the first prototype
+
+| script | question | verdict |
+|---|---|---|
+| `v136_circulant_walk.py` | Does a circulant mixer, as a CIRCUIT, break the separability that makes the hypercube walk classical — and does it tunnel? | **The registers obey different laws.** Cycle: `ΔE = e^{−S₀/h}`, slope **−0.998** against Liu–Su–Li Eq. 7. Hypercube: `ΔE = e^{−n·S̃}`, `ln ΔE` linear in the PARAMETER COUNT to **r = −0.99994** — because `n·I − 2J_x` is not a Laplacian and the register is a large-spin system. Circuit verified vs `expm` at 1.4e-14; only a CHIRAL row can discriminate the DFT convention. Circulant mixers entangle with a degree-1 drift alone, against Part VII's tier-C table |
+| `v137_fourier_weight_spectrum.py` | Where does a variational landscape's Fourier energy sit by weight? | **Weight-1 and weight-2 energy is identically ZERO in all six configurations**, minimum weight ≥3, bulk at ~M/2. Kills the full-period DFT design (bin `c_j` reads `A_{e_j}`, which does not exist — measured `cos = −0.0666`) and establishes that V6's small-R box is the MECHANISM, not a defect: `D_eff` is large and the design works despite it |
+| `v138_three_level_design.py` | What does a 3-level design buy over ±1, and is it exact? | **The diagonal Hessian appears** (rel 0.0083 at R=0.15; q=2 returns NaN by construction since `σ²−⟨σ²⟩ ≡ 0`), and `p0` becomes a tunable attenuation knob — measured bias tracks `0.37(1−α³)` to 5% across p0 = 0…0.9, **9.8× less bias at p0=0.9**. Not exact: `α = p₀+2p₁cos R` still attenuates. **q ≥ 4 buys nothing** — three functions span the per-coordinate space |
+| `v139_walk_step_vs_controls.py` | Does the coherent walk step beat the alternatives, including brute force? | **90.2% of the brute-force descent**, beating Newton 6/6, gradient 5/6, random 6/6 — but **losing to brute force 5/6**. At `d·κ = 12` the box has 4096 vertices and exhaustive search is trivial, so this measures plumbing, not advantage. The `∞`-norm clip matters: a 2-norm cap hands the walk a `√d`-larger step and it wins 6/6 spuriously |
+| `v140_search_action.py` | How many MOVES to reach a top-1% vertex? | **3.1 against uniform's 97.1 — 31×** (control lands at 97.1 vs a predicted 100). Sharply RESONANT in `t`, which is Liu–Su–Li's `t = π/ΔE` appearing directly. The hypercube is nearly as good here (3.5) at half the depth — its `e^{−n·S̃}` degradation has not bitten at n=12, so this box is too small to show the circulant's scaling |
+| `v141_corridor_landscape.py` | Liu–Su–Li's Eq. 120 corridor landscape on a circuit: walk vs SGD | **BLOCKED.** `P(W+) = 0.0000` everywhere against SGD's 0.84–1.00. `Φ₋` is localised to 1.000 in every row — no tunnelling doublet, because the lattice detunes the wells (`|W₋|=12` vs `|W₊|=13`) and their Assumption 2.5 demands resonance. The classical arm is equally out of regime: concentration is `e^{−dw²/2R²}` and at d=2 there is none. The construction needs exact well degeneracy AND a dimension out of simulation reach |
