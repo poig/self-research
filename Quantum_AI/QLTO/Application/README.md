@@ -41,49 +41,24 @@ reachable, not which method to use on them.**
 
 ---
 
-## Current work: where a separation can live
+## A complexity separation was searched for, and not found
 
-The active question is not "is QLTO cheap" — that is the constant-factor claim
-above and it is settled. It is whether there is a task where QLTO is separated
-from every classical algorithm by more than a constant, and what hardness
-assumption that separation would rest on. Ten files, each labelled by how it was
-obtained (see "How claims are tiered" below):
+Whether there is a task where QLTO is separated from every classical algorithm
+by more than a constant was checked directly: five candidate routes, four ruled
+out by argument (gradient estimation itself is polynomial classically, so no
+estimator trick over it can be exponential), the fifth open only by importing
+Huang et al.'s already-published result on quantum-memory-assisted state
+learning rather than adding anything new. No separation survived, and the
+gradient estimator below is measured elsewhere in this project to coincide with
+SPSA under antithetic sampling — so what's left is a circuit-count constant, not
+an advantage. The exploration is not kept in this directory; this paragraph is
+the record of it, per the project's own rule that withdrawals stay noted beside
+the claim rather than as a document of their own.
 
-**`qlto_separation.py`** — TIER C, derivation. Checks five candidate routes to a
-complexity separation and rules out four by argument: gradient estimation itself
-is polynomial classically, so no estimator trick over it can be exponential. The
-route that survives changes the *input* rather than the estimator — learning
-from quantum data, where Huang et al. (Science 2022) prove an exponential
-separation in experiment count between algorithms with and without quantum
-memory. This is the file the other nine build on or check against.
+## Current work: device calibration (`modules/`)
 
-**`qlto_quantum_data.py`** (TIER B) → **`qlto_qdata_loop.py`** (TIER A) — the
-surviving route, derived then built: the gradient of a nonlinear functional of
-quantum data from one design register, first as an exact-amplitude identity,
-then as real circuits on `AerSimulator` trained end to end against a BFGS
-reference.
-
-**`qlto_gradnorm.py`**, **`qlto_certified_radius.py`**, **`qlto_fourier_sampling.py`**,
-**`qlto_weight_spectrum.py`** — TIER B, exact-amplitude identities about what the
-design register's amplitudes (not just its measured counts) can carry: the
-gradient norm as one probability, a certified trust radius from derivative-tensor
-norms, reading Walsh coefficients directly off amplitudes, and the landscape's
-per-degree Fourier weight.
-
-**`qlto_local_design.py`** — TIER C, `NO CIRCUIT`. The open combinatorial problem
-of a locally-routable design register in 2-D — exact GF(2) construction, not yet
-a circuit.
-
-**`qlto_szegedy.py`**, **`qlto_training_time.py`** — TIER C, derivations that
-check specific claims against a closed form (Szegedy's quadratic walk bound; the
-data-prep-is-one-time argument, which fails because measurement destroys the
-state every shot). Both explicitly `NO CIRCUIT` — scoping and argument only, no
-accuracy or cost figure taken from them.
-
-## The prior lines (`modules/`)
-
-Working code the current files build on or reference, kept for reuse rather than
-narration:
+The active line is device Hamiltonian calibration, in `twirl_cal.py`. The rest of
+`modules/` is prior working code kept for reuse rather than narration:
 
 - **`twirl_cal.py`** — device calibration via twirl designs; a twirl IS a design
   row, full rank by construction. Measured 3.0% relative error at T=0.25 on real
@@ -131,21 +106,12 @@ hide entirely.
 ## Layout
 
 ```
-nisq_v6.py            gradient engine — the stable, current line
-benchmark.py           harness for nisq_v6.py, 8-problem suite
+nisq_v6.py    gradient engine — the stable line, equivalent to SPSA under
+              antithetic sampling plus an ancilla-readout refinement
+benchmark.py  harness for nisq_v6.py, 8-problem suite
 
-qlto_separation.py     TIER C  where a complexity separation can live — start here
-qlto_quantum_data.py   TIER B  the surviving route, exact amplitudes
-qlto_qdata_loop.py     TIER A  the surviving route, real circuits + shots
-qlto_gradnorm.py       TIER B  gradient norm as one probability
-qlto_certified_radius  TIER B  certified trust radius from derivative-tensor norms
-qlto_fourier_sampling  TIER B  Walsh coefficients read off amplitudes
-qlto_weight_spectrum   TIER B  landscape's per-degree Fourier weight
-qlto_local_design.py   TIER C  NO CIRCUIT — open 2-D routable design problem
-qlto_szegedy.py        TIER C  NO CIRCUIT — Szegedy's quadratic bound, checked
-qlto_training_time.py  TIER C  NO CIRCUIT — is data prep one-time? no
-
-modules/                prior lines: twirl_cal, qlto_walk, qlto_prototype,
-                         qlto_qml, qlto_hl, nisq_v2/v3/v5/v6a, qnspsa,
-                         twirl_stage2_coherent, commute_*, check_gs
+modules/      twirl_cal.py — device calibration, the active line — plus
+              prior code kept for reuse: qlto_walk, qlto_prototype, qlto_qml,
+              qlto_hl, nisq_v2/v3/v5/v6a, qnspsa, twirl_stage2_coherent,
+              commute_*, check_gs
 ```
