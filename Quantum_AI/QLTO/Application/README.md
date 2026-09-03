@@ -41,12 +41,13 @@ reachable, not which method to use on them.**
 
 ---
 
-## Current work: where a separation can live (R0/R6)
+## Current work: where a separation can live
 
 The active question is not "is QLTO cheap" — that is the constant-factor claim
 above and it is settled. It is whether there is a task where QLTO is separated
-from every classical algorithm by more than a constant, and what assumption that
-separation would rest on (`CLAUDE.md` R0). Ten files, each tier-labelled per R1:
+from every classical algorithm by more than a constant, and what hardness
+assumption that separation would rest on. Ten files, each labelled by how it was
+obtained (see "How claims are tiered" below):
 
 **`qlto_separation.py`** — TIER C, derivation. Checks five candidate routes to a
 complexity separation and rules out four by argument: gradient estimation itself
@@ -86,12 +87,13 @@ narration:
 
 - **`twirl_cal.py`** — device calibration via twirl designs; a twirl IS a design
   row, full rank by construction. Measured 3.0% relative error at T=0.25 on real
-  circuits — the circuit-vs-analytic gap that motivates R1.
+  circuits — the circuit-vs-analytic gap that motivates building everything as a
+  real circuit rather than trusting an analytic pass.
 - **`qlto_walk.py`** — three-level design register, gradient and Hessian from one
   shot record.
 - **`qlto_prototype.py`** — data register + sensing + walk step composed
   end to end; the file where the 256× branch-averaging bug was caught by a
-  Hessian magnitude that a cosine similarity couldn't see (R4).
+  Hessian magnitude that a cosine similarity couldn't see.
 - **`qlto_qml.py`** — supervised QML on a weighted data register, three circuits
   per epoch, flat in `|D|` and `M`.
 - **`qlto_hl.py`** — QLTO applied to Hamiltonian learning.
@@ -109,10 +111,10 @@ narration:
 
 ---
 
-## How claims are tiered (R1)
+## How claims are tiered
 
 Every result is labelled by how it was obtained, and the tier gates what it may
-support — see [`../../../CLAUDE.md`](../../../CLAUDE.md) for the full rule (R0–R6):
+support:
 
 | tier | what it is | may support |
 |---|---|---|

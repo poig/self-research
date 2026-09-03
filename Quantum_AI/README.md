@@ -74,9 +74,9 @@ What is **not** claimed, each measured rather than merely untested:
   CIRCUIT`**: it comes from a dense matrix exponential on a constructed 1D spike
   potential, not a VQE landscape, and the quantum transmission that "stays flat"
   as the barrier grows is flat at 0.3–0.7%, roughly 200 repetitions per success.
-  Under R1 that supports feasibility and nothing more. The walk does not reach it
-  either way: its ceiling is `sqrt(RW)` with `RW ~ 2ⁿ`, still exponential where
-  descent is ~n/2.
+  A tier-C result like this supports feasibility and nothing more. The walk does
+  not reach it either way: its ceiling is `sqrt(RW)` with `RW ~ 2ⁿ`, still
+  exponential where descent is ~n/2.
 
 ### Current line — device Hamiltonian calibration
 
@@ -141,21 +141,11 @@ same construction evaluated on classical amplitudes reported 0.13%; building it 
 a circuit moved the operating point and exposed two endianness bugs that dense
 matrices hide entirely.
 
-## House rules
-
-[`CLAUDE.md`](../CLAUDE.md) at the repository root:
-
-- **R1 — Circuits, not matrices.** Every quantum construction is a Qiskit
-  `QuantumCircuit` run with finite shots; analytic linear algebra is a labelled
-  fallback and never the source of a headline number.
-- **R2 — Withdrawals stay in the record.**
-
 ## Layout
 
 ```
 QLTO/
 ├── Application/    the optimizer — V3, V5, V6, benchmarks, research notes  ← start here
-│   └── supplement/     ~100 numbered experiments, each with its log
 ├── theory_test/    numerics behind the theory paper, mapped claim-by-claim
 │   └── QuantumFeedback/  Lean 4 + Mathlib proofs of the algebraic core
 ├── paper/          manuscripts
