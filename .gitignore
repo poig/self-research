@@ -46,3 +46,5 @@ Quantum_AI/QLTO/Math_proof/BQP_vs_NP_proof_plan.md
 .claude/
 __pycache__/
 *.pyc
+
+CLAUDE.md
