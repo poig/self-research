@@ -18,116 +18,132 @@ V6 needs **7**. That is the result; the circuit count follows from it.
 
 ## The cost is three numbers, not one
 
-| cost | V6 | parameter-shift | measured in |
-|---|---|---|---|
-| circuits per gradient | **`G`** | `2MG` | `v87` — exactly `G` on all 7 problems |
-| width | `N + ⌈log₂(M+1)⌉ + 4` | `N` | `v87` — 2.25×–5×, **additive**, ratio falls with N |
-| classical per gradient | `O(M)` Walsh decode | `O(M)` | `v87` — no exponential term |
+| cost | V6 | parameter-shift |
+|---|---|---|
+| circuits per gradient | **`G`** | `2MG` |
+| width | `N + ⌈log₂(M+1)⌉ + 4` | `N` |
+| classical per gradient | `O(M)` Walsh decode | `O(M)` |
 
 Quoting only the first invites the obvious rebuttal, so all three ship together.
 `G` cancels from the ratio: `2MG/G = 2M`. **A large `G` bounds which problems are
-reachable, not which method to use on them** — see Part V of the notes.
-
-## Sharpest measured results
-
-| | result |
-|---|---|
-| 8-problem suite, 5 trials | 1st on 2, 2nd on 5, 3rd on 1 — **cheapest on all 8** |
-| sharpest row | Heisenberg N=8: **−11.6222 at 60 circuits** vs AdamW −11.6133 at 3840 |
-| total resources | 28× fewer **qubit·shots** at N=8, charging V6 its full width penalty |
-| variance scaling | per-component variance **flat** while parameter-shift's grows 16×; exponents **1.006 vs 2.000** (`v82`) |
-| vs strongest competitor | QN-SPSA (Gacon 2021), swept: **7–10× worse at 4.4× the circuits** (`v91`) |
-| the estimator, exactly | a low-pass filter on Fourier degree, verified to **3.8e-17** (`v89`) |
+reachable, not which method to use on them.**
 
 ## What is *not* claimed
 
-- **Not** backprop scaling, and **not a shot saving** — V6 trades ~4× more shots
-  for ~32× fewer circuits (`v109`). No contradiction with Abbas et al. (NeurIPS
-  2023).
-- **Not** a barren-plateau escape. Proven, not merely untested: every factor
-  `cos^(d−1)(R)` lies in [0,1], so `|∇E_R| ≤ |∇E|` (`v89`).
+- **Not** backprop scaling, and **not a shot saving** — V6 trades more shots for
+  fewer circuits.
+- **Not** a barren-plateau escape by construction alone: every factor
+  `cos^(d−1)(R)` lies in [0,1], so `|∇E_R| ≤ |∇E|`.
 - **Not** improved by preconditioning — the `2M` saving and preconditioning are
-  mutually exclusive (`v91`).
+  mutually exclusive.
 - **Not** asymptotic advantage. QLTO is a NISQ-regime construction; its value
   expires when error correction arrives and QPE is simply used instead.
 
 ---
 
-## The three application modules
+## Current work: where a separation can live (R0/R6)
 
-**`nisq_v6.py`** — the gradient engine. Log-width design register, `G` circuits
-per gradient, `radius_exponent` knob. The other two build on it.
+The active question is not "is QLTO cheap" — that is the constant-factor claim
+above and it is settled. It is whether there is a task where QLTO is separated
+from every classical algorithm by more than a constant, and what assumption that
+separation would rest on (`CLAUDE.md` R0). Ten files, each tier-labelled per R1:
 
-**`twirl_cal.py`** — device calibration. A Pauli conjugation flips coefficient
-signs, so **a twirl IS a design row** and the device supplies the evolution
-exactly in every branch — no model, no Trotter bias. Full rank is a theorem: the
-columns are Walsh characters of distinct symplectic vectors. Measured 3.0%
-relative error at T=0.25 on real circuits.
+**`qlto_separation.py`** — TIER C, derivation. Checks five candidate routes to a
+complexity separation and rules out four by argument: gradient estimation itself
+is polynomial classically, so no estimator trick over it can be exponential. The
+route that survives changes the *input* rather than the estimator — learning
+from quantum data, where Huang et al. (Science 2022) prove an exponential
+separation in experiment count between algorithms with and without quantum
+memory. This is the file the other nine build on or check against.
 
-**`qlto_qml.py`** — supervised QML on a weighted data register. Three circuits per
-epoch, flat in |D| and M, counted not asserted; the estimator drives its own
-descent, 3/3 seeds. `G = 1` structurally, since a QML readout is one Pauli.
+**`qlto_quantum_data.py`** (TIER B) → **`qlto_qdata_loop.py`** (TIER A) — the
+surviving route, derived then built: the gradient of a nonlinear functional of
+quantum data from one design register, first as an exact-amplitude identity,
+then as real circuits on `AerSimulator` trained end to end against a BFGS
+reference.
 
-Earlier lines: `nisq_v3.py` (the one-circuit walk oracle), `nisq_v5.py` (QPE),
-`nisq_v2.py` (Riemannian/QFIM). Each carries its own docstring.
+**`qlto_gradnorm.py`**, **`qlto_certified_radius.py`**, **`qlto_fourier_sampling.py`**,
+**`qlto_weight_spectrum.py`** — TIER B, exact-amplitude identities about what the
+design register's amplitudes (not just its measured counts) can carry: the
+gradient norm as one probability, a certified trust radius from derivative-tensor
+norms, reading Walsh coefficients directly off amplitudes, and the landscape's
+per-degree Fourier weight.
+
+**`qlto_local_design.py`** — TIER C, `NO CIRCUIT`. The open combinatorial problem
+of a locally-routable design register in 2-D — exact GF(2) construction, not yet
+a circuit.
+
+**`qlto_szegedy.py`**, **`qlto_training_time.py`** — TIER C, derivations that
+check specific claims against a closed form (Szegedy's quadratic walk bound; the
+data-prep-is-one-time argument, which fails because measurement destroys the
+state every shot). Both explicitly `NO CIRCUIT` — scoping and argument only, no
+accuracy or cost figure taken from them.
+
+## The prior lines (`modules/`)
+
+Working code the current files build on or reference, kept for reuse rather than
+narration:
+
+- **`twirl_cal.py`** — device calibration via twirl designs; a twirl IS a design
+  row, full rank by construction. Measured 3.0% relative error at T=0.25 on real
+  circuits — the circuit-vs-analytic gap that motivates R1.
+- **`qlto_walk.py`** — three-level design register, gradient and Hessian from one
+  shot record.
+- **`qlto_prototype.py`** — data register + sensing + walk step composed
+  end to end; the file where the 256× branch-averaging bug was caught by a
+  Hessian magnitude that a cosine similarity couldn't see (R4).
+- **`qlto_qml.py`** — supervised QML on a weighted data register, three circuits
+  per epoch, flat in `|D|` and `M`.
+- **`qlto_hl.py`** — QLTO applied to Hamiltonian learning.
+- **`nisq_v2.py`**, **`nisq_v3.py`**, **`nisq_v5.py`**, **`nisq_v6a.py`** — earlier
+  lines (Riemannian/QFIM, one-circuit walk oracle, QPE, an alternate V6).
+- **`qnspsa.py`** — QN-SPSA (Gacon et al., Quantum 5, 567, 2021) as the measured
+  competitor.
+- **`twirl_stage2_coherent.py`** — coherent-target-basis Stage-2 prototype for a
+  companion twirling scheme.
+- **`commute_fim.py`**, **`commute_gradient.py`**, **`commute_gradient_paper.py`**,
+  **`commute_gradient_paper_unitary.py`** — QFIM and commuting-block gradient
+  estimators, the second two an exact implementation of Bowles et al. (2024)
+  Theorem 3.
+- **`check_gs.py`** — small ground-state check used by the above.
 
 ---
-
-## Where to read what
-
-This README is the summary. The detail is split in two:
-
-[`RESEARCH_NOTES.md`](RESEARCH_NOTES.md) — **the current state**, Parts III–IX:
-
-| part | covers | read it when |
-|---|---|---|
-| **III — the QML axis map** | per axis: which of *qubits / circuits / gates* stays small (v121–v131) | you are asking "does it scale" |
-| **IV — where advantage can live** | design + literature, labelled `[measured]/[lit]/[design]` | you are choosing a direction |
-| **V — the accounting rule** | substrate vs. invocation count | **before any cost comparison** |
-| **VI — the walk step, derived** | the separability theorem: the walk as built is a tensor product | you are touching the walk |
-| **VII — the bridge** | simulability ladder, potential degree, the three complexity barriers | you are claiming an advantage |
-| **VIII — the sensing register is a walk** | the design register IS the hypercube mixer, so its eigenbasis fixes the measurement grading; the radius is a second axis (v135) | you are touching `sense`, the radius, or comparing to a published gradient method |
-| **IX — the walk built, and the prototype** | cycle register = particle, hypercube = SPIN degrading in the parameter count; three-level sensing gives the Hessian; end-to-end training (v136–v141) | you are touching the walk, the Hessian, or `qlto_prototype.py` |
-
-[`ARCHIVE_V3_V6.md`](ARCHIVE_V3_V6.md) — **the historical record**, Parts I–II:
-the V3 sensing oracle and walk with their theory, and the V6/calibration line.
-Kept verbatim per R2; its header lists which of its verdicts Parts III–VII
-supersede, so read those with the correction rather than on their own.
-
-Other documents:
-
-- [`TRACTABILITY_CERTIFICATES.md`](TRACTABILITY_CERTIFICATES.md) — when the
-  construction is certified to apply
-- [`supplement/`](supplement/) — every experiment, one script per claim, logs in
-  `supplement/results/`
-- [`../../../CLAUDE.md`](../../../CLAUDE.md) — **R1**, the circuits-not-matrices
-  rule and its three tiers; **R2**, withdrawals stay in the record
 
 ## How claims are tiered (R1)
 
 Every result is labelled by how it was obtained, and the tier gates what it may
-support:
+support — see [`../../../CLAUDE.md`](../../../CLAUDE.md) for the full rule (R0–R6):
 
 | tier | what it is | may support |
 |---|---|---|
 | **A** | `QuantumCircuit` on `AerSimulator` with `shots=` | any claim, including headline |
 | **B** | circuit built, read exactly via `Statevector`/`Operator` | mechanism and structure — **never** an accuracy or cost figure |
-| **C** | no circuit — dense linear algebra | scoping only, labelled `NO CIRCUIT` |
+| **C** | no circuit — dense linear algebra or pure argument | scoping/derivation only, labelled `NO CIRCUIT` |
+| **D** | no quantum object at all — a resource ledger | nothing; not an experiment |
 
-The rule exists because it was measured twice: `v101` reported 0.13% analytically
-where the real circuit gave 3.0%, a 23× gap that also moved the operating point
-and surfaced two endianness bugs dense matrices hide entirely.
+The rule exists because it was measured twice: an earlier analytic pass reported
+0.13% error where the real circuit (`twirl_cal.py`) gave 3.0% — a 23× gap that
+also moved the operating point and surfaced two endianness bugs dense matrices
+hide entirely.
 
 ## Layout
 
 ```
-nisq_v6.py       gradient engine — the current line
-twirl_cal.py     device calibration via twirl designs
-qlto_qml.py      supervised QML on a weighted data register
-nisq_v5.py       QPE line          nisq_v3.py   walk oracle
-nisq_v2.py       Riemannian/QFIM   benchmark.py harness
-commute_*.py     QFIM and commuting-block estimators
-RESEARCH_NOTES.md  current state, Parts III–IX
-ARCHIVE_V3_V6.md   historical record, Parts I–II
-supplement/        one script per claim + results/
+nisq_v6.py            gradient engine — the stable, current line
+benchmark.py           harness for nisq_v6.py, 8-problem suite
+
+qlto_separation.py     TIER C  where a complexity separation can live — start here
+qlto_quantum_data.py   TIER B  the surviving route, exact amplitudes
+qlto_qdata_loop.py     TIER A  the surviving route, real circuits + shots
+qlto_gradnorm.py       TIER B  gradient norm as one probability
+qlto_certified_radius  TIER B  certified trust radius from derivative-tensor norms
+qlto_fourier_sampling  TIER B  Walsh coefficients read off amplitudes
+qlto_weight_spectrum   TIER B  landscape's per-degree Fourier weight
+qlto_local_design.py   TIER C  NO CIRCUIT — open 2-D routable design problem
+qlto_szegedy.py        TIER C  NO CIRCUIT — Szegedy's quadratic bound, checked
+qlto_training_time.py  TIER C  NO CIRCUIT — is data prep one-time? no
+
+modules/                prior lines: twirl_cal, qlto_walk, qlto_prototype,
+                         qlto_qml, qlto_hl, nisq_v2/v3/v5/v6a, qnspsa,
+                         twirl_stage2_coherent, commute_*, check_gs
 ```

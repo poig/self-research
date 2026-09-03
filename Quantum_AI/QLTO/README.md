@@ -7,12 +7,11 @@ testing and replaced by an exact result that is now machine-checked in Lean; the
 application strand's surviving claim is circuit cost, not accuracy.** Several
 results in this repository were withdrawn by their own author after further
 testing, and the withdrawals are documented alongside the claims — read the
-`RESEARCH_NOTES.md` and the `README` in each subdirectory before citing anything.
+`README` in each subdirectory before citing anything.
 
 ```
 QLTO/
-├── Application/    the optimizer — V3, V5, V6, benchmarks, research notes  ← start here
-│   └── supplement/     ~70 numbered experiments, each with its log
+├── Application/    the optimizer — V3, V5, V6, benchmarks, current research  ← start here
 ├── theory_test/    numerics behind the theory paper, mapped claim-by-claim
 │   └── QuantumFeedback/  Lean 4 + Mathlib proofs of the algebraic core
 ├── paper/          manuscripts
@@ -73,8 +72,7 @@ QSGD (arXiv:2310.06935) carries a `3^k` variance factor that becomes `3^N` once
 the gradient observable is conjugated through the remaining entangling layers,
 and Abbas et al.'s Theorem 9 needs quantum memory, two-copy Bell measurements and
 `M·2^Õ(n)` classical storage while still spending `Õ(mM)` quantum operations.
-Neither reaches `Θ(G)` circuits in this setting. Full ledger in
-[`supplement/results/v87_cost_ledger.log`](Application/supplement/results/v87_cost_ledger.log).
+Neither reaches `Θ(G)` circuits in this setting.
 
 ## Application — QLTO V3 / V5
 
@@ -142,8 +140,7 @@ in the name — lost 0 of 7 on the full suite to a plain classical decode of its
 marginal at half the circuits. What survives is the sensing front-end: a gradient
 estimator, not an optimizer, and not a tunneling one.
 
-Full record in [`Application/RESEARCH_NOTES.md`](Application/RESEARCH_NOTES.md);
-start with [`Application/README.md`](Application/README.md).
+Start with [`Application/README.md`](Application/README.md).
 
 ### Where this sits against the field
 
