@@ -148,7 +148,6 @@ QLTO/
 ├── Application/    the optimizer — V3, V5, V6, benchmarks, research notes  ← start here
 ├── theory_test/    numerics behind the theory paper, mapped claim-by-claim
 │   └── QuantumFeedback/  Lean 4 + Mathlib proofs of the algebraic core
-├── paper/          manuscripts
 └── Feigenbaum/     earlier exploratory work
 ```
 

@@ -5,15 +5,17 @@ authors:
     given-names: Jun Liang
     email: junliang.tan@student.uq.edu.au
     affiliation: University of Queensland
-title: "Feigenbaum Universality in Quantum Computing"
+title: "QLTO: Quantum Landscape Tunneling Optimization"
 version: "1.0"
 doi: "10.5281/zenodo.17834056"
 url: "https://github.com/poig/self-research"
 abstract: |
-  This repository contains a series of pre‑prints and code exploring Feigenbaum universality in quantum measurement dynamics, chaos control for variational quantum algorithms, and scaling structures as quantum resources.
+  This repository contains self-research on quantum variational optimization: QLTO, a gradient estimator on a logarithmic parameter register applied to device Hamiltonian calibration; a theory strand on single-ancilla coherent feedback with its algebraic core machine-checked in Lean 4; and earlier exploratory work on Feigenbaum universality in quantum measurement dynamics.
 keywords:
-  - Feigenbaum
-  - quantum measurement
-  - chaos control
+  - quantum computing
   - variational quantum algorithms
-  - scaling structure
+  - gradient estimation
+  - quantum device calibration
+  - coherent feedback
+  - formal verification
+  - Feigenbaum

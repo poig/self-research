@@ -14,7 +14,6 @@ QLTO/
 ├── Application/    the optimizer — V3, V5, V6, benchmarks, current research  ← start here
 ├── theory_test/    numerics behind the theory paper, mapped claim-by-claim
 │   └── QuantumFeedback/  Lean 4 + Mathlib proofs of the algebraic core
-├── paper/          manuscripts
 └── Feigenbaum/     earlier exploratory work
 ```
 
@@ -197,11 +196,12 @@ correlations the reachable work is a closed-form interval symmetric about zero.
 That symmetry is the protocol's defect — an unfiltered conditional kick heats as
 readily as it cools.
 
-v3 is the corrected manuscript and is the version now on arXiv; the withdrawal is
-stated there rather than left to this README. The PDF under `paper/` still carries
-the superseded v1–v2 title. Numerics and their logs are in `theory_test/`, mapped
-claim-by-claim in [`theory_test/README.md`](theory_test/README.md) — all of it
-exact statevector simulation at N ≤ 7, with no sampling noise and no hardware run.
+v3 is the corrected manuscript and is the version now on arXiv
+([2512.14701](https://arxiv.org/abs/2512.14701)); the withdrawal is stated there
+rather than left to this README. Superseded local drafts have been retired.
+Numerics and their logs are in `theory_test/`, mapped claim-by-claim in
+[`theory_test/README.md`](theory_test/README.md) — all of it exact statevector
+simulation at N ≤ 7, with no sampling noise and no hardware run.
 
 **The algebraic core is machine-checked.** `theory_test/QuantumFeedback/` is a
 Lean 4 + Mathlib development covering the identity, its vanishing under

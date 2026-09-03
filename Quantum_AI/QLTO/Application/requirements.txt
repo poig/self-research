@@ -1,0 +1,8 @@
+numpy
+scipy
+matplotlib
+qiskit>=2.0
+qiskit-aer
+
+# optional: only needed for the PennyLane comparison baseline in benchmark.py
+pennylane
