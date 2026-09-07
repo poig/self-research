@@ -60,8 +60,14 @@ quantum cost, and v30 measured G ~ N^4.24 for molecular Hamiltonians.
 WHAT WAS DROPPED FROM V5. The QPE sensing path, and with it num_ancillas,
 qpe_margin, the sensing-Hamiltonian rescaling and the tau0 calibration. V5 keeps
 them; V6 is direct-only. QPE bought G-independence at the cost of a
-(2^k - 1)*tau0 evolution ladder whose measured survival was 0.098 at Heisenberg
-N=6. V6 reinstates it as readout='qpe' (v132); tau0 is calibrated from the exact
+(2^k - 1)*tau0 evolution ladder. THE 0.098 ONCE QUOTED HERE IS NOT THIS PATH'S
+NUMBER. It is V3's: modules/nisq_v3.py's kappa 4->3 table measures V3 at
+Heisenberg N=6 going 0.009 -> 0.098, at kappa=3, and "survival" there is the
+analytic proxy (1-p)^cx at p=5e-3 - a gate-count ledger, tier D, not a hardware
+run. Nothing in this project has run on hardware. Measured on THIS circuit by
+that same formula at Heisenberg N=6: 0.054 at k=3, 0.0053 at the shipped
+num_ancillas=4 (cx=1047, 397 us against a T2 of ~100 us), 0.00005 at k=5.
+V6 reinstates it as readout='qpe' (v132); tau0 is calibrated from the exact
 spectral norm only up to 14 qubits and from the free coefficient 1-norm above
 that, so the 2^N matrix is NOT a dependency of the shipped path. Depth is.
 
@@ -237,7 +243,7 @@ class QLTOv6:
                  sim_seed=None, backend=None, block_mode='global',
                  n_scratch=3, scale_radius=True, design_resolution=4,
                  radius_exponent=0.5, readout='direct', num_ancillas=4,
-                 qpe_margin=2.0):
+                 qpe_margin=2.0, alias_floor=None):
         # Decompose until every parameter-bearing gate is one _CTRL knows how to
         # control. This MUST check for progress: decompose() reaches a fixed point
         # on gates it cannot reduce further, and an unbounded `while` here spins
@@ -280,6 +286,11 @@ class QLTOv6:
         # Exponent p in R_eff = R (N/n)^p. 0.5 is shipped and unswept; see
         # _radius for why it may be too aggressive at large M.
         self.radius_exponent = float(radius_exponent)
+        # Constant c in the alias-limited cap R <= c (S n)^(-1/6). None keeps
+        # the shipped shot-limited rule exactly; a float turns on the second
+        # branch derived in _radius. c is UNMEASURED - it carries the landscape's
+        # third-derivative scale - so this exists to be measured, not used.
+        self.alias_floor = None if alias_floor is None else float(alias_floor)
 
         # readout='direct' reads Pauli expectation values in a measurement basis
         # and costs G circuits per gradient. readout='qpe' reads the energy as a
@@ -298,9 +309,15 @@ class QLTOv6:
         #
         # So both savings hold at once - 1 circuit AND ceil(log2(M+1))+1 register
         # qubits - and DEPTH is what pays for it: 21x one direct circuit at N=6.
-        # That is why 'direct' is the default: the ladder is what killed V5 on
-        # hardware (survival 0.098 at Heisenberg N=6). Use 'qpe' where depth is
-        # cheap and G is large.
+        # That is why 'direct' is the default: the ladder is what killed V5.
+        # The 0.098 this line used to carry is V3's kappa=3 figure from
+        # modules/nisq_v3.py's table (0.009 -> 0.098), and it is the analytic
+        # proxy (1-p)^cx at p=5e-3, not a hardware run - there are none in this
+        # project. THIS circuit at Heisenberg N=6 measures 0.054 / 0.0053 /
+        # 0.00005 at k_anc = 3 / 4 / 5, so the shipped k_anc=4 is 0.0053, 18x
+        # worse than the number quoted. Use 'qpe' where depth is cheap and G is
+        # large - and note the ladder is 397 us at k=4 against T2 ~ 100 us, so
+        # "where depth is cheap" is not any hardware that exists today.
         self.readout = str(readout).lower()
         if self.readout not in ('direct', 'qpe'):
             raise ValueError("readout must be 'direct' or 'qpe'")
@@ -474,10 +491,40 @@ class QLTOv6:
         p stays exposed because it is now a knob with a measured answer rather
         than an unexamined constant. p = 0 disables the rescale entirely (V5's
         behaviour, the trap v81 keeps visible).
+
+        THE RULE HAS NO SHOT DEPENDENCE AND SHOULD, which v111's sweep could not
+        have seen because it ran entirely inside the branch where p = 0.5 is
+        right. Two error terms compete, and only one of them was in the picture:
+
+            err^2(R) ~ e^{M R^2} [  v_E / (S R^2)  +  R^4 M eps3^2  ]
+                                    shot noise        degree-3 aliasing
+
+        Dropping the alias term and minimising gives R^2 = 1/M exactly - that is
+        p = 0.5, and it is correct while shots dominate. The two terms balance at
+
+            v_E / S  ~  R^6 M eps3^2     =>     R ~ (S M)^(-1/6)
+
+        so the alias branch binds once S >~ M^2, and above that the radius must
+        fall FASTER than M^(-1/2):
+
+            R* = min( R (N/n)^p ,  c (S n)^(-1/6) )
+
+        NOT SHIPPED AS A DEFAULT, and the reason is the constant. c depends on
+        eps3, the third-derivative scale of the landscape, which is
+        problem-specific and has never been measured here - so the crossover
+        cannot be placed without measuring it first. `alias_floor` exposes c for
+        exactly that measurement and is None (current behaviour) until one
+        exists. Derived, not measured; the shot-limited branch below is the
+        measured one.
         """
         if not self.scale_radius or n <= self.N:
-            return float(R)
-        return float(R) * float((self.N / float(n)) ** self.radius_exponent)
+            r = float(R)
+        else:
+            r = float(R) * float((self.N / float(n)) ** self.radius_exponent)
+        if self.alias_floor is not None and self.shot_budget > 0:
+            r = min(r, float(self.alias_floor)
+                    * (self.shot_budget * float(n)) ** (-1.0 / 6.0))
+        return r
 
     # ── circuit ──────────────────────────────────────────────────────────────
 
@@ -544,6 +591,13 @@ class QLTOv6:
         # Return every scratch wire to |0>. Leaving them set would not change the
         # measured statistics, since each is a function of the register that is
         # itself measured, but clean ancillas keep the template composable.
+        #
+        # IT IS NOT FREE, and this template is always terminal - it ends in
+        # measurements - so the composability it buys is for a reuse that does
+        # not exist yet. The cost is O(n_scratch * m_row) CNOTs, about 15% of the
+        # ~3M sensing overhead at M = 36. Dropping it is a depth saving with zero
+        # statistical cost the moment anything here becomes depth-bound; keep it
+        # only while the template might be composed into something longer.
         for s in range(ns):
             for b in range(m_row):
                 if prev[s] >> b & 1:
@@ -555,7 +609,11 @@ class QLTOv6:
         self._basis(qc, sysr, group)
         qc.measure(param, qc.cregs[0])
         qc.measure(sysr, qc.cregs[1])
-        template = transpile(qc, self.backend, optimization_level=1)
+        # Level 3, not 1: the template is CACHED and rebound every epoch, so the
+        # compile cost amortises to zero across a run while depth is paid on
+        # every circuit - and depth is the axis V6 loses. Level 1 is the right
+        # setting for a circuit built once and thrown away, which this is not.
+        template = transpile(qc, self.backend, optimization_level=3)
         cached = (template, theta, radius)
         self._direct_template_cache[key] = cached
         return cached
@@ -633,6 +691,13 @@ class QLTOv6:
                 qc.cx(param[m_row], scr[s_])
             qc.x(scr[s_])
 
+        # Measured here, not at the end: the design register is a
+        # computational-basis control and is done with once the rotations above
+        # are applied, so reading it now is legal and the joint law is unchanged.
+        # A no-op on Qiskit, which already schedules it here; it matters only on
+        # a backend that pins measurement to the end of the circuit.
+        qc.measure(param, qc.cregs[0])
+
         for a in range(self.k_anc):
             t = (2 ** a) * self.tau0
             reps = int(max(1, (2 ** a) // 2, np.ceil(t / 2.0)))
@@ -642,9 +707,12 @@ class QLTOv6:
                 [anc[a]] + list(sysr))
         qc.append(QFTGate(self.k_anc).inverse(), anc)
 
-        qc.measure(param, qc.cregs[0])
         qc.measure(anc, qc.cregs[1])
-        template = transpile(qc, self.backend, optimization_level=1)
+        # Level 3, not 1: the template is CACHED and rebound every epoch, so the
+        # compile cost amortises to zero across a run while depth is paid on
+        # every circuit - and depth is the axis V6 loses. Level 1 is the right
+        # setting for a circuit built once and thrown away, which this is not.
+        template = transpile(qc, self.backend, optimization_level=3)
         cached = (template, theta, radius, m_row, cols, nreg)
         self._qpe_template_cache[key] = cached
         return cached

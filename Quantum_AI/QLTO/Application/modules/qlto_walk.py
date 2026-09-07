@@ -71,13 +71,7 @@ gradient's sin R, so per-entry SNR is R times worse. lambda_max is an aggregate
 over ~M^2/2 entries and averages that down; the Newton solve is the fragile one.
 The easiest of the three is the one the walk actually needs.
 
-WHAT IS NOT HERE. The walk step itself. supplement/v136 built the cycle mixer
-(F^dag . ladder . F, verified against expm at 1.4e-14) and measured that the
-cycle register is a PARTICLE - DeltaE = e^{-S0/h}, slope -0.998 against
-Liu-Su-Li Eq. 7 - while V3-V6's hypercube register is a SPIN, DeltaE = e^{-n S~},
-linear in the PARAMETER COUNT to r = -0.99994. So hypercube tunnelling degrades
-exponentially as the model grows and the cycle's does not. Joining that mixer to
-the h computed here is the next build; `grad_step` is a regularised Newton move
+WHAT IS NOT HERE. The walk step itself. `grad_step` is a regularised Newton move
 in the meantime so the sensing can be tested alone.
 """
 import numpy as np

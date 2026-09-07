@@ -60,8 +60,14 @@ quantum cost, and v30 measured G ~ N^4.24 for molecular Hamiltonians.
 WHAT WAS DROPPED FROM V5. The QPE sensing path, and with it num_ancillas,
 qpe_margin, the sensing-Hamiltonian rescaling and the tau0 calibration. V5 keeps
 them; V6 is direct-only. QPE bought G-independence at the cost of a
-(2^k - 1)*tau0 evolution ladder whose measured survival was 0.098 at Heisenberg
-N=6, and calibrating tau0 exactly needs the spectral norm, hence the 2^N matrix.
+(2^k - 1)*tau0 evolution ladder. THE 0.098 ONCE QUOTED HERE IS NOT THIS PATH'S
+NUMBER. It is V3's: modules/nisq_v3.py's kappa 4->3 table measures V3 at
+Heisenberg N=6 going 0.009 -> 0.098, at kappa=3, and "survival" there is the
+analytic proxy (1-p)^cx at p=5e-3 - a gate-count ledger, tier D, not a hardware
+run. Nothing in this project has run on hardware. Measured on THIS circuit by
+that same formula at Heisenberg N=6: 0.054 at k=3, 0.0053 at the shipped
+num_ancillas=4 (cx=1047, 397 us against a T2 of ~100 us), 0.00005 at k=5.
+Calibrating tau0 exactly needs the spectral norm, hence the 2^N matrix.
 
 USAGE:
 
