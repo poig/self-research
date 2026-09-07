@@ -72,8 +72,8 @@ The active line is device Hamiltonian calibration, in `twirl_cal.py`. The rest o
 - **`qlto_qml.py`** — supervised QML on a weighted data register, three circuits
   per epoch, flat in `|D|` and `M`.
 - **`qlto_hl.py`** — QLTO applied to Hamiltonian learning.
-- **`nisq_v2.py`**, **`nisq_v3.py`**, **`nisq_v5.py`**, **`nisq_v6a.py`** — earlier
-  lines (Riemannian/QFIM, one-circuit walk oracle, QPE, an alternate V6).
+- **`nisq_v2.py`**, **`nisq_v3.py`**, **`nisq_v5.py`** — earlier lines
+  (Riemannian/QFIM, one-circuit walk oracle, QPE).
 - **`qnspsa.py`** — QN-SPSA (Gacon et al., Quantum 5, 567, 2021) as the measured
   competitor.
 - **`twirl_stage2_coherent.py`** — coherent-target-basis Stage-2 prototype for a
@@ -112,6 +112,6 @@ benchmark.py  harness for nisq_v6.py, 8-problem suite
 
 modules/      twirl_cal.py — device calibration, the active line — plus
               prior code kept for reuse: qlto_walk, qlto_prototype, qlto_qml,
-              qlto_hl, nisq_v2/v3/v5/v6a, qnspsa, twirl_stage2_coherent,
+              qlto_hl, nisq_v2/v3/v5, qnspsa, twirl_stage2_coherent,
               commute_*, check_gs
 ```
