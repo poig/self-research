@@ -339,6 +339,21 @@ class QLTOv6:
             self.tau0 = np.pi / (self.qpe_margin * self.H0_norm + 1e-12)
         # ParameterView has no .index(), so map parameter -> global index once.
         self._pidx = {p: i for i, p in enumerate(ansatz.parameters)}
+        # PER-PARAMETER RADIUS SCALE. A SHARED parameter is displaced at every
+        # gate it appears in, simultaneously, so its effective displacement is
+        # sqrt(occ)*R rather than R - the same argument as the block-width
+        # rescale in _radius, applied along the sharing axis. Unshared ansatze
+        # have occ == 1 everywhere, so this is exactly the identity for every
+        # result measured before it existed.
+        _occ = np.ones(len(self._pidx))
+        for _inst in ansatz.data:
+            _prm = [pp for pp in _inst.operation.params
+                    if isinstance(pp, ParameterExpression) and pp.parameters]
+            if _prm:
+                _occ[self._pidx[next(iter(_prm[0].parameters))]] += 1.0
+        _occ = np.maximum(_occ - 1.0, 1.0)      # counted from 1, floor at 1
+        self.param_occurrences = _occ
+        self._rscale = 1.0 / np.sqrt(_occ)
         self._direct_template_cache = {}
         # The natural layer partition is kept EVEN IN GLOBAL MODE, because the
         # measurement block and the step block are different objects. The gradient
@@ -581,12 +596,14 @@ class QLTOv6:
             p = pos[gi]
             s = p % ns
             c = cols[p]
-            qc.append(op.__class__(theta[gi] - radius), qs)
+            fj = float(self._rscale[gi])
+            rj = radius if fj == 1.0 else radius * fj
+            qc.append(op.__class__(theta[gi] - rj), qs)
             for b in range(m_row):
                 if (c ^ prev[s]) >> b & 1:
                     qc.cx(param[b], scr[s])
             prev[s] = c
-            getattr(qc, _CTRL[op.name])(2.0 * radius, scr[s], qs[0])
+            getattr(qc, _CTRL[op.name])(2.0 * rj, scr[s], qs[0])
 
         # Return every scratch wire to |0>. Leaving them set would not change the
         # measured statistics, since each is a function of the register that is
@@ -677,12 +694,14 @@ class QLTOv6:
             pp_ = pos[gi]
             s_ = pp_ % ns
             c = cols[pp_]
-            qc.append(op.__class__(theta[gi] - radius), qs)
+            fj = float(self._rscale[gi])
+            rj = radius if fj == 1.0 else radius * fj
+            qc.append(op.__class__(theta[gi] - rj), qs)
             for b in range(m_row):
                 if (c ^ prev[s_]) >> b & 1:
                     qc.cx(param[b], scr[s_])
             prev[s_] = c
-            getattr(qc, _CTRL[op.name])(2.0 * radius, scr[s_], qs[0])
+            getattr(qc, _CTRL[op.name])(2.0 * rj, scr[s_], qs[0])
         for s_ in range(ns):
             for b in range(m_row):
                 if prev[s_] >> b & 1:
@@ -765,7 +784,7 @@ class QLTOv6:
         m1 = np.divide(num[1], den[1], out=np.zeros(n), where=den[1] > 0)
         m0 = np.divide(num[0], den[0], out=np.zeros(n), where=den[0] > 0)
         grad = np.zeros(len(centre))
-        grad[active] = (m1 - m0) / (2.0 * Rv + 1e-12)
+        grad[active] = (m1 - m0) / (2.0 * Rv * self._rscale[np.asarray(active)] + 1e-12)
         return grad, (e_tot / e_cnt if e_cnt else 0.0)
 
     # ── decode ───────────────────────────────────────────────────────────────
@@ -848,7 +867,7 @@ class QLTOv6:
             e_sum += (e_tot / e_cnt) if e_cnt else 0.0
 
         grad = np.zeros(len(centre))
-        grad[active] = m_sum / (2.0 * Rv + 1e-12)
+        grad[active] = m_sum / (2.0 * Rv * self._rscale[np.asarray(active)] + 1e-12)
         # degree-0 Walsh coefficient: E(theta_c) + (R^2/2) Tr H + O(R^4). Biased,
         # and not correctable from these shots, since every vertex has x_i^2 = 1
         # so the diagonal curvature is degenerate with the constant. Monitoring
